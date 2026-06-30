@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0004-app-identity/">
+        <link rel="prev" href="../0008-app-packaging/">
       
       
-        <link rel="next" href="../0005-docs-site/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0005 — Presence loop concurrency - No Donuts</title>
+        <title>ADR-0009 — Session suspend - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0005-presence-loop-concurrency-main-actor-driven-loop" class="md-skip">
+        <a href="#adr-0009-suspend-the-presence-loop-camera-while-lockedasleepinactive" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0005 — Presence loop concurrency
+              ADR-0009 — Session suspend
             
           </span>
         </div>
@@ -527,37 +527,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0005 — Presence loop concurrency
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0005-presence-loop-concurrency/" class="md-nav__link">
         
   
   
@@ -573,70 +546,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -758,10 +667,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0009-session-suspend/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0009 — Session suspend
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -777,6 +713,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -930,72 +930,77 @@
 
 
 
-<h1 id="adr-0005-presence-loop-concurrency-main-actor-driven-loop">ADR-0005 — Presence loop concurrency: main-actor-driven loop<a class="headerlink" href="#adr-0005-presence-loop-concurrency-main-actor-driven-loop" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0009-suspend-the-presence-loop-camera-while-lockedasleepinactive">ADR-0009 — Suspend the presence loop + camera while locked/asleep/inactive<a class="headerlink" href="#adr-0009-suspend-the-presence-loop-camera-while-lockedasleepinactive" title="Permanent link">&para;</a></h1>
 <ul>
 <li>Status: Accepted</li>
 <li>Date: 2026-06-30</li>
-<li>Owner: homer</li>
+<li>Owner: homer / blart</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>The presence loop runs <code>capture -&gt; recognize -&gt; decide -&gt; render</code> on a fixed
-interval and updates UI (the menu-bar status) each tick. The original scaffold
-drove this with a repeating <code>Timer.scheduledTimer</code> whose closure spun up a
-detached <code>Task</code> and hopped to <code>MainActor.run</code> to render. Under Swift 6 strict
-concurrency this failed to compile: the engine's mutable state and the
-non-<code>Sendable</code> capture of <code>self</code>/<code>menuBar</code> across the detached <code>Task</code> boundary
-produced data-race / Sendable errors, and the loop's isolation was unclear.</p>
+<p>While the Mac is already locked, the display is asleep, or this session has been
+fast-user-switched away from the console, there is no point running the presence
+loop: there is nobody to verify, the camera may be reassigned to the login
+window, and keeping an <code>AVCaptureSession</code> running needlessly burns power and the
+green camera light. Polling for these states on every tick would be wasteful and
+laggy; the OS already publishes precise notifications for them.</p>
+<p>There is also a correctness hazard: if the user is <em>mid-absence</em> (a few absent
+ticks accumulated, grace partway elapsed) when the screen locks or the lid
+closes, naively resuming on unlock/wake could fire a lock with little or no
+grace — a false lock the instant the user sits back down.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>The presence loop is <strong>main-actor-driven</strong>.</p>
+<p>Introduce an <strong>event-driven <code>SessionStateMonitor</code></strong> (ND-013) that pauses the
+loop and stops the camera while the session is suspended, and resumes both on
+unlock/wake.</p>
 <ul>
-<li><code>PresenceEngine</code> is annotated <code>@MainActor</code>. It holds the only mutable presence
-  state, so isolating it to the main actor makes its decision logic free of data
-  races without locks. <code>AppDelegate</code> is also <code>@MainActor</code>.</li>
-<li>The loop is a <strong>single cancellable <code>Task { @MainActor in ... }</code></strong> stored on the
-  delegate (<code>loopTask</code>), using <code>try? await Task.sleep(for:)</code> for the interval
-  instead of a <code>Timer</code>. It is cancelled in <code>applicationWillTerminate</code>.</li>
-<li>The async protocol methods <code>CameraCapturing.capture()</code> and
-  <code>FaceRecognizing.recognize(_:)</code> are <strong>awaited from the main actor</strong>. <code>await</code>
-  suspends the main actor at the suspension point; it does not block the run
-  loop. The main thread remains responsive to UI/menu events while the work is
-  in flight.</li>
+<li><strong>Signals (no polling).</strong> The monitor observes:</li>
+<li><code>DistributedNotificationCenter</code> — <code>com.apple.screenIsLocked</code> /
+    <code>com.apple.screenIsUnlocked</code>.</li>
+<li><code>NSWorkspace.shared.notificationCenter</code> — <code>screensDidSleep</code>/<code>screensDidWake</code>
+    and <code>sessionDidResignActive</code>/<code>sessionDidBecomeActive</code> (fast user switching).</li>
+<li><strong>State derivation.</strong> On each signal it recomputes a single <code>isActive</code> bool.
+  Suspended if ANY of: screen locked (<code>CGSessionCopyCurrentDictionary()</code> →
+  <code>CGSSessionScreenIsLocked == true</code>), not on console
+  (<code>kCGSSessionOnConsoleKey == false</code>), or <code>CGDisplayIsAsleep(CGMainDisplayID())</code>.
+  Unknown session dictionary → default to active (never wedge the loop off).
+  <code>onChange</code> fires on transitions only.</li>
+<li><strong>Lifecycle in the App target.</strong> <code>AppDelegate</code> owns the monitor:
+  <code>active == false</code> → <code>stopLoop()</code> + <code>camera.suspend()</code> + render <code>.suspended</code>;
+  <code>active == true</code> → <code>camera.resume()</code> + <code>startLoop()</code>. The loop is the same
+  single cancellable main-actor <code>Task</code> (ADR-0005), now extracted into idempotent
+  <code>startLoop()</code>/<code>stopLoop()</code>. Launching while locked starts suspended.</li>
+<li><strong>AppKit stays out of the core.</strong> The monitor lives in the <strong>App target</strong>
+  (AppKit/CoreGraphics), keeping <code>NoDonutsCore</code> AppKit-free (ADR-0007). The
+  engine never learns <em>why</em> it was suspended.</li>
+<li><strong>False-lock-free resume.</strong> On a <code>.suspended</code> capture outcome the engine
+  resets absence accounting (<code>consecutiveAbsentTicks</code>, <code>absentSince</code>,
+  <code>lockAttempted</code>, <code>consecutiveErrorTicks</code>) — mirroring <code>.unavailable</code>. A
+  lock/unlock or sleep/wake mid-absence therefore cannot cause a grace-less lock
+  on resume; the next absence episode must rebuild the full consensus + grace.</li>
 </ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Compiles cleanly under Swift 6 strict concurrency; no <code>Sendable</code> warnings and
-  no detached tasks capturing main-actor state.</li>
-<li>The loop has a single, obvious lifecycle (one task, cancellable) rather than a
-  timer plus ad-hoc tasks.</li>
-<li><strong>Important for cooper/blart:</strong> because <code>capture()</code>/<code>recognize()</code> are awaited
-  from the main actor, any heavy Vision/CoreML/AVFoundation work inside those
-  implementations MUST be offloaded off the main actor (e.g. a <code>nonisolated</code>
-  body, a background actor, or <code>Task.detached</code>/<code>await</code> onto a dedicated queue)
-  and only the result returned. The protocol contract is <code>async</code> precisely so
-  implementations can suspend during compute; they must not run heavy work
-  synchronously on the main actor.</li>
-<li>The async service protocols (<code>CameraCapturing</code>, <code>FaceRecognizing</code>, and
-  transitively <code>EnrollmentStoring</code>) are declared <code>Sendable</code> so the <code>@MainActor</code>
-  engine can <code>await</code> them across isolation boundaries without a
-  <code>#SendingRisksDataRace</code> diagnostic. Real implementations MUST preserve
-  <code>Sendable</code> — via immutable stored state, by being an <code>actor</code>, or with a
-  carefully guarded <code>@unchecked Sendable</code> — and must still offload heavy work
-  off the main actor (see the cooper/blart note above).</li>
-<li>If meaningful compute later migrates onto the engine itself, <code>PresenceEngine</code>
-  can be promoted from <code>@MainActor</code> to an <code>actor</code> (see Alternatives). Callers
-  already <code>await</code> its <code>tick</code>, so that change would be largely source-compatible.</li>
+<li>No camera activity, no green light, and no wasted power while the Mac is
+  locked/asleep/switched away; clean resume on return.</li>
+<li>The loop has two clear states (running / stopped) with idempotent start/stop,
+  so repeated wake events can't stack multiple loops.</li>
+<li>The core stays portable and testable: <code>EngineCheck</code> covers the
+  reset-on-suspend behavior without AppKit or a real session.</li>
+<li><code>SessionStateMonitor</code> itself depends on AppKit/CoreGraphics and is not exercised
+  by <code>EngineCheck</code>; it is verified by build + manual lock/sleep testing.</li>
+<li>Full multi-account / fast-user-switching behavior is still out of scope
+  (EC-14); we simply suspend when not on the console.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Keep the <code>Timer</code> + detached <code>Task</code>:</strong> rejected — this is exactly what broke
-  under strict concurrency and obscured isolation/cancellation.</li>
-<li><strong>Make <code>PresenceEngine</code> an <code>actor</code> now:</strong> defers nicely if compute moves onto
-  the engine, but today the engine does no heavy work itself (it delegates to
-  camera/recognizer) and it must touch main-actor UI state each tick. A
-  <code>@MainActor</code> class is simpler for the walking skeleton; promote to <code>actor</code>
-  later only if needed.</li>
-<li><strong>Background queue/thread for the loop with manual hops to the main actor for
-  rendering:</strong> more moving parts and more hop boilerplate than awaiting async
-  protocol methods from the main actor, with no benefit while the engine itself
-  is light.</li>
+<li><strong>Poll session state every tick.</strong> Simpler wiring but wastes work, adds tick
+  latency, and keeps the camera alive needlessly. Rejected in favor of the OS
+  notifications that already exist.</li>
+<li><strong>Let the engine decide to stop the camera.</strong> Would pull AppKit/CGSession
+  concepts into <code>NoDonutsCore</code> and break ADR-0007. Rejected: session/display
+  state is an App-target (OS-glue) concern.</li>
+<li><strong>Keep running but skip locking while suspended.</strong> Still burns power and the
+  camera light, and risks acting on stale frames from the login window.
+  Rejected.</li>
 </ul>
 
 

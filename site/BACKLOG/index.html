@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0008-app-packaging/">
+        <link rel="prev" href="../adr/0009-session-suspend/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -661,6 +661,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0009-session-suspend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0009 — Session suspend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1048,7 +1076,7 @@
 <li>[x] ND-010 Buildable menu-bar app (<code>LSUIElement</code>), status item, quit — krusty</li>
 <li>[x] ND-011 Camera permission request + state handling (denied/restricted) — blart (camera layer: <code>capture()</code> resolves auth, returns <code>.unavailable</code> on notDetermined-denied/denied/restricted/no-device; honest engine display tracked as a homer follow-up below)</li>
 <li>[x] ND-012 Single-frame capture each tick from AVFoundation — blart (persistent low-FPS <code>AVCaptureSession</code>, samples one <code>CVPixelBuffer</code> per tick; frames in-memory only)</li>
-<li>[ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart</li>
+<li>[x] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart/homer (event-driven <code>SessionStateMonitor</code> in App target pauses loop + stops camera while locked/asleep/not-on-console, resumes on unlock/wake; app calls <code>engine.sessionSuspended()</code> on suspend to reset absence for false-lock-free resume (the in-tick <code>.suspended</code> path is a backstop); ADR-0009, EC-02/EC-13)</li>
 <li>[x] ND-014 Verify a reliable programmatic <strong>screen lock</strong> under entitlements — wiggum</li>
 <li>[x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer</li>
 <li>[ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon</li>
@@ -1087,6 +1115,9 @@
 - <strong>Camera orientation</strong> (cooper): <code>FaceDetectionRecognizer</code> hardcodes Vision orientation <code>.up</code>; front-camera buffers may not be upright → could miss a present face → false lock. Verify on-device; thread the real orientation through <code>CapturedFrame</code> if needed.
 - <strong>Confidence semantics</strong> (cooper): presence-only <code>.enrolledUserPresent(confidence:)</code> carries <em>detection</em> confidence, not identity-match score — replace with the cosine score at ND-024 (engine currently ignores the value).
 - <strong>Two recognizer classes</strong> (cooper): <code>FaceDetectionRecognizer</code> (presence-only) vs the <code>VisionCoreMLRecognizer</code> stub (identity) overlap on detection; merge or layer when identity lands (ND-021/024).</p>
+<p><strong>Suspend follow-ups (from the ND-013 code review):</strong>
+- <strong>resume()-before-configured</strong> (blart): on first unlock after a launch-while-locked start the session isn't configured yet, so <code>resume()</code> is a no-op and the camera comes up only on the next <code>capture()</code>'s <code>ensureConfigured()</code> (brief <code>cameraUnavailable</code> flash). Minor; tie to ND-042 pre-warm.
+- <strong><code>.suspended</code> enum overload</strong> (homer): <code>PresenceState.suspended</code> means both "we auto-locked" (attemptLock) and "OS session suspended" (ND-013). They converge to the same "locked" status today (no current bug), but consider splitting for clearer status/logic when polishing the indicator (ND-017).</p>
 </blockquote>
 <h2 id="m3-presence-policy-professional-friendliness">M3 — Presence policy &amp; professional-friendliness<a class="headerlink" href="#m3-presence-policy-professional-friendliness" title="Permanent link">&para;</a></h2>
 <ul>

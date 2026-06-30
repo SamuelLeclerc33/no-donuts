@@ -229,6 +229,67 @@ func runAll() async -> Bool {
         c.expect(e.state == .paused && locker.lockCallCount == 0, "paused → never locks")
     }
 
+    // Suspend (locked/asleep/inactive) resets absence → no grace-less false lock
+    // on resume (EC-02/EC-13, ND-013). Drive 1 absent tick, then a suspended
+    // tick; absence accounting must be cleared so a subsequent no-face episode
+    // requires the FULL consensus + grace again before it can lock.
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.frame(CapturedFrame()))
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config)
+        // 1 absent tick (partway toward absence, below consensus).
+        await e.tick(now: t0)
+        // Session suspends (lock/sleep) → camera reports suspended.
+        camera.outcome = .suspended
+        await e.tick(now: t0.addingTimeInterval(1))
+        let suspendedAndReset = e.state == .suspended && locker.lockCallCount == 0
+        // Resume: a single no-face tick right after suspend must NOT instantly
+        // lock — absence was reset, so the full consensus + grace is required.
+        camera.outcome = .frame(CapturedFrame())
+        await e.tick(now: t0.addingTimeInterval(2))
+        let noInstantLock = locker.lockCallCount == 0
+        // And the full episode (consensus + grace) still locks exactly once.
+        for i in 1..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(Double(i) + 2))
+        }
+        await e.tick(now: t0.addingTimeInterval(Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 3))
+        c.expect(suspendedAndReset && noInstantLock && e.state == .suspended && locker.lockCallCount == 1,
+                 "suspend resets absence → resume needs full consensus, no false lock (EC-02/EC-13)")
+    }
+
+    // sessionSuspended() — the PRODUCTION reset path (app calls it on OS session
+    // suspend; the in-tick .suspended capture branch is only a backstop). Drive
+    // partway toward absence (below consensus), call sessionSuspended(), then
+    // resume with no-face ticks and confirm the FULL consensus + grace is needed
+    // again — i.e. the suspend reset cleared the partial absence (EC-02/EC-13).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.noFace)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        // 1-2 absent ticks, below the consensus threshold.
+        let partial = max(1, config.consecutiveAbsentTicksToLock - 1)
+        for i in 0..<partial {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        // Production session-suspend entry point: must mark suspended + reset.
+        e.sessionSuspended()
+        let suspendedAndReset = e.state == .suspended && locker.lockCallCount == 0
+        // Resume: a single no-face tick right after suspend must NOT lock —
+        // the partial absence was cleared, so full consensus + grace is required.
+        await e.tick(now: t0.addingTimeInterval(Double(partial) + 1))
+        let noInstantLock = locker.lockCallCount == 0
+        // And the full episode (consensus + grace) still locks exactly once.
+        let base = Double(partial) + 1
+        for i in 1..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(base + Double(i)))
+        }
+        await e.tick(now: t0.addingTimeInterval(base + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1))
+        c.expect(suspendedAndReset && noInstantLock && e.state == .suspended && locker.lockCallCount == 1,
+                 "sessionSuspended() resets absence → resume needs full consensus, no false lock (EC-02/EC-13)")
+    }
+
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0
 }

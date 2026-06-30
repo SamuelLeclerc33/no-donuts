@@ -46,7 +46,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-010 Buildable menu-bar app (`LSUIElement`), status item, quit — krusty
 - [x] ND-011 Camera permission request + state handling (denied/restricted) — blart (camera layer: `capture()` resolves auth, returns `.unavailable` on notDetermined-denied/denied/restricted/no-device; honest engine display tracked as a homer follow-up below)
 - [x] ND-012 Single-frame capture each tick from AVFoundation — blart (persistent low-FPS `AVCaptureSession`, samples one `CVPixelBuffer` per tick; frames in-memory only)
-- [ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart
+- [x] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart/homer (event-driven `SessionStateMonitor` in App target pauses loop + stops camera while locked/asleep/not-on-console, resumes on unlock/wake; app calls `engine.sessionSuspended()` on suspend to reset absence for false-lock-free resume (the in-tick `.suspended` path is a backstop); ADR-0009, EC-02/EC-13)
 - [x] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
 - [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
 - [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
@@ -85,6 +85,10 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 > - **Camera orientation** (cooper): `FaceDetectionRecognizer` hardcodes Vision orientation `.up`; front-camera buffers may not be upright → could miss a present face → false lock. Verify on-device; thread the real orientation through `CapturedFrame` if needed.
 > - **Confidence semantics** (cooper): presence-only `.enrolledUserPresent(confidence:)` carries *detection* confidence, not identity-match score — replace with the cosine score at ND-024 (engine currently ignores the value).
 > - **Two recognizer classes** (cooper): `FaceDetectionRecognizer` (presence-only) vs the `VisionCoreMLRecognizer` stub (identity) overlap on detection; merge or layer when identity lands (ND-021/024).
+
+> **Suspend follow-ups (from the ND-013 code review):**
+> - **resume()-before-configured** (blart): on first unlock after a launch-while-locked start the session isn't configured yet, so `resume()` is a no-op and the camera comes up only on the next `capture()`'s `ensureConfigured()` (brief `cameraUnavailable` flash). Minor; tie to ND-042 pre-warm.
+> - **`.suspended` enum overload** (homer): `PresenceState.suspended` means both "we auto-locked" (attemptLock) and "OS session suspended" (ND-013). They converge to the same "locked" status today (no current bug), but consider splitting for clearer status/logic when polishing the indicator (ND-017).
 
 ## M3 — Presence policy & professional-friendliness
 

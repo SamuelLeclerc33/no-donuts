@@ -2,7 +2,8 @@ import Foundation
 import AVFoundation
 
 // Owner: blart — camera capture, camera-in-use monitoring, display/session state.
-// Backlog: ND-011 (permission), ND-012 (single-frame capture). ND-013/ND-031/ND-032 TODO below.
+// Backlog: ND-011 (permission), ND-012 (single-frame capture), ND-013 (suspend/resume).
+//          ND-031/ND-032 TODO below.
 
 /// Captures frames for the presence loop. Pulls a single frame per tick (not a
 /// continuous stream) to save power, and reports when the camera is busy or the
@@ -27,6 +28,14 @@ public protocol CameraCapturing: Sendable {
 /// (`sessionQueue` for configuration/start, `bufferLock` for the shared buffer).
 /// Nothing mutable is touched without that synchronization.
 ///
+/// Suspend/resume (ND-013): when the Mac is locked, the display sleeps, or the
+/// session goes inactive, the orchestrator calls `suspend()` to stop the running
+/// capture session — which turns the camera indicator light OFF — without tearing
+/// down inputs/outputs, so `resume()` is a cheap `startRunning()`. The camera
+/// light follows the session's running state: light is on iff the session is
+/// running. `configured` stays `true` across a suspend/resume cycle; the `running`
+/// flag (guarded by `sessionQueue`) tracks whether the session is currently live.
+///
 /// Privacy: frames live in memory only. We hand the `CVPixelBuffer` to the
 /// recognizer and never write it to disk or off-device.
 public final class CameraController: CameraCapturing, @unchecked Sendable {
@@ -41,6 +50,12 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// so the next `capture()` retries — a transient hiccup must not permanently
     /// disable the camera for the whole process.
     private var configured = false
+
+    /// True while the capture session is running (camera light ON). Guarded by
+    /// `sessionQueue`. Goes `true` after `session.startRunning()` and `false`
+    /// after `session.stopRunning()`, so `capture()`/`resume()` can tell whether
+    /// the session needs (re)starting after a `suspend()`.
+    private var running = false
 
     public init() {}
 
@@ -74,6 +89,13 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         if let failure = await ensureConfigured() {
             return .unavailable(failure)
         }
+
+        // NOTE: capture() must NOT restart a stopped session. If a suspend()
+        // raced in (monitor saw lock/sleep), restarting here would turn the
+        // camera light back ON while locked and double per-tick overhead. A
+        // suspended session is only restarted by the explicit resume() below.
+        // When suspended, the buffer was cleared, so we fall through to
+        // waitForFirstFrame and then report .unavailable("no frame") — correct.
 
         // 3. Sample the latest frame. If none yet (session just started), wait
         //    briefly for the first delivery before giving up.
@@ -144,9 +166,43 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
                 }
 
                 self.session.startRunning()
+                self.running = true
                 self.configured = true
                 continuation.resume(returning: nil)
             }
+        }
+    }
+
+    /// ND-013: stop the running capture session so the camera indicator light
+    /// goes OFF while the Mac is locked / display asleep / session inactive.
+    /// Runs async on `sessionQueue`. Does NOT tear down inputs/outputs —
+    /// `configured` stays `true` so `resume()` (or the next `capture()`) is a
+    /// cheap `startRunning()`. No-op if the session isn't currently running.
+    public func suspend() {
+        sessionQueue.async {
+            guard self.running else { return }
+            self.session.stopRunning()
+            self.running = false
+            // Drop the last live frame so the first post-resume capture() can't
+            // return a stale pre-suspend frame (stale-frame false-present).
+            self.delegate.clear()
+        }
+    }
+
+    /// ND-013: restart the capture session after a `suspend()` (camera light back
+    /// on) so the next `capture()` has frames flowing. Runs async on
+    /// `sessionQueue`. No-op unless we're configured and currently stopped.
+    ///
+    /// resume() (called by the SessionStateMonitor on unlock/wake) is the ONLY
+    /// path that restarts a suspended session — capture() never does. A
+    /// launch-while-locked start (session not yet configured) is instead brought
+    /// up by the first post-resume capture()'s ensureConfigured(), which is an
+    /// acceptable minor first-tick delay.
+    public func resume() {
+        sessionQueue.async {
+            guard self.configured, !self.running else { return }
+            self.session.startRunning()
+            self.running = true
         }
     }
 
@@ -181,5 +237,16 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
         lock.lock()
         defer { lock.unlock() }
         return buffer
+    }
+
+    /// Drop the cached frame under the lock. Called from `suspend()` so a stale
+    /// pre-suspend frame (e.g. the previous user's face) can never be returned by
+    /// the first post-resume `capture()` — that would falsely report present and
+    /// leave a stranger unlocked. After clear, `capture()` waits for a fresh live
+    /// frame via `waitForFirstFrame`.
+    func clear() {
+        lock.lock()
+        buffer = nil
+        lock.unlock()
     }
 }

@@ -659,6 +659,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0009-session-suspend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0009 — Session suspend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -856,9 +884,9 @@
 <tr>
 <td>EC-02</td>
 <td><strong>Screen already locked / display asleep / session inactive</strong></td>
-<td>Suspend the loop; take no action.</td>
-<td>DECIDED</td>
-<td>blart</td>
+<td>Event-driven <code>SessionStateMonitor</code> (ND-013, <a href="../adr/0009-session-suspend/">ADR-0009</a>) pauses the loop and stops the camera while the screen is locked, the display is asleep, or the session is not on the console; resumes both on unlock/wake. On suspend the app calls <code>PresenceEngine.sessionSuspended()</code>, which resets absence accounting so resume can't false-lock (the in-tick <code>.suspended</code> capture path is a backstop).</td>
+<td>IMPLEMENTED</td>
+<td>blart/homer</td>
 </tr>
 <tr>
 <td>EC-03</td>
@@ -933,14 +961,14 @@
 <tr>
 <td>EC-13</td>
 <td><strong>Laptop sleep / wake, lid open/close</strong></td>
-<td>Loop must pause on sleep and resume sanely on wake without a false lock.</td>
-<td>OPEN</td>
+<td>Handled via <code>SessionStateMonitor</code> (ND-013, <a href="../adr/0009-session-suspend/">ADR-0009</a>): the loop pauses + camera stops on sleep and resumes on wake. On suspend the app calls <code>PresenceEngine.sessionSuspended()</code>, which resets absence accounting, so an absence in progress when the Mac sleeps cannot cause a grace-less false lock on wake — the next absence episode rebuilds the full consensus + grace.</td>
+<td>DECIDED</td>
 <td>blart/homer</td>
 </tr>
 <tr>
 <td>EC-14</td>
 <td><strong>Fast user switching / multiple accounts</strong></td>
-<td>Out of scope for v1; document behavior so it doesn't misbehave.</td>
+<td>Out of scope for v1. Partial mitigation: <code>SessionStateMonitor</code> suspends the loop + camera when this session is <strong>not on the console</strong> (<code>kCGSSessionOnConsoleKey == false</code>), so we don't run against the login window or another user's session (ND-013). Full multi-account behavior (per-user enrollment, etc.) remains out of scope.</td>
 <td>OPEN</td>
 <td>homer</td>
 </tr>

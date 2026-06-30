@@ -37,13 +37,16 @@ public final class PresenceEngine {
 
         switch await camera.capture() {
         case .suspended:
+            // EC-02/EC-13: locked/asleep/inactive (ND-013). Mirror `.unavailable`
+            // and reset absence accounting so a lock/unlock (or sleep/wake) that
+            // happens mid-absence can't trigger a grace-less false lock on
+            // resume — the next absence episode must rebuild the full consensus.
             state = .suspended
+            resetAbsenceAccounting()
             return
         case .unavailable:
             state = .cameraUnavailable   // EC-08: can't verify presence → honest status, do not lock
-            consecutiveAbsentTicks = 0   // camera down → we genuinely don't know; clear absence accounting
-            absentSince = nil
-            lockAttempted = false
+            resetAbsenceAccounting()     // camera down → we genuinely don't know; clear absence accounting
             return
         case .cameraBusyNoFrames:
             // ADR-0003: a busy camera means the user is almost certainly in front of it.
@@ -74,10 +77,28 @@ public final class PresenceEngine {
 
     private func markPresent(_ newState: PresenceState) {
         state = newState
+        resetAbsenceAccounting()    // a real reading clears the absence + error streaks
+    }
+
+    /// Clear all absence/error accounting back to a clean slate. Used on a real
+    /// present reading, on camera unavailable/suspended, and on session suspend —
+    /// so the next absence episode must rebuild the full consensus + grace.
+    private func resetAbsenceAccounting() {
         consecutiveAbsentTicks = 0
-        consecutiveErrorTicks = 0    // a real reading clears the error streak
         absentSince = nil
         lockAttempted = false
+        consecutiveErrorTicks = 0
+    }
+
+    /// Entry point the app calls when the OS session is suspended
+    /// (lock/sleep/switch-away). Marks the engine suspended and clears absence
+    /// accounting so a mid-absence lock/sleep can't cause a grace-less false lock
+    /// on resume — the next absence episode rebuilds the full consensus.
+    /// EC-02/EC-13; complements ND-013's SessionStateMonitor. The in-tick
+    /// `.suspended` capture path is a backstop; this is the production reset path.
+    public func sessionSuspended() {
+        state = .suspended
+        resetAbsenceAccounting()
     }
 
     @discardableResult
