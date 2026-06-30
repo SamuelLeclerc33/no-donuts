@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner: gordon. LaunchAgent template (ADR-0001, ND-016). Install to
+     ~/Library/LaunchAgents/ and `launchctl load` it. Update the program path
+     to the installed .app's executable before use. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nodonuts.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Applications/No Donuts.app/Contents/MacOS/NoDonuts</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+</dict>
+</plist>

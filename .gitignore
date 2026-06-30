@@ -1,0 +1,25 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Feature-workflow scratchpad (working memory, not history)
+.claude/scratchpad/
+
+# Build output / signing
+*.app
+*.dmg
+*.pkg
+build/
+
+# Local enrollment data should NEVER be committed (it lives in Keychain/encrypted store anyway)
+*.embeddings

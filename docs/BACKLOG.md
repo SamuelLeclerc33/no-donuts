@@ -1,0 +1,69 @@
+# Backlog — No Donuts
+
+The single source of truth for planned work. Keep it current (see the `backlog` skill).
+
+**Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
+**Owner** = the responsible sub-agent (see [CLAUDE.md](../CLAUDE.md) module ownership).
+
+---
+
+## M0 — Scaffolding ✅ (current)
+
+- [x] ND-001 Documentation: README, PRD, Architecture, Security/Privacy — gordon
+- [x] ND-002 ADRs for form factor, face engine, camera-in-use — gordon
+- [x] ND-003 Backlog + Edge-cases logs in repo — gordon
+- [x] ND-004 Expert sub-agents (homer, cooper, blart, wiggum, krusty, gordon) — gordon
+- [x] ND-005 Code skeleton: Package.swift + module stubs + Info.plist — gordon
+- [ ] ND-006 Decide bundle id, app name, and minimum macOS version — gordon
+
+## M1 — Walking skeleton (it builds & runs, no recognition yet)
+
+- [ ] ND-010 Buildable menu-bar app (`LSUIElement`), status item, quit — krusty
+- [ ] ND-011 Camera permission request + state handling (denied/restricted) — blart
+- [ ] ND-012 Single-frame capture each tick from AVFoundation — blart
+- [ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart
+- [ ] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
+- [ ] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
+- [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
+
+## M2 — Local face recognition
+
+- [ ] ND-020 Vision face detection in the capture path — cooper
+- [ ] ND-021 Select + bundle a Core ML face-embedding model — cooper
+- [ ] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty
+- [ ] ND-023 Encrypted-at-rest embedding store (Keychain/encrypted file) — cooper
+- [ ] ND-024 Cosine matching + threshold; tune defaults on real data — cooper
+- [ ] ND-025 Wire recognizer into presence engine (replace fake) — homer
+
+## M3 — Presence policy & professional-friendliness
+
+- [ ] ND-030 Grace period + consecutive-absent debounce — homer
+- [ ] ND-031 Camera-in-use detection (another app holds the device) — blart
+- [ ] ND-032 Attempt multi-client shared frames during a call — blart
+- [ ] ND-033 Fallback "assume present" when busy + no frames (ADR-0003) — homer
+- [ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum
+- [ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer
+
+## M4 — Settings, polish, anti-spoofing
+
+- [ ] ND-040 Settings UI: tick interval, grace, sensitivity, autostart — krusty
+- [ ] ND-041 Basic anti-spoofing (e.g. reject obvious photo; liveness signals) — wiggum + cooper
+- [ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer
+- [ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty
+- [ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon
+
+## M5 — Distribution
+
+- [ ] ND-050 Codesign + notarization pipeline — gordon
+- [ ] ND-051 Signed `.app` + DMG/installer — gordon
+- [ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon
+- [ ] ND-053 MDM/enterprise deployment notes — gordon
+
+---
+
+## Icebox / later
+
+- Multi-user / fast-user-switching presence.
+- Multiple enrolled faces (e.g. shared workstation allowlist).
+- External monitor / clamshell behavior refinement.
+- Configurable actions beyond lock (blur, dim, hide windows).
