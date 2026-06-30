@@ -52,6 +52,29 @@ Full design in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 Requires **full Xcode** (Command Line Tools alone are not enough for a signed menu-bar app with camera entitlements). See the `build-run` skill in [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
+## Documentation website
+
+The docs in [`docs/`](docs/) are also published as a **local, fully offline** [MkDocs](https://www.mkdocs.org/) site (Material theme). It's self-contained — no remote fonts, no analytics, no network calls — and the generated `site/` is committed, so you can read it without building anything: just open `site/index.html`.
+
+To work on the docs:
+
+```sh
+# 1. Install the toolchain (once)
+python3 -m venv .venv
+.venv/bin/pip install -r docs/requirements.txt
+
+# 2. Live preview while editing → http://localhost:8000
+.venv/bin/mkdocs serve
+
+# 3. Build the static site (writes the committed site/ folder)
+.venv/bin/mkdocs build
+
+# 4. (Recommended) install the git hook that auto-regenerates site/ on commit
+scripts/install-hooks.sh
+```
+
+The pre-commit hook runs `mkdocs build` and stages `site/` so the committed output never drifts from the source. If `mkdocs` isn't installed it just warns and lets the commit through. See [ADR-0005](docs/adr/0005-docs-site.md).
+
 ## Name
 
 It's an office thing. Don't get donut'd. 🍩
