@@ -5,6 +5,8 @@ import Foundation
 
 /// Drives the periodic loop: capture -> recognize -> decide -> (maybe) lock.
 /// Holds the only mutable presence state; all policy decisions live here.
+/// Main-actor-isolated: the loop is driven from the main actor (ADR-0005).
+@MainActor
 public final class PresenceEngine {
     private let camera: CameraCapturing
     private let recognizer: FaceRecognizing

@@ -4,7 +4,7 @@ import Foundation
 // Privacy: store embeddings (not raw images) where possible; encrypted; never transmitted.
 
 /// Persists the enrolled user's face embeddings.
-public protocol EnrollmentStoring {
+public protocol EnrollmentStoring: Sendable {
     var isEnrolled: Bool { get }
     func enrolledEmbeddings() -> [[Float]]
     func enroll(embeddings: [[Float]]) throws
@@ -12,7 +12,12 @@ public protocol EnrollmentStoring {
 }
 
 /// Keychain / encrypted-file backed store. Stub.
-public final class EnrollmentStore: EnrollmentStoring {
+///
+/// `Sendable`: reached transitively via `FaceRecognizing` from the main-actor
+/// presence loop (ADR-0005). No mutable stored state yet, so this compiles as-is.
+/// The real encrypted-store implementation (ND-023) MUST remain `Sendable` —
+/// i.e. thread-safe access to the Keychain / encrypted file.
+public final class EnrollmentStore: EnrollmentStoring, Sendable {
     public init() {}
 
     public var isEnrolled: Bool {

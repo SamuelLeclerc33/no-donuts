@@ -13,7 +13,7 @@ public enum PresenceState: Equatable {
 }
 
 /// Result of one recognition pass on a captured frame (owner: cooper).
-public enum RecognitionResult: Equatable {
+public enum RecognitionResult: Equatable, Sendable {
     case enrolledUserPresent(confidence: Double)
     case strangerOnly           // face(s) detected, none match the enrolled user
     case noFace
@@ -21,7 +21,7 @@ public enum RecognitionResult: Equatable {
 }
 
 /// What the camera layer could obtain this tick (owner: blart).
-public enum CaptureOutcome {
+public enum CaptureOutcome: Sendable {
     case frame(CapturedFrame)
     case cameraBusyNoFrames     // another app holds the device, no shared frames (ADR-0003)
     case suspended              // screen locked/asleep/inactive — skip work
@@ -29,6 +29,9 @@ public enum CaptureOutcome {
 }
 
 /// Opaque wrapper around a single captured frame. TODO(blart): back with CVPixelBuffer.
-public struct CapturedFrame {
+/// `Sendable` because it crosses the main-actor boundary (engine awaits camera/recognizer,
+/// ADR-0005). When backed by a CVPixelBuffer/CMSampleBuffer, preserve this via an immutable
+/// wrapper or `@unchecked Sendable` with a defensive copy.
+public struct CapturedFrame: Sendable {
     // Placeholder. Real implementation wraps a CVPixelBuffer / CMSampleBuffer.
 }

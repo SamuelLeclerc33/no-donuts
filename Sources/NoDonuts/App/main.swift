@@ -5,31 +5,44 @@ import AppKit
 // NOTE: For the real camera prompt + LSUIElement behavior, this must run as a
 // signed .app bundle built with Xcode (see ADR-0001, build-run skill).
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController?
     private var engine: PresenceEngine?
-    private var timer: Timer?
+    private var loopTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        menuBar = MenuBarController()
+        let menuBar = MenuBarController()
+        self.menuBar = menuBar
 
         let config = Config()
-        let store = EnrollmentStore()
-        engine = PresenceEngine(
-            camera: CameraController(),
-            recognizer: VisionCoreMLRecognizer(store: store, matchThreshold: config.matchThreshold),
+        // Walking-skeleton wiring (ND-015): fakes that report "always present".
+        // TODO: swap in CameraController() at ND-012 and VisionCoreMLRecognizer
+        // (+ EnrollmentStore) at ND-025.
+        let engine = PresenceEngine(
+            camera: AlwaysPresentCamera(),
+            recognizer: AlwaysPresentRecognizer(),
             locker: ScreenLocker(),
             config: config
         )
+        self.engine = engine
 
-        // TODO(homer): drive ticks; render status each tick.
-        timer = Timer.scheduledTimer(withTimeInterval: config.tickIntervalSeconds, repeats: true) { [weak self] _ in
-            guard let self, let engine = self.engine else { return }
-            Task {
+        // Render the initial state before the loop produces its first reading.
+        menuBar.render(state: engine.state)
+
+        // Presence loop: a single cancellable main-actor Task (ADR-0005).
+        // Replaces a repeating Timer that broke under Swift 6 strict concurrency.
+        loopTask = Task { @MainActor in
+            while !Task.isCancelled {
                 await engine.tick(now: Date())
-                await MainActor.run { self.menuBar?.render(state: engine.state) }
+                menuBar.render(state: engine.state)
+                try? await Task.sleep(for: .seconds(config.tickIntervalSeconds))
             }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        loopTask?.cancel()
     }
 }
 

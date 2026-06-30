@@ -19,13 +19,19 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 
 ## M1 — Walking skeleton (it builds & runs, no recognition yet)
 
-- [ ] ND-010 Buildable menu-bar app (`LSUIElement`), status item, quit — krusty
+- [x] ND-010 Buildable menu-bar app (`LSUIElement`), status item, quit — krusty
 - [ ] ND-011 Camera permission request + state handling (denied/restricted) — blart
 - [ ] ND-012 Single-frame capture each tick from AVFoundation — blart
 - [ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart
 - [ ] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
-- [ ] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
+- [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
 - [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
+
+> **Review follow-ups (from the ND-010/015 code review, deferred to their owning items):**
+> - **ND-011** (blart): on `.unavailable` the engine returns without updating state, so the menu shows stale "present" — fix honest-status display + EC-08/09 fail policy. Also: the loop's first tick fires immediately at launch → real camera permission prompt would pop on every login; consider delaying the first real capture.
+> - **ND-014** (wiggum): `PresenceEngine` is now `@MainActor`, so a synchronous `ScreenLocker.lock()` would block the UI at lock time — run the real lock off the main actor (ADR-0005).
+> - **ND-025** (homer): remove/`#if DEBUG`-fence `AlwaysPresent*` fakes so they can't ship in a release binary and silently defeat locking.
+> - **ND-042** (blart/homer): loop period = work + `Task.sleep` (drifts longer than `tickIntervalSeconds`); and `loopTask` cancellation interrupts only the sleep, not an in-flight `capture()`/`recognize()` — make the real async calls cancellation-aware.
 
 ## M2 — Local face recognition
 

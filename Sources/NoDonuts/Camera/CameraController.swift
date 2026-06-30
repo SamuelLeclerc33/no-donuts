@@ -6,13 +6,21 @@ import Foundation
 /// Captures frames for the presence loop. Pulls a single frame per tick (not a
 /// continuous stream) to save power, and reports when the camera is busy or the
 /// session is suspended.
-public protocol CameraCapturing {
+public protocol CameraCapturing: Sendable {
     /// Attempt to obtain a frame for this tick. See CaptureOutcome for the cases.
     func capture() async -> CaptureOutcome
 }
 
 /// AVFoundation-backed implementation. Stub.
-public final class CameraController: CameraCapturing {
+///
+/// `Sendable` because the engine (a `@MainActor` `PresenceEngine`, ADR-0005)
+/// awaits `capture()` across actor isolation. This stub has no stored mutable
+/// state, so the conformance is sound today. When the real
+/// AVCaptureSession-backed implementation lands (ND-012), it MUST stay
+/// thread-safe / `Sendable` — e.g. funnel session access through an internal
+/// serial queue, or declare `@unchecked Sendable` and guard mutable state
+/// manually — since `capture()` is still invoked from the main actor.
+public final class CameraController: CameraCapturing, Sendable {
     public init() {}
 
     public func capture() async -> CaptureOutcome {
