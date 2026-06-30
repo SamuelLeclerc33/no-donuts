@@ -43,7 +43,7 @@ Requires **full Xcode** (not just Command Line Tools) for a signed menu-bar `.ap
 
 ## Skills
 
-- `feature` — end-to-end feature workflow (GitHub issue/backlog → PR), solo + GitHub. Delegates implementation to the owning sub-agent. Adapted from serkoai-core.
+- `feature` — end-to-end feature workflow (backlog item → trunk commit on `main`), solo + trunk-based, no PRs. Delegates implementation to the owning sub-agent. Adapted from serkoai-core.
 - `build-run` — build, sign, install the LaunchAgent, run, grant camera permission
 - `backlog` — conventions for the in-repo backlog
 - `adr` — write a new architecture decision record

@@ -1,9 +1,9 @@
 ---
 name: feature
-description: End-to-end feature workflow for No Donuts — from a GitHub issue (or description) to a merged PR, with a scratchpad for working memory. Solo + GitHub adaptation. Use when implementing a backlog item or new feature beyond a trivial edit.
+description: End-to-end feature workflow for No Donuts — from a backlog item (or description) to a trunk commit on main, with a scratchpad for working memory. Solo, trunk-based (no PRs). Use when implementing a backlog item or new feature beyond a trivial edit.
 ---
 
-# Feature Workflow (solo + GitHub)
+# Feature Workflow (solo, trunk-based)
 
 You MUST follow these phases in order. Do NOT skip steps. Do NOT proceed to the next phase without completing the current one.
 
@@ -11,7 +11,7 @@ You MUST follow these phases in order. Do NOT skip steps. Do NOT proceed to the 
 
 > **Context recovery:** If the conversation was compacted or cleared, re-read `.claude/scratchpad/{slug}.md` before continuing — it is the source of truth for decisions, plan, and current phase. Also re-read this workflow file.
 
-**Input:** $ARGUMENTS — a GitHub issue number (e.g. `#12`), a backlog ID (e.g. `ND-030`), and/or a short description. Optional: `--from-current` to branch from HEAD instead of `main`.
+**Input:** $ARGUMENTS — a backlog ID (e.g. `ND-030`) and/or a short description. Optional: `--from-current` to branch from HEAD instead of `main`.
 
 ---
 
@@ -19,13 +19,12 @@ You MUST follow these phases in order. Do NOT skip steps. Do NOT proceed to the 
 
 **Entry:** User invokes `/feature`. **Exit:** Branch created, context captured, scratchpad initialized.
 
-1. **Identify the work.** Parse `$ARGUMENTS` for a GitHub issue (`#NN`) and/or a backlog ID (`ND-NNN`). If neither is given and the request is vague, ask for a one-line description.
+1. **Identify the work.** Parse `$ARGUMENTS` for a backlog ID (`ND-NNN`). If none is given and the request is vague, ask for a one-line description.
 2. **Fetch context.**
-   - GitHub issue: `gh issue view {NN}` → title, body, acceptance criteria.
    - Backlog item: read its line in [docs/BACKLOG.md](../../../docs/BACKLOG.md) and note the **owner agent**.
    - If no backlog item exists yet, add one (`backlog` skill) so the work is tracked.
-3. **Create the branch** `feature/{slug}` (slug = issue/backlog id + short description):
-   - **Default:** `git fetch origin main 2>/dev/null; git checkout -b feature/{slug} origin/main 2>/dev/null || git checkout -b feature/{slug}`
+3. **Create a short-lived branch** `feature/{slug}` (slug = backlog id + short description). Trunk-based: this branch is throwaway — it gets merged into `main` and deleted at the end, never reviewed via PR.
+   - **Default:** `git fetch origin main 2>/dev/null; git checkout -b feature/{slug} origin/main 2>/dev/null || git checkout -b feature/{slug} main`
    - **`--from-current`:** `git checkout -b feature/{slug}`
    - If the branch exists, check it out and note it in the scratchpad.
 4. **Initialize scratchpad** — create `.claude/scratchpad/{slug}.md`:
@@ -40,7 +39,6 @@ You MUST follow these phases in order. Do NOT skip steps. Do NOT proceed to the 
 - **Base branch:** {main or HEAD via --from-current}
 
 ## Source
-- **Issue:** {#NN or N/A}
 - **Backlog:** {ND-NNN or N/A}
 - **Owner agent:** {homer/cooper/blart/wiggum/krusty/gordon}
 - **Title / goal:** {...}
@@ -70,7 +68,7 @@ You MUST follow these phases in order. Do NOT skip steps. Do NOT proceed to the 
 
 **Entry:** scratchpad initialized. **Exit:** scope questions answered, decisions recorded.
 
-Before planning, fully understand the feature. Conduct a brief interview to fill gaps the issue and codebase don't answer.
+Before planning, fully understand the feature. Conduct a brief interview to fill gaps the backlog item and codebase don't answer.
 
 **Ask about (if unclear):** scope boundaries (what's OUT), edge cases / failure & empty states, UX expectations, dependencies on other modules, data/storage or migration needs.
 
@@ -152,20 +150,21 @@ Before planning, fully understand the feature. Conduct a brief interview to fill
 
 ---
 
-## Phase 7 — Ship
+## Phase 7 — Land on main (trunk-based, no PR)
 
-**Entry:** docs updated. **Exit:** PR created and CI green.
+**Entry:** docs updated. **Exit:** change merged into `main` and pushed; branch cleaned up.
 
 17. **Show summary:** goal, what was built, key decisions, files modified/created, tests added.
-18. **Commit checkpoint** — `AskUserQuestion`: "Ready to commit and push?" → "Yes" | "Not yet, improve first". If improving, **loop back to Phase 2** (focused interview), update the SAME plan, re-run Phases 4–5, return here. Same work — no new scratchpad.
-19. **Commit & push.** Branch first if somehow on `main`. End the commit message with the required `Co-Authored-By` trailer.
-    - **Account guard (this repo must NOT use the Serko GitHub account).** Before any push or repo creation, confirm the active gh account is the user's intended personal/non-Serko one: `gh auth status`. If it shows a Serko account, STOP — tell the user to run `! gh auth login` (personal) and `! gh auth switch`. Never assume the active account.
-    - Confirm the repo-local commit identity is the personal one (`git config --local user.email`), not the global Serko identity.
-    - **First push (no remote yet):** once the correct personal account is active, create the repo under it — `gh repo create {owner}/no-donuts --private --source=. --remote=origin --push` (substitute the confirmed personal owner). Then continue.
-    - Otherwise: `git push -u origin feature/{slug}`.
-20. **Create the PR** — `gh pr create` with a body summarizing the change and linking the issue (`Closes #NN`). End the PR body with the required generated-with trailer.
-21. **Monitor CI** — `gh pr checks --watch` (if CI is configured). Fix failures; re-push.
-22. **Clean up** — once the PR is merged, delete `.claude/scratchpad/{slug}.md`.
+18. **Commit checkpoint** — `AskUserQuestion`: "Ready to commit and land on main?" → "Yes" | "Not yet, improve first". If improving, **loop back to Phase 2** (focused interview), update the SAME plan, re-run Phases 4–5, return here. Same work — no new scratchpad.
+19. **Commit on the feature branch.** End the commit message with the required `Co-Authored-By` trailer.
+    - Confirm the repo-local commit identity is the intended personal one (`git config --local user.email`) — never a work/employer identity. Fix it locally before committing if wrong.
+20. **Merge into `main` and push.** This is the trunk — no PR, no review gate.
+    - `git checkout main && git merge --ff-only feature/{slug}` (fast-forward; the branch was cut from `main` and is linear). If it can't fast-forward, rebase the feature branch onto `main` first, then merge.
+    - Push with plain git to the personal `origin` remote: `git push origin main`. (This repo uses a plain-git HTTPS remote, not the `gh` CLI. If the push needs credentials, ask the user to run it themselves with `! git push origin main` so they can authenticate as their personal account.)
+21. **Clean up the branch.** Delete the short-lived branch local + remote:
+    - `git branch -d feature/{slug}`
+    - `git push origin --delete feature/{slug}` (skip if it was never pushed).
+22. **Delete the scratchpad** — `.claude/scratchpad/{slug}.md` (work is now on `main`).
 
 ---
 
@@ -180,4 +179,4 @@ Skipping either is a workflow violation equivalent to skipping the build.
 
 ## What this omits (and why)
 
-Adapted from serkoai-core's `/feature`. Removed as not applicable to a solo GitHub project: Linear (→ GitHub Issues), AB Smartly feature toggles, monorepo pnpm/poetry/mypy gates (→ `swift build`), `apps/docs` session logs (→ this repo's backlog/ADRs/edge-cases), `/update-domains`, `/qa-plan`, frontend-standards DAC loop, and the team of named review agents (→ the `/code-review` + `/security-review` skills).
+Adapted from serkoai-core's `/feature`. This is a solo, **trunk-based** project: work lands directly on `main` via fast-forward merge — there are **no pull requests, no code-review gate on the PR, and no `gh` CLI**. Also removed as not applicable: Linear, GitHub Issues, AB Smartly feature toggles, monorepo pnpm/poetry/mypy gates (→ `swift build`), `apps/docs` session logs (→ this repo's backlog/ADRs/edge-cases), `/update-domains`, `/qa-plan`, frontend-standards DAC loop, and the team of named review agents (→ the `/code-review` + `/security-review` skills).
