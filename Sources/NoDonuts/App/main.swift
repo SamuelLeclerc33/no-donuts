@@ -10,9 +10,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController?
     private var engine: PresenceEngine?
     private var loopTask: Task<Void, Never>?
+    private let locker = ScreenLocker()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let menuBar = MenuBarController()
+        let menuBar = MenuBarController(onLockNow: { [weak self] in
+            guard let self, let engine = self.engine, let menuBar = self.menuBar else { return }
+            engine.lockNow()
+            menuBar.render(state: engine.state)
+        })
         self.menuBar = menuBar
 
         let config = Config()
@@ -22,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let engine = PresenceEngine(
             camera: AlwaysPresentCamera(),
             recognizer: AlwaysPresentRecognizer(),
-            locker: ScreenLocker(),
+            locker: locker,
             config: config
         )
         self.engine = engine

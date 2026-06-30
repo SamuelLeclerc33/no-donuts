@@ -16,6 +16,7 @@ public final class PresenceEngine {
     public private(set) var state: PresenceState = .unknown
     private var consecutiveAbsentTicks = 0
     private var absentSince: Date?
+    private var lockAttempted = false
     public var isPaused = false
 
     public init(camera: CameraCapturing,
@@ -60,16 +61,38 @@ public final class PresenceEngine {
         state = newState
         consecutiveAbsentTicks = 0
         absentSince = nil
+        lockAttempted = false
+    }
+
+    @discardableResult
+    private func attemptLock() -> Bool {
+        if locker.lock() {
+            state = .suspended
+            consecutiveAbsentTicks = 0   // reset stale absence accounting on successful lock
+            absentSince = nil
+            return true
+        } else {
+            state = .lockFailed          // honest status; do NOT pretend suspended (no fail-open)
+            return false
+        }
     }
 
     private func markAbsent(now: Date) {
         consecutiveAbsentTicks += 1
         if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return }
         if absentSince == nil { absentSince = now }
-        state = .absent
-        if let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds {
-            locker.lock()
-            state = .suspended
+        let graceElapsed = absentSince.map { now.timeIntervalSince($0) >= config.graceSeconds } ?? false
+        if graceElapsed {
+            if !lockAttempted {
+                lockAttempted = true
+                attemptLock()
+            }
+            // else: already attempted this episode — keep current state (.suspended/.lockFailed), no retry storm
+        } else {
+            state = .absent
         }
     }
+
+    /// Manual lock trigger (menu "Lock now"). Updates state honestly via attemptLock().
+    public func lockNow() { attemptLock() }
 }

@@ -11,7 +11,8 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0003](0003-camera-in-use-policy.md) — Camera-in-use: try shared frames, fall back to assume-present — **Accepted**
 - [ADR-0004](0004-app-identity.md) — App identity: bundle id, name, minimum macOS — **Accepted**
 - [ADR-0005](0005-presence-loop-concurrency.md) — Presence loop concurrency: main-actor-driven loop — **Accepted**
-- [ADR-0005](0005-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted**
+- [ADR-0005](0005-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted** ⚠️ duplicate number (see ND-019)
+- [ADR-0006](0006-screen-lock-mechanism.md) — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — **Accepted**
 
 ## Template
 

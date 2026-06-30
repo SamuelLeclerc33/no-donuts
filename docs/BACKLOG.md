@@ -47,17 +47,24 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-011 Camera permission request + state handling (denied/restricted) — blart
 - [ ] ND-012 Single-frame capture each tick from AVFoundation — blart
 - [ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart
-- [ ] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
+- [x] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
 - [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
 - [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
 - [ ] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty
 - [ ] ND-018 Runnable `.app` bundle with camera entitlement (Xcode target / packaging; SPM exe can't get entitlements) — gordon
+- [ ] ND-019 Fix duplicate ADR number: `0005-docs-site.md` and `0005-presence-loop-concurrency.md` both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon
 
 > **Review follow-ups (from the ND-010/015 code review, deferred to their owning items):**
 > - **ND-011** (blart): on `.unavailable` the engine returns without updating state, so the menu shows stale "present" — fix honest-status display + EC-08/09 fail policy. Also: the loop's first tick fires immediately at launch → real camera permission prompt would pop on every login; consider delaying the first real capture.
 > - **ND-014** (wiggum): `PresenceEngine` is now `@MainActor`, so a synchronous `ScreenLocker.lock()` would block the UI at lock time — run the real lock off the main actor (ADR-0005).
 > - **ND-025** (homer): remove/`#if DEBUG`-fence `AlwaysPresent*` fakes so they can't ship in a release binary and silently defeat locking.
 > - **ND-042** (blart/homer): loop period = work + `Task.sleep` (drifts longer than `tickIntervalSeconds`); and `loopTask` cancellation interrupts only the sleep, not an in-flight `capture()`/`recognize()` — make the real async calls cancellation-aware.
+
+> **Lock follow-ups (from the ND-014 code review — accepted weaker guarantee for MVP):**
+> - **Verified lock state** (wiggum): osascript exit 0 ≠ screen locked (undetectable fail-open if Ctrl-Cmd-Q remapped/disabled). Confirm the real lock via `CGSessionCopyCurrentDictionary()` `CGSSessionScreenIsLocked` so `lock()` is honest regardless of mechanism.
+> - **Non-blocking lock** (wiggum/homer): `lock()` runs `waitUntilExit()` on the `@MainActor` path; make it async so a hung `osascript` can't beachball the UI (pairs with the CGSession work).
+> - **Lock-failed retry/backoff** (homer): after `.lockFailed` the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff so it recovers if Accessibility is granted mid-absence.
+> - **Log subsystem constant** (gordon/wiggum): extract the hardcoded `"com.nodonuts.app"` Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.
 
 ## M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
 

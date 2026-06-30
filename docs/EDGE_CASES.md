@@ -24,6 +24,7 @@ A living log of edge cases to validate together. Each has a **decision** (or `OP
 | EC-16 | **Privacy/cover over camera (physical shutter)** | Equivalent to "no face" → behaves like absent; consider distinct status. | OPEN | blart |
 | EC-17 | **Presentation / screen sharing without camera** | Camera not in use but user may step away intentionally → normal lock rules apply. Confirm acceptable. | OPEN | homer |
 | EC-18 | **Battery / power profile** | Duty-cycle checks; possibly slow tick on battery to save power. | OPEN | blart/homer |
+| EC-19 | **Screen-lock request reports success but may not have locked** | The lock sends a synthetic Ctrl-Cmd-Q via System Events ([ADR-0006](adr/0006-screen-lock-mechanism.md)), which needs Accessibility. Two cases: **(a) detectable failure** — `osascript` throws or exits non-zero (e.g. Accessibility outright denied / keystroke not delivered) → `lock()` returns `false` → engine shows honest `lockFailed` status ("can't lock — grant Accessibility"); do **NOT** fail open. **(b) undetectable failure** — `osascript` exit 0 only means the keystroke was *dispatched*, not that the screen locked; if the Ctrl-Cmd-Q shortcut is **remapped/disabled**, the keystroke can be dispatched while nothing locks and `lock()` still returns `true`. This is a **known MVP gap**; true lock-state verification (CGSession `CGSSessionScreenIsLocked`) is deferred (ND-014). | DECIDED (gap noted) | wiggum/homer |
 
 ## How to use this file
 - Add a row when a new edge case surfaces. Keep it OPEN until we agree on policy.
