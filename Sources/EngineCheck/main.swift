@@ -76,6 +76,21 @@ func runAll() async -> Bool {
         c.expect(e.state == .callAssumedPresent && locker.lockCallCount == 0, "camera busy → assume present, no lock (ADR-0003)")
     }
 
+    // ND-017: responsive indicator. From .present, a SINGLE no-face tick must flip
+    // the state to .absent immediately (honest "away" from the first no-face tick)
+    // WITHOUT locking — the lock is still gated on consensus + grace.
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        await e.tick(now: t0)                        // establish .present
+        recognizer.result = .noFace
+        await e.tick(now: t0.addingTimeInterval(1))  // single no-face tick
+        c.expect(e.state == .absent && locker.lockCallCount == 0,
+                 "single no-face from present → .absent immediately, no lock (ND-017)")
+    }
+
     // ND-033: bounded busy→assume-present. Continuous busy UNDER the cap keeps
     // assuming present and never locks.
     do {
@@ -308,6 +323,18 @@ func runAll() async -> Bool {
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.enrolledUserPresent(confidence: 1)), locker)
         e.lockNow()
         c.expect(e.state == .lockFailed && locker.lockCallCount == 1, "lockNow failure → .lockFailed")
+    }
+
+    // Code review [1]: a FAILED manual lockNow() sets .lockFailed but not
+    // lockAttempted. A subsequent no-face tick must NOT clobber that warning with
+    // .absent (which would hide the "can't lock — grant Accessibility" status).
+    do {
+        let locker = SpyLocker(succeed: false)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker)
+        e.lockNow()                                  // → .lockFailed (manual, lockAttempted stays false)
+        await e.tick(now: t0.addingTimeInterval(1))  // single no-face tick
+        c.expect(e.state == .lockFailed,
+                 "no-face tick after failed lockNow keeps .lockFailed warning (not clobbered to .absent) [code review 1]")
     }
 
     // Pause

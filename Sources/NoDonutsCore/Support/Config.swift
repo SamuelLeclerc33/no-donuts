@@ -3,16 +3,22 @@ import Foundation
 /// Tunable behavior. Persisted with settings (owner: krusty for UI, homer for defaults).
 /// Privacy: no field here is ever transmitted. See docs/SECURITY_PRIVACY.md.
 public struct Config: Codable, Equatable {
-    /// How often the presence loop runs.
-    public var tickIntervalSeconds: Double = 4
-    /// Continuous absence required before locking (absorbs brief turn-aways).
-    public var graceSeconds: Double = 25
+    /// How often the presence loop runs (seconds). Fast cadence so office
+    /// "donuting" (walking away unlocked) is caught in ~10s — see the
+    /// walk-away→lock math on `consecutiveAbsentTicksToLock` below.
+    public var tickIntervalSeconds: Double = 1
+    /// Continuous absence required before locking, in seconds (absorbs brief
+    /// turn-aways). Effective walk-away→lock ≈ consensus (`consecutiveAbsentTicksToLock`
+    /// × `tickIntervalSeconds`) + `graceSeconds` ≈ 5 + 5 = ~10s at defaults.
+    public var graceSeconds: Double = 5
     /// Cosine-similarity threshold for an embedding to count as the enrolled user.
     public var matchThreshold: Double = 0.6
     /// Consecutive no-face/stranger ticks required to begin the grace countdown
     /// (the absence "consensus"). Debounces single-frame glitches: a lone bad
-    /// reading can't start the lock clock; it takes 3 in a row.
-    public var consecutiveAbsentTicksToLock: Int = 3
+    /// reading can't start the lock clock; it takes 5 in a row (≈5s of consensus
+    /// at the 1s default tick). Effective walk-away→lock ≈ consensus (5 × tick) +
+    /// grace ≈ 5 + 5 = ~10s.
+    public var consecutiveAbsentTicksToLock: Int = 5
     /// A transient recognition error is held (presence unchanged), but after this
     /// many CONSECUTIVE errors the engine escalates to treating the tick as
     /// absence — so a wedged recognizer still locks rather than holding unlocked

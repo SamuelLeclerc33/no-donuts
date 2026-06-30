@@ -898,7 +898,7 @@
 <tr>
 <td>EC-04</td>
 <td><strong>User present but looking away / turned head</strong></td>
-<td>Detection may miss the face briefly; grace period + consecutive-absent debounce absorbs short gaps. Tune thresholds.</td>
+<td>Detection may miss the face briefly; grace period + consecutive-absent debounce absorbs short gaps. Tune thresholds. <strong>Note (ND-017):</strong> the menu indicator now flips to <code>.absent</code> ("away") on the FIRST no-face tick (responsive), while the LOCK still waits for the full consensus + grace window. So a brief glance-away can show "away" transiently in the menu without ever locking — the responsive status and the lock decision are decoupled.</td>
 <td>OPEN</td>
 <td>cooper/homer</td>
 </tr>
@@ -947,7 +947,7 @@
 <tr>
 <td>EC-11</td>
 <td><strong>User briefly leaves and returns within grace</strong></td>
-<td>No lock; reset cleanly on re-detect.</td>
+<td>No lock; reset cleanly on re-detect. <strong>Note (ND-017):</strong> the menu indicator flips to <code>.absent</code> ("away") on the FIRST no-face tick (responsive), but the LOCK waits for the consensus + grace window — so a brief leave-and-return shows "away" transiently in the menu and then clears back to present on re-detect, never locking. New default timing: effective walk-away→lock ≈ consensus (5 × 1s tick) + grace (5s) ≈ 10s.</td>
 <td>DECIDED</td>
 <td>homer</td>
 </tr>
@@ -982,7 +982,7 @@
 <tr>
 <td>EC-16</td>
 <td><strong>Privacy/cover over camera (physical shutter)</strong></td>
-<td>Expected: a covered lens yields a dark frame → Vision returns no faces → <code>noFace</code> → counts toward the absence consensus → ABSENT → locks after grace; pending on-device verification. (A distinct "covered" status remains a nice-to-have.)</td>
+<td>Expected: a covered lens yields a dark frame → Vision returns no faces → <code>noFace</code> → counts toward the absence consensus → ABSENT → locks after grace; pending on-device verification. (A distinct "covered" status remains a nice-to-have.) <strong>Note (ND-017):</strong> the menu indicator flips to <code>.absent</code> ("away") on the FIRST no-face (covered) tick (responsive), while the LOCK still waits for the consensus + grace window. New default timing: effective cover→lock ≈ consensus (5 × 1s tick) + grace (5s) ≈ 10s.</td>
 <td>DECIDED</td>
 <td>blart/homer</td>
 </tr>

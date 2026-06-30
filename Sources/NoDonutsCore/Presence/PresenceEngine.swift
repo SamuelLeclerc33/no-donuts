@@ -155,17 +155,25 @@ public final class PresenceEngine {
     private func markAbsent(now: Date) {
         consecutiveErrorTicks = 0    // a real (or escalated) reading clears the error streak
         consecutiveAbsentTicks += 1
+        if lockAttempted {
+            // Terminal this episode (.suspended or .lockFailed already set) — don't
+            // overwrite with .absent and don't re-attempt (no retry storm).
+            return
+        }
+        // Responsive, honest "away" from the first no-face tick (ND-017); the LOCK
+        // below is still gated on the consensus + grace window. But do NOT clobber an
+        // unresolved lock-failure warning: a FAILED manual lockNow() sets .lockFailed
+        // without setting lockAttempted, so the next no-face tick would otherwise
+        // overwrite the "can't lock — grant Accessibility" warning with .absent and
+        // hide it. The auto-lock path below can still fire (lockAttempted is false),
+        // so a manual failure keeps the warning AND the engine still auto-attempts
+        // after grace. markPresent() still clears .lockFailed via state=.present.
+        if state != .lockFailed { state = .absent }
         if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return }
         if absentSince == nil { absentSince = now }
-        let graceElapsed = absentSince.map { now.timeIntervalSince($0) >= config.graceSeconds } ?? false
-        if graceElapsed {
-            if !lockAttempted {
-                lockAttempted = true
-                attemptLock()
-            }
-            // else: already attempted this episode — keep current state (.suspended/.lockFailed), no retry storm
-        } else {
-            state = .absent
+        if let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds {
+            lockAttempted = true
+            attemptLock()
         }
     }
 

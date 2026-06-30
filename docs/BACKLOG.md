@@ -50,7 +50,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
 - [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
 - [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
-- [ ] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty
+- [x] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty/homer (per-state SF Symbol glyph + tint; `.absent` shown from the FIRST no-face tick (responsive); render cached to skip no-op redraws. Timing sped up for office-donut threat: tick 4→1s, consensus 3→5, grace 25→5 → walk-away→lock ≈ 10s. Fixed: a failed `lockNow()`'s "can't lock" warning was being clobbered to "away" by the next tick.)
 - [x] ND-018 Runnable `.app` bundle with camera entitlement — `scripts/make-app.sh` (SPM build + bundle + ad-hoc codesign; CLT-only, no Xcode), ADR-0008 — gordon
 - [ ] ND-019 Fix duplicate ADR number: `0005-docs-site.md` and `0005-presence-loop-concurrency.md` both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon
 
