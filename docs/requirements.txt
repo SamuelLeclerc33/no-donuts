@@ -1,0 +1,5 @@
+# Docs site toolchain — Material for MkDocs (pulls in mkdocs itself).
+# Install: python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt
+# Pinned exactly: different versions emit different asset hashes, which would
+# churn the source-versioned site/. Bump deliberately, then rebuild + commit.
+mkdocs-material==9.7.6

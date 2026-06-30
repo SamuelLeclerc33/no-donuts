@@ -23,3 +23,9 @@ build/
 
 # Local enrollment data should NEVER be committed (it lives in Keychain/encrypted store anyway)
 *.embeddings
+
+# Docs site tooling
+.venv/
+__pycache__/
+# NOTE: site/ is intentionally NOT ignored — the generated docs site is committed
+# so it can be read offline with no build step (see ADR-0005).

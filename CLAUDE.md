@@ -41,6 +41,10 @@ Each part of the app has a dedicated sub-agent (in `.claude/agents/`), named aft
 
 Requires **full Xcode** (not just Command Line Tools) for a signed menu-bar `.app` with camera entitlements. See the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
+## Documentation site
+
+The `docs/` Markdown is published as a local, fully-offline **MkDocs** (Material) site → see [ADR-0005](docs/adr/0005-docs-site.md). The built `site/` is committed (source-versioned). A **pre-commit hook** regenerates it when `docs/` or `mkdocs.yml` are staged. Setup: `python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt`, then `scripts/install-hooks.sh`. Preview with `.venv/bin/mkdocs serve`. If you edit docs without the hook installed, run `.venv/bin/mkdocs build` and commit `site/` yourself.
+
 ## Skills
 
 - `feature` — end-to-end feature workflow (GitHub issue/backlog → PR), solo + GitHub. Delegates implementation to the owning sub-agent. Adapted from serkoai-core.

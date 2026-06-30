@@ -1,0 +1,43 @@
+#!/bin/sh
+# No Donuts — pre-commit hook: keep the committed docs site in sync with docs/.
+# Regenerates the MkDocs site and stages site/ into the commit.
+# Never blocks a commit for tooling reasons: if mkdocs isn't installed it warns
+# and exits 0. Only rebuilds when docs sources are actually staged.
+
+# Operate relative to the repo root so all relative paths below resolve
+# regardless of git's current working directory.
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+# Fix 2: only rebuild when the staged changes touch docs sources or mkdocs.yml.
+# Avoids sweeping a regenerated site/ into unrelated (e.g. Swift-only) commits.
+git diff --cached --name-only | grep -qE '^(docs/|mkdocs\.yml$)' || exit 0
+
+# Fix 3: core.hooksPath is repo-wide, so this hook can fire in sibling worktrees
+# or branches that have no mkdocs.yml. Don't try to build (and block) there.
+if [ ! -f mkdocs.yml ]; then
+	exit 0
+fi
+
+# Fix 1: resolve mkdocs. Prefer the documented venv, then PATH, else skip.
+if [ -x .venv/bin/mkdocs ]; then
+	MKDOCS=.venv/bin/mkdocs
+elif command -v mkdocs >/dev/null 2>&1; then
+	MKDOCS=mkdocs
+else
+	echo "No Donuts: mkdocs not found (.venv/bin/mkdocs or PATH) — skipping docs site regeneration."
+	echo "  To enable it: python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt"
+	echo "  (then re-run the commit, or add .venv/bin to PATH)"
+	exit 0
+fi
+
+echo "No Donuts: regenerating docs site ($MKDOCS build)..."
+# Non-strict on purpose: docs/BACKLOG.md links to ../CLAUDE.md (outside docs_dir),
+# which would fail --strict. See ADR-0005.
+if ! "$MKDOCS" build; then
+	echo "No Donuts: mkdocs build failed — fix the docs before committing." >&2
+	exit 1
+fi
+
+git add site/
+echo "No Donuts: staged regenerated site/."
+exit 0

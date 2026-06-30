@@ -10,6 +10,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0002](0002-face-recognition-engine.md) — Face engine: Apple Vision + Core ML embeddings — **Accepted**
 - [ADR-0003](0003-camera-in-use-policy.md) — Camera-in-use: try shared frames, fall back to assume-present — **Accepted**
 - [ADR-0004](0004-app-identity.md) — App identity: bundle id, name, minimum macOS — **Accepted**
+- [ADR-0005](0005-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted**
 
 ## Template
 

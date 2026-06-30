@@ -15,7 +15,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-004 Expert sub-agents (homer, cooper, blart, wiggum, krusty, gordon) — gordon
 - [x] ND-005 Code skeleton: Package.swift + module stubs + Info.plist — gordon
 - [x] ND-006 Decide bundle id, app name, and minimum macOS version — gordon
-- [ ] ND-007 Make Documentation into a website. - gordon
+- [x] ND-007 Make Documentation into a website (MkDocs + Material, committed `site/`, pre-commit regen). - gordon
 
 ## M1 — Walking skeleton (it builds & runs, no recognition yet)
 

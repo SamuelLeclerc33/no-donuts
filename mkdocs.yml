@@ -1,0 +1,43 @@
+site_name: No Donuts
+site_description: On-device, privacy-first macOS menu-bar app that locks your Mac when you walk away. Don't get donut'd.
+docs_dir: docs
+# site_dir defaults to "site" — committed to the repo so the docs are browsable offline without building.
+
+theme:
+  name: material
+  font: false          # CRITICAL: no Google Fonts fetch — keep fully offline / no-network
+  palette:
+    - scheme: default
+      toggle: { icon: material/weather-night, name: Switch to dark mode }
+    - scheme: slate
+      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+  features: [navigation.sections, navigation.top, content.code.copy, search.highlight]
+  icon:
+    logo: material/chart-donut   # 🍩 motif — closest donut-shaped (ring) icon in Material
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.details
+
+# No analytics, no social cards, no instant/offline plugins that fetch remote assets.
+# Everything here is rendered from local Markdown into a self-contained static site.
+
+nav:
+  - Home: index.md
+  - Product Requirements: PRD.md
+  - Architecture: ARCHITECTURE.md
+  - Security & Privacy: SECURITY_PRIVACY.md
+  - Decisions (ADRs):
+      - Overview: adr/README.md
+      - "ADR-0001 — Form factor": adr/0001-form-factor.md
+      - "ADR-0002 — Face recognition engine": adr/0002-face-recognition-engine.md
+      - "ADR-0003 — Camera-in-use policy": adr/0003-camera-in-use-policy.md
+      - "ADR-0004 — App identity": adr/0004-app-identity.md
+      - "ADR-0005 — Docs site": adr/0005-docs-site.md
+  - Backlog: BACKLOG.md
+  - Edge Cases: EDGE_CASES.md
