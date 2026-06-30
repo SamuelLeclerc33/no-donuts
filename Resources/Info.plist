@@ -7,6 +7,13 @@
     <string>No Donuts</string>
     <key>CFBundleIdentifier</key>
     <string>com.nodonuts.app</string>
+    <!-- Name of the binary inside Contents/MacOS (see scripts/make-app.sh). -->
+    <key>CFBundleExecutable</key>
+    <string>NoDonuts</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
     <key>CFBundleShortVersionString</key>
     <string>0.0.1</string>
     <key>CFBundleVersion</key>

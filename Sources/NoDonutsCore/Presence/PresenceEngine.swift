@@ -39,7 +39,10 @@ public final class PresenceEngine {
             state = .suspended
             return
         case .unavailable:
-            // TODO(homer/blart): EC-08/09 fail policy. Do not silently fail-open.
+            state = .cameraUnavailable   // EC-08: can't verify presence → honest status, do not lock
+            consecutiveAbsentTicks = 0   // camera down → we genuinely don't know; clear absence accounting
+            absentSince = nil
+            lockAttempted = false
             return
         case .cameraBusyNoFrames:
             // ADR-0003: a busy camera means the user is almost certainly in front of it.

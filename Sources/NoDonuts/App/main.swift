@@ -22,16 +22,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.menuBar = menuBar
 
         let config = Config()
-        // Walking-skeleton wiring (ND-015): fakes that report "always present".
-        // TODO: swap in CameraController() at ND-012 and VisionCoreMLRecognizer
-        // (+ EnrollmentStore) at ND-025.
+        // Wiring: real camera (ND-012) + fake recognizer (ND-020/025 pending).
+        let camera = CameraController()
         let engine = PresenceEngine(
-            camera: AlwaysPresentCamera(),
+            camera: camera,
             recognizer: AlwaysPresentRecognizer(),
             locker: locker,
             config: config
         )
         self.engine = engine
+
+        // Trigger the camera permission prompt once at launch so it never
+        // blocks a presence tick inside the loop.
+        Task { await camera.requestAccessIfNeeded() }
 
         // Render the initial state before the loop produces its first reading.
         menuBar.render(state: engine.state)

@@ -81,6 +81,12 @@ func runAll() async -> Bool {
         await e.tick(now: t0)
         c.expect(e.state == .suspended && locker.lockCallCount == 0, "camera suspended → suspended, no lock")
     }
+    do {
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.unavailable("denied")), StubRecognizer(.noFace), locker)
+        await e.tick(now: t0)
+        c.expect(e.state == .cameraUnavailable && locker.lockCallCount == 0, "camera unavailable → honest status, no lock (EC-08)")
+    }
 
     // Absence → lock
     do {

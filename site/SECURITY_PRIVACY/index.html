@@ -841,6 +841,7 @@
 <li><strong>Encrypted at rest.</strong> Enrolled embeddings + settings are stored encrypted (Keychain or an encrypted local store). Reset/uninstall fully removes them.</li>
 <li><strong>No telemetry by default.</strong> Any diagnostics are local-only and opt-in.</li>
 <li><strong>Least privilege.</strong> Only the camera entitlement we need; clear <code>NSCameraUsageDescription</code> explaining why.</li>
+<li><strong>Visible, honest camera use.</strong> Monitoring uses a <strong>persistent low-FPS capture session</strong>, so the macOS <strong>camera indicator light stays on the whole time</strong> No Donuts is watching — there is no hidden or intermittent recording. Captured frames live <strong>in memory only</strong> and are never written to disk.</li>
 </ol>
 <h2 id="threat-model">Threat model<a class="headerlink" href="#threat-model" title="Permanent link">&para;</a></h2>
 <table>

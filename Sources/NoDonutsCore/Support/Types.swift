@@ -1,4 +1,5 @@
 import Foundation
+import CoreVideo
 
 // Shared types used across modules. Owner: shared (keep dependency-light).
 
@@ -10,6 +11,7 @@ public enum PresenceState: Equatable {
     case paused                 // user paused the app
     case callAssumedPresent     // camera busy, no frames -> assume present (ADR-0003)
     case suspended              // screen locked / display asleep / session inactive
+    case cameraUnavailable      // camera permission denied/restricted or no device — honest status, do not lock (EC-08)
     case lockFailed             // lock was attempted but failed (e.g. Accessibility not granted) — honest status, EC-19
 }
 
@@ -29,11 +31,11 @@ public enum CaptureOutcome: Sendable {
     case unavailable(String)    // no camera / permission denied / hardware error (EC-08/09)
 }
 
-/// Opaque wrapper around a single captured frame. TODO(blart): back with CVPixelBuffer.
-/// `Sendable` because it crosses the main-actor boundary (engine awaits camera/recognizer,
-/// ADR-0005). When backed by a CVPixelBuffer/CMSampleBuffer, preserve this via an immutable
-/// wrapper or `@unchecked Sendable` with a defensive copy.
-public struct CapturedFrame: Sendable {
-    // Placeholder. Real implementation wraps a CVPixelBuffer / CMSampleBuffer.
-    public init() {}
+/// A single captured frame. Backed by a CVPixelBuffer from the real camera;
+/// nil for the walking-skeleton fakes / checks. `@unchecked Sendable` because
+/// CVPixelBuffer isn't Sendable but we hand off ownership and never mutate it
+/// across the boundary (ADR-0005).
+public struct CapturedFrame: @unchecked Sendable {
+    public let pixelBuffer: CVPixelBuffer?
+    public init(pixelBuffer: CVPixelBuffer? = nil) { self.pixelBuffer = pixelBuffer }
 }

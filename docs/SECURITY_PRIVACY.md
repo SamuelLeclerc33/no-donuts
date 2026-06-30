@@ -9,6 +9,7 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 3. **Encrypted at rest.** Enrolled embeddings + settings are stored encrypted (Keychain or an encrypted local store). Reset/uninstall fully removes them.
 4. **No telemetry by default.** Any diagnostics are local-only and opt-in.
 5. **Least privilege.** Only the camera entitlement we need; clear `NSCameraUsageDescription` explaining why.
+6. **Visible, honest camera use.** Monitoring uses a **persistent low-FPS capture session**, so the macOS **camera indicator light stays on the whole time** No Donuts is watching — there is no hidden or intermittent recording. Captured frames live **in memory only** and are never written to disk.
 
 ## Threat model
 

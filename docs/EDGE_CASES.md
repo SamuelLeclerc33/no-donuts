@@ -12,9 +12,9 @@ A living log of edge cases to validate together. Each has a **decision** (or `OP
 | EC-04 | **User present but looking away / turned head** | Detection may miss the face briefly; grace period + consecutive-absent debounce absorbs short gaps. Tune thresholds. | OPEN | cooper/homer |
 | EC-05 | **Poor lighting / backlight / glasses / hat / mask** | Affects detection + match. Need robust model + threshold; surface "can't see you" status. | OPEN | cooper |
 | EC-06 | **Multiple faces in frame** (user + colleague) | If enrolled user matches any face → PRESENT. Define behavior re: shoulder-surfing later. | OPEN | cooper/homer |
-| EC-07 | **External monitor, lid closed (clamshell)** | Built-in camera unavailable. Behavior when no camera? (Assume present? Disable? Use external cam?) | OPEN | blart |
-| EC-08 | **Camera permission denied / restricted (MDM)** | App must not silently fail-open; clear status + prompt; define safe default. | OPEN | krusty/blart |
-| EC-09 | **No camera at all / camera hardware error** | Define fail policy (don't hard-lock the user out repeatedly). | OPEN | blart/homer |
+| EC-07 | **External monitor, lid closed (clamshell)** | Built-in camera unavailable. Behavior when no camera? (Assume present? Disable? Use external cam?) **Interim:** `.unavailable` → `cameraUnavailable`, no lock (fail-open — masked by the fake recognizer). **MUST decide before ND-025** (see Camera follow-ups). | OPEN | blart |
+| EC-08 | **Camera permission denied / restricted (MDM)** | `capture()` returns `.unavailable` (denied/restricted or no device); engine surfaces honest `cameraUnavailable` status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX. | DECIDED | blart/homer/krusty |
+| EC-09 | **No camera at all / camera hardware error** | Define fail policy (don't hard-lock the user out repeatedly). **Interim:** `.unavailable` → `cameraUnavailable`, no lock (fail-open — masked by the fake recognizer). **MUST decide before ND-025** (see Camera follow-ups). | OPEN | blart/homer |
 | EC-10 | **Recognition error / model timeout on a tick** | Don't reset absence timer on error; count conservatively. Avoid lock-storms. | OPEN | homer |
 | EC-11 | **User briefly leaves and returns within grace** | No lock; reset cleanly on re-detect. | DECIDED | homer |
 | EC-12 | **Photo / phone screen held up to spoof** | Basic anti-spoofing in M4; v1 is not hardened against determined attackers. | OPEN | wiggum/cooper |

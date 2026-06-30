@@ -50,7 +50,14 @@ Full design in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Build / run
 
-Requires **full Xcode** (Command Line Tools alone are not enough for a signed menu-bar app with camera entitlements). See the `build-run` skill in [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
+A runnable local `.app` is built with `scripts/make-app.sh` — it `swift build`s, assembles the bundle, and **ad-hoc-signs** it with the camera entitlement, using only **Command Line Tools** (no full Xcode needed for local dev — [ADR-0008](docs/adr/0008-app-packaging.md)):
+
+```sh
+scripts/make-app.sh        # add --debug for a faster compile
+open build/NoDonuts.app
+```
+
+Distribution (Developer-ID signing + notarization) needs more — see ND-050. Details in the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
 ## Documentation website
 

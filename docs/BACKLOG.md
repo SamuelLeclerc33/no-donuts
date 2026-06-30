@@ -44,14 +44,14 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 ## M1 — Walking skeleton (it builds & runs, no recognition yet)
 
 - [x] ND-010 Buildable menu-bar app (`LSUIElement`), status item, quit — krusty
-- [ ] ND-011 Camera permission request + state handling (denied/restricted) — blart
-- [ ] ND-012 Single-frame capture each tick from AVFoundation — blart
+- [x] ND-011 Camera permission request + state handling (denied/restricted) — blart (camera layer: `capture()` resolves auth, returns `.unavailable` on notDetermined-denied/denied/restricted/no-device; honest engine display tracked as a homer follow-up below)
+- [x] ND-012 Single-frame capture each tick from AVFoundation — blart (persistent low-FPS `AVCaptureSession`, samples one `CVPixelBuffer` per tick; frames in-memory only)
 - [ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart
 - [x] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
 - [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
 - [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
 - [ ] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty
-- [ ] ND-018 Runnable `.app` bundle with camera entitlement (Xcode target / packaging; SPM exe can't get entitlements) — gordon
+- [x] ND-018 Runnable `.app` bundle with camera entitlement — `scripts/make-app.sh` (SPM build + bundle + ad-hoc codesign; CLT-only, no Xcode), ADR-0008 — gordon
 - [ ] ND-019 Fix duplicate ADR number: `0005-docs-site.md` and `0005-presence-loop-concurrency.md` both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon
 
 > **Review follow-ups (from the ND-010/015 code review, deferred to their owning items):**
@@ -65,6 +65,12 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 > - **Non-blocking lock** (wiggum/homer): `lock()` runs `waitUntilExit()` on the `@MainActor` path; make it async so a hung `osascript` can't beachball the UI (pairs with the CGSession work).
 > - **Lock-failed retry/backoff** (homer): after `.lockFailed` the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff so it recovers if Accessibility is granted mid-absence.
 > - **Log subsystem constant** (gordon/wiggum): extract the hardcoded `"com.nodonuts.app"` Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.
+
+> **Camera follow-ups (from the ND-018/011/012 code review — MUST resolve fail-opens BEFORE ND-025 wires the real recognizer; currently masked by the always-present fake):**
+> - **⚠️ Fail-open policy** (homer/blart): `.unavailable` (no camera device / clamshell EC-07/EC-09, or persistent no-frame) → engine `.cameraUnavailable` → never locks. With the real recognizer this becomes a silent fail-open. Decide the EC-07/EC-09 fail policy (lean-secure vs don't-lock-out) and route persistent-no-frame through the ND-031 busy-camera path before ND-025.
+> - **Retained pixel buffer** (blart): the delegate pins one `CVPixelBuffer` from the pool between ticks; deep-copy on read (or stop session between ticks) so it can't stall delivery — do when the frame is actually consumed (ND-020) / ND-042.
+> - **First-tick latency** (blart): `waitForFirstFrame` can add ~1.5s to the first tick after permission; pre-warm at launch / shorten — ND-042.
+> - **Duty-cycle** (blart/homer): even at ~1fps the persistent session runs continuously; consider stop-between-ticks for real power savings — ND-042.
 
 ## M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
 

@@ -11,26 +11,24 @@
       
       
       
-        <link rel="prev" href="../BACKLOG/">
-      
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Edge Cases - No Donuts</title>
+        <title>ADR-0008 — Local app packaging: SPM build + bundling script (ad-hoc signed) - No Donuts</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -43,7 +41,7 @@
       
     
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -68,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#edge-cases-no-donuts" class="md-skip">
+        <a href="#adr-0008-local-app-packaging-spm-build-bundling-script-ad-hoc-signed" class="md-skip">
           Skip to content
         </a>
       
@@ -84,7 +82,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
+    <a href="../.." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
@@ -104,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Edge Cases
+              ADR-0008 — Local app packaging: SPM build + bundling script (ad-hoc signed)
             
           </span>
         </div>
@@ -208,7 +206,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
+    <a href="../.." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
@@ -226,7 +224,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -253,7 +251,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../PRD/" class="md-nav__link">
+      <a href="../../PRD/" class="md-nav__link">
         
   
   
@@ -280,7 +278,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ARCHITECTURE/" class="md-nav__link">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -307,7 +305,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../SECURITY_PRIVACY/" class="md-nav__link">
+      <a href="../../SECURITY_PRIVACY/" class="md-nav__link">
         
   
   
@@ -386,7 +384,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -414,7 +412,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0001-form-factor/" class="md-nav__link">
+      <a href="../0001-form-factor/" class="md-nav__link">
         
   
   
@@ -442,7 +440,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0002-face-recognition-engine/" class="md-nav__link">
+      <a href="../0002-face-recognition-engine/" class="md-nav__link">
         
   
   
@@ -470,7 +468,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0003-camera-in-use-policy/" class="md-nav__link">
+      <a href="../0003-camera-in-use-policy/" class="md-nav__link">
         
   
   
@@ -498,7 +496,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0004-app-identity/" class="md-nav__link">
+      <a href="../0004-app-identity/" class="md-nav__link">
         
   
   
@@ -526,7 +524,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0005-docs-site/" class="md-nav__link">
+      <a href="../0005-docs-site/" class="md-nav__link">
         
   
   
@@ -561,7 +559,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../BACKLOG/" class="md-nav__link">
+      <a href="../../BACKLOG/" class="md-nav__link">
         
   
   
@@ -585,37 +583,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Edge Cases
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../EDGE_CASES/" class="md-nav__link">
         
   
   
@@ -631,37 +602,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#how-to-use-this-file" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        How to use this file
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -693,10 +633,43 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#how-to-use-this-file" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        How to use this file
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
       
     </span>
   </a>
@@ -720,160 +693,33 @@
 
 
 
-<h1 id="edge-cases-no-donuts">Edge Cases — No Donuts<a class="headerlink" href="#edge-cases-no-donuts" title="Permanent link">&para;</a></h1>
-<p>A living log of edge cases to validate together. Each has a <strong>decision</strong> (or <code>OPEN</code>) and a <strong>status</strong>.</p>
-<p><strong>Status:</strong> <code>OPEN</code> (needs discussion) · <code>DECIDED</code> (policy set) · <code>IMPLEMENTED</code> (in code + tested)</p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>Edge case</th>
-<th>Decision</th>
-<th>Status</th>
-<th>Owner</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>EC-01</td>
-<td><strong>On a video call</strong> (another app holds camera)</td>
-<td>Try multi-client shared frames; if none, assume PRESENT and don't lock. See <a href="../adr/0003-camera-in-use-policy/">ADR-0003</a>.</td>
-<td>DECIDED</td>
-<td>blart/homer</td>
-</tr>
-<tr>
-<td>EC-02</td>
-<td><strong>Screen already locked / display asleep / session inactive</strong></td>
-<td>Suspend the loop; take no action.</td>
-<td>DECIDED</td>
-<td>blart</td>
-</tr>
-<tr>
-<td>EC-03</td>
-<td><strong>Stranger sits down, enrolled user absent</strong></td>
-<td>Treat as ABSENT → lock after grace. A non-matching face must NOT count as present.</td>
-<td>DECIDED</td>
-<td>homer/wiggum</td>
-</tr>
-<tr>
-<td>EC-04</td>
-<td><strong>User present but looking away / turned head</strong></td>
-<td>Detection may miss the face briefly; grace period + consecutive-absent debounce absorbs short gaps. Tune thresholds.</td>
-<td>OPEN</td>
-<td>cooper/homer</td>
-</tr>
-<tr>
-<td>EC-05</td>
-<td><strong>Poor lighting / backlight / glasses / hat / mask</strong></td>
-<td>Affects detection + match. Need robust model + threshold; surface "can't see you" status.</td>
-<td>OPEN</td>
-<td>cooper</td>
-</tr>
-<tr>
-<td>EC-06</td>
-<td><strong>Multiple faces in frame</strong> (user + colleague)</td>
-<td>If enrolled user matches any face → PRESENT. Define behavior re: shoulder-surfing later.</td>
-<td>OPEN</td>
-<td>cooper/homer</td>
-</tr>
-<tr>
-<td>EC-07</td>
-<td><strong>External monitor, lid closed (clamshell)</strong></td>
-<td>Built-in camera unavailable. Behavior when no camera? (Assume present? Disable? Use external cam?) <strong>Interim:</strong> <code>.unavailable</code> → <code>cameraUnavailable</code>, no lock (fail-open — masked by the fake recognizer). <strong>MUST decide before ND-025</strong> (see Camera follow-ups).</td>
-<td>OPEN</td>
-<td>blart</td>
-</tr>
-<tr>
-<td>EC-08</td>
-<td><strong>Camera permission denied / restricted (MDM)</strong></td>
-<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX.</td>
-<td>DECIDED</td>
-<td>blart/homer/krusty</td>
-</tr>
-<tr>
-<td>EC-09</td>
-<td><strong>No camera at all / camera hardware error</strong></td>
-<td>Define fail policy (don't hard-lock the user out repeatedly). <strong>Interim:</strong> <code>.unavailable</code> → <code>cameraUnavailable</code>, no lock (fail-open — masked by the fake recognizer). <strong>MUST decide before ND-025</strong> (see Camera follow-ups).</td>
-<td>OPEN</td>
-<td>blart/homer</td>
-</tr>
-<tr>
-<td>EC-10</td>
-<td><strong>Recognition error / model timeout on a tick</strong></td>
-<td>Don't reset absence timer on error; count conservatively. Avoid lock-storms.</td>
-<td>OPEN</td>
-<td>homer</td>
-</tr>
-<tr>
-<td>EC-11</td>
-<td><strong>User briefly leaves and returns within grace</strong></td>
-<td>No lock; reset cleanly on re-detect.</td>
-<td>DECIDED</td>
-<td>homer</td>
-</tr>
-<tr>
-<td>EC-12</td>
-<td><strong>Photo / phone screen held up to spoof</strong></td>
-<td>Basic anti-spoofing in M4; v1 is not hardened against determined attackers.</td>
-<td>OPEN</td>
-<td>wiggum/cooper</td>
-</tr>
-<tr>
-<td>EC-13</td>
-<td><strong>Laptop sleep / wake, lid open/close</strong></td>
-<td>Loop must pause on sleep and resume sanely on wake without a false lock.</td>
-<td>OPEN</td>
-<td>blart/homer</td>
-</tr>
-<tr>
-<td>EC-14</td>
-<td><strong>Fast user switching / multiple accounts</strong></td>
-<td>Out of scope for v1; document behavior so it doesn't misbehave.</td>
-<td>OPEN</td>
-<td>homer</td>
-</tr>
-<tr>
-<td>EC-15</td>
-<td><strong>App paused by user, then walks away</strong></td>
-<td>Respect pause; don't lock. Consider auto-resume after timed pause.</td>
-<td>DECIDED</td>
-<td>krusty/homer</td>
-</tr>
-<tr>
-<td>EC-16</td>
-<td><strong>Privacy/cover over camera (physical shutter)</strong></td>
-<td>Equivalent to "no face" → behaves like absent; consider distinct status.</td>
-<td>OPEN</td>
-<td>blart</td>
-</tr>
-<tr>
-<td>EC-17</td>
-<td><strong>Presentation / screen sharing without camera</strong></td>
-<td>Camera not in use but user may step away intentionally → normal lock rules apply. Confirm acceptable.</td>
-<td>OPEN</td>
-<td>homer</td>
-</tr>
-<tr>
-<td>EC-18</td>
-<td><strong>Battery / power profile</strong></td>
-<td>Duty-cycle checks; possibly slow tick on battery to save power.</td>
-<td>OPEN</td>
-<td>blart/homer</td>
-</tr>
-<tr>
-<td>EC-19</td>
-<td><strong>Screen-lock request reports success but may not have locked</strong></td>
-<td>The lock sends a synthetic Ctrl-Cmd-Q via System Events (<a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>), which needs Accessibility. Two cases: <strong>(a) detectable failure</strong> — <code>osascript</code> throws or exits non-zero (e.g. Accessibility outright denied / keystroke not delivered) → <code>lock()</code> returns <code>false</code> → engine shows honest <code>lockFailed</code> status ("can't lock — grant Accessibility"); do <strong>NOT</strong> fail open. <strong>(b) undetectable failure</strong> — <code>osascript</code> exit 0 only means the keystroke was <em>dispatched</em>, not that the screen locked; if the Ctrl-Cmd-Q shortcut is <strong>remapped/disabled</strong>, the keystroke can be dispatched while nothing locks and <code>lock()</code> still returns <code>true</code>. This is a <strong>known MVP gap</strong>; true lock-state verification (CGSession <code>CGSSessionScreenIsLocked</code>) is deferred (ND-014).</td>
-<td>DECIDED (gap noted)</td>
-<td>wiggum/homer</td>
-</tr>
-</tbody>
-</table>
-<h2 id="how-to-use-this-file">How to use this file<a class="headerlink" href="#how-to-use-this-file" title="Permanent link">&para;</a></h2>
+<h1 id="adr-0008-local-app-packaging-spm-build-bundling-script-ad-hoc-signed">ADR-0008 — Local app packaging: SPM build + bundling script (ad-hoc signed)<a class="headerlink" href="#adr-0008-local-app-packaging-spm-build-bundling-script-ad-hoc-signed" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Add a row when a new edge case surfaces. Keep it OPEN until we agree on policy.</li>
-<li>When decided, write the policy in the Decision column (link an ADR if architectural).</li>
-<li>When shipped + tested, mark IMPLEMENTED and reference the backlog item.</li>
+<li>Status: Accepted</li>
+<li>Date: 2026-06-30</li>
+<li>Owner: gordon</li>
+</ul>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>A bare SPM executable (<code>swift run NoDonuts</code>) cannot present the macOS camera permission prompt or honor <code>LSUIElement</code> — those need a real <code>.app</code> bundle with an <code>Info.plist</code> and a code signature carrying the camera entitlement. The conventional way to produce that is an Xcode <code>.app</code> target, but the baseline toolchain here is <strong>Command Line Tools only</strong> (no full Xcode — ADR-0001), so <code>xcodebuild</code> against an app target isn't available. We still need a runnable bundle locally to test camera permission, the menu-bar (no-Dock) behavior, and the presence/lock loop (ND-018 gates all P0 testing).</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>Produce the local <code>.app</code> from the SPM build plus a small bundling script — <code>scripts/make-app.sh</code> — with <strong>ad-hoc codesign</strong>, no Xcode and no <code>.xcodeproj</code>:</p>
+<ul>
+<li><code>swift build</code> produces the <code>NoDonuts</code> executable (product of the package).</li>
+<li>The script assembles <code>build/NoDonuts.app/Contents/{MacOS,Resources}</code>, copying the binary to <code>Contents/MacOS/NoDonuts</code> and <code>Resources/Info.plist</code> to <code>Contents/Info.plist</code>.</li>
+<li><code>codesign --force --sign - --entitlements Resources/NoDonuts.entitlements</code> ad-hoc-signs the bundle so the camera entitlement is present and the TCC prompt fires.</li>
+</ul>
+<p>This script is the <strong>canonical local build path</strong> for a runnable bundle.</p>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Runs locally with <strong>Command Line Tools only</strong> — no full Xcode required to get a permission-prompting, menu-bar-correct app for development.</li>
+<li>Ad-hoc signing is fine for local dev, but <strong>does not</strong> satisfy distribution: Developer-ID signing + notarization remain required to ship (ND-050). Ad-hoc-signed bundles are not Gatekeeper-distributable and TCC grants don't transfer to other machines.</li>
+<li><code>Info.plist</code> gained the keys a real bundle needs (<code>CFBundleExecutable</code>, <code>CFBundlePackageType</code>, <code>CFBundleInfoDictionaryVersion</code>) alongside the existing identity/permission keys.</li>
+<li>The build-run skill, README, and CLAUDE.md now point at <code>scripts/make-app.sh</code> instead of implying full Xcode is mandatory for a local run.</li>
+</ul>
+<h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Xcode <code>.xcodeproj</code> app target</strong> — the conventional packaging route, but requires full Xcode (unavailable in the CLT-only baseline) and adds a project file to keep in sync with <code>Package.swift</code>. Rejected for local dev; revisit only if a distribution pipeline (ND-050) makes an Xcode target worthwhile.</li>
+<li><strong>Bare <code>swift run NoDonuts</code></strong> — no bundle, so no camera prompt and no <code>LSUIElement</code> behavior. Insufficient for the testing ND-018 needs to unblock.</li>
 </ul>
 
 
@@ -930,10 +776,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

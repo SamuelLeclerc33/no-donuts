@@ -7,14 +7,13 @@ description: Build, sign, install, and run the No Donuts macOS menu-bar app, inc
 
 ## Prerequisite (important)
 
-A signed menu-bar `.app` with camera entitlements needs **full Xcode**, not just Command Line Tools.
+A runnable local `.app` needs only **Command Line Tools** + `codesign` — full Xcode is **not** required for local dev (ADR-0008). Full Xcode / a Developer ID + notarization is only needed for *distribution* (ND-050).
 
 Check what's installed:
 ```bash
-xcode-select -p        # CommandLineTools = NOT enough; want .../Xcode.app/...
-xcodebuild -version    # should print Xcode version
+xcode-select -p        # CommandLineTools is enough for a local ad-hoc-signed app
+swift --version        # should print a Swift toolchain
 ```
-If only Command Line Tools are present, install Xcode and run `sudo xcode-select -s /Applications/Xcode.app`.
 
 ## Build (SPM, for fast iteration on logic)
 
@@ -22,13 +21,21 @@ If only Command Line Tools are present, install Xcode and run `sudo xcode-select
 swift build            # builds the executable target
 swift run NoDonuts     # runs it (camera prompt requires a proper app bundle, see below)
 ```
-SPM is fine for compiling/logic, but the camera permission prompt and `LSUIElement` behavior need a real `.app` bundle (`Info.plist`). For the full app, build the Xcode app target / packaging scripts under `scripts/` (owner: gordon).
+SPM is fine for compiling/logic, but the camera permission prompt and `LSUIElement` behavior need a real `.app` bundle (`Info.plist`) — see below.
+
+## Build a runnable `.app` (local, CLT-friendly)
+
+```bash
+scripts/make-app.sh            # release; --debug for a faster compile
+open build/NoDonuts.app        # launch it
+```
+`scripts/make-app.sh` is the **canonical local build path** (ADR-0008): it runs `swift build`, assembles `build/NoDonuts.app`, and **ad-hoc-signs** it (`codesign --sign -`) with the camera entitlement so the TCC prompt fires. No Xcode, no `.xcodeproj`.
 
 ## App bundle, signing, entitlements
 
-- `Resources/Info.plist` must include `NSCameraUsageDescription` and `LSUIElement = true`.
-- `Resources/NoDonuts.entitlements` carries the camera entitlement.
-- Codesign with a Developer ID for distribution; ad-hoc sign for local runs.
+- `Resources/Info.plist` must include `NSCameraUsageDescription` and `LSUIElement = true` (plus `CFBundleExecutable = NoDonuts`).
+- `Resources/NoDonuts.entitlements` carries the camera entitlement; `make-app.sh` embeds it at sign time.
+- Ad-hoc signing (`--sign -`) is fine for local runs. **Distribution** needs Developer-ID signing + notarization (ND-050) — ad-hoc bundles aren't Gatekeeper-distributable and TCC grants don't transfer to other machines.
 
 ## Camera permission
 

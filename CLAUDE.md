@@ -39,7 +39,7 @@ Each part of the app has a dedicated sub-agent (in `.claude/agents/`), named aft
 
 ## Build
 
-Requires **full Xcode** (not just Command Line Tools) for a signed menu-bar `.app` with camera entitlements. See the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
+A runnable local `.app` is built with `scripts/make-app.sh` (`swift build` + bundle assembly + **ad-hoc codesign**), using only **Command Line Tools** — no full Xcode needed for local dev ([ADR-0008](docs/adr/0008-app-packaging.md)). Distribution (Developer-ID + notarization) needs more (ND-050). See the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
 The package is split into `NoDonutsCore` (AppKit-free, testable logic), the `NoDonuts` app, and `EngineCheck` (see [ADR-0007](docs/adr/0007-package-layout-testable-core.md)).
 

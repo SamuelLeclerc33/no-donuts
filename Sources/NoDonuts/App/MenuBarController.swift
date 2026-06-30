@@ -57,6 +57,7 @@ public final class MenuBarController: NSObject {
         case .callAssumedPresent: return "No Donuts — on a call"
         case .suspended:          return "No Donuts — locked/asleep"
         case .lockFailed:         return "No Donuts — ⚠️ can't lock (grant Accessibility)"
+        case .cameraUnavailable:  return "No Donuts — ⚠️ camera unavailable (grant access)"
         }
     }
 }
