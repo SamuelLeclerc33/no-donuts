@@ -9,9 +9,24 @@ let package = Package(
     name: "NoDonuts",
     platforms: [.macOS(.v15)],
     targets: [
+        // Testable, AppKit-free core: presence engine, camera/recognition/lock
+        // protocols + stubs, shared types. Imported by the app and the checks.
+        .target(
+            name: "NoDonutsCore",
+            path: "Sources/NoDonutsCore"
+        ),
+        // The menu-bar app shell (AppKit). Owns main.swift + App/.
         .executableTarget(
             name: "NoDonuts",
+            dependencies: ["NoDonutsCore"],
             path: "Sources/NoDonuts"
+        ),
+        // Framework-free engine checks. Runs in ANY toolchain (incl. Command
+        // Line Tools, where XCTest/Swift-Testing are unavailable): `swift run EngineCheck`.
+        .executableTarget(
+            name: "EngineCheck",
+            dependencies: ["NoDonutsCore"],
+            path: "Sources/EngineCheck"
         )
     ]
 )

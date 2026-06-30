@@ -13,6 +13,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0005](0005-presence-loop-concurrency.md) — Presence loop concurrency: main-actor-driven loop — **Accepted**
 - [ADR-0005](0005-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted** ⚠️ duplicate number (see ND-019)
 - [ADR-0006](0006-screen-lock-mechanism.md) — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — **Accepted**
+- [ADR-0007](0007-package-layout-testable-core.md) — Package layout: testable core library + framework-free checks — **Accepted**
 
 ## Template
 

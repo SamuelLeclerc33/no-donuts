@@ -99,6 +99,11 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon
 - [ ] ND-053 MDM/enterprise deployment notes — gordon
 
+## Tooling & tests
+
+- [x] ND-046 Testable `NoDonutsCore` split + framework-free `EngineCheck` harness (`swift run EngineCheck`) — gordon/homer ([ADR-0007](adr/0007-package-layout-testable-core.md))
+- [ ] ND-047 Add an XCTest/Swift-Testing target alongside EngineCheck once full Xcode is the baseline (richer reporting/IDE) — gordon
+
 ---
 
 ## Icebox / later

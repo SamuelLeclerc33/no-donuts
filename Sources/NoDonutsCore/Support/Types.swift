@@ -35,4 +35,5 @@ public enum CaptureOutcome: Sendable {
 /// wrapper or `@unchecked Sendable` with a defensive copy.
 public struct CapturedFrame: Sendable {
     // Placeholder. Real implementation wraps a CVPixelBuffer / CMSampleBuffer.
+    public init() {}
 }

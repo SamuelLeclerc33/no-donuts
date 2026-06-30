@@ -870,7 +870,7 @@
 <tr>
 <td>Fail-open</td>
 <td>Bug/permission issue makes it silently never lock</td>
-<td>Explicit fail policy + visible status; uncertain states lean conservative</td>
+<td>Explicit fail policy + visible status; uncertain states lean conservative. <strong>Caveat (MVP):</strong> lock confirmation is best-effort — <code>lock()</code> confirms keystroke dispatch, not a verified lock, so a remapped/disabled Ctrl-Cmd-Q shortcut can fail open undetectably (EC-19, ND-014).</td>
 </tr>
 <tr>
 <td>Stranger present</td>
@@ -888,12 +888,15 @@
 <ul>
 <li>Default leans <strong>secure</strong> (lock) under sustained uncertainty, balanced against not annoying the user via grace periods and call-awareness.</li>
 <li>Camera permission denied/restricted: do <strong>not</strong> silently pretend to protect. Surface clear status; pick a documented safe default (EC-08).</li>
+<li>A <strong>detectably failed lock</strong> (e.g. Accessibility outright denied, so <code>osascript</code> errors / exits non-zero) is <strong>detected</strong> via the <code>lock() -&gt; Bool</code> return value and <strong>surfaced</strong> to the user — it is never silently treated as "locked" (EC-19, <a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>).</li>
+<li><strong>Lock confirmation is currently best-effort, not verified.</strong> A <code>true</code> from <code>lock()</code> means the Ctrl-Cmd-Q keystroke was <strong>dispatched</strong> (<code>osascript</code> exited 0), <strong>not</strong> that the screen is confirmed locked. If the Lock-Screen shortcut is <strong>remapped/disabled</strong>, the lock can fail open without detection. This is an accepted MVP limitation; <strong>verified lock-state detection</strong> (CGSession <code>CGSSessionScreenIsLocked</code>) plus an async/non-blocking <code>lock()</code> is a <strong>planned hardening</strong> (ND-014, <a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>).</li>
 </ul>
 <h2 id="permissions-entitlements">Permissions &amp; entitlements<a class="headerlink" href="#permissions-entitlements" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>NSCameraUsageDescription</code> — honest, specific copy.</li>
 <li>Camera access entitlement; avoid anything broader than required.</li>
 <li>Programmatic screen-lock mechanism validated against sandbox/entitlement constraints (ND-014, owner: wiggum).</li>
+<li><strong>Accessibility permission</strong> (System Settings → Privacy &amp; Security → Accessibility) — required by the screen-lock mechanism, which sends a synthetic <strong>Ctrl-Cmd-Q</strong> (Lock Screen) keystroke via System Events (<a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>). This is a permission <strong>distinct from</strong> the camera grant; if denied, the lock keystroke is dropped (EC-19).</li>
 </ul>
 <h2 id="open-items">Open items<a class="headerlink" href="#open-items" title="Permanent link">&para;</a></h2>
 <ul>

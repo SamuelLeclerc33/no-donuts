@@ -41,6 +41,12 @@ Each part of the app has a dedicated sub-agent (in `.claude/agents/`), named aft
 
 Requires **full Xcode** (not just Command Line Tools) for a signed menu-bar `.app` with camera entitlements. See the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
+The package is split into `NoDonutsCore` (AppKit-free, testable logic), the `NoDonuts` app, and `EngineCheck` (see [ADR-0007](docs/adr/0007-package-layout-testable-core.md)).
+
+## Tests
+
+Run the engine checks with **`swift run EngineCheck`** — a framework-free harness that verifies the presence/lock decision logic and exits non-zero on failure. It works in **any** toolchain, including Command Line Tools only (where `XCTest` / Swift Testing are unavailable, so `swift test` can't run). Add new engine assertions in `Sources/EngineCheck/main.swift`.
+
 ## Documentation site
 
 The `docs/` Markdown is published as a local, fully-offline **MkDocs** (Material) site → see [ADR-0005](docs/adr/0005-docs-site.md). The built `site/` is committed (source-versioned). A **pre-commit hook** regenerates it when `docs/` or `mkdocs.yml` are staged. Setup: `python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt`, then `scripts/install-hooks.sh`. Preview with `.venv/bin/mkdocs serve`. If you edit docs without the hook installed, run `.venv/bin/mkdocs build` and commit `site/` yourself.

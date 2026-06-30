@@ -860,6 +860,13 @@
 <td>OPEN</td>
 <td>blart/homer</td>
 </tr>
+<tr>
+<td>EC-19</td>
+<td><strong>Screen-lock request reports success but may not have locked</strong></td>
+<td>The lock sends a synthetic Ctrl-Cmd-Q via System Events (<a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>), which needs Accessibility. Two cases: <strong>(a) detectable failure</strong> — <code>osascript</code> throws or exits non-zero (e.g. Accessibility outright denied / keystroke not delivered) → <code>lock()</code> returns <code>false</code> → engine shows honest <code>lockFailed</code> status ("can't lock — grant Accessibility"); do <strong>NOT</strong> fail open. <strong>(b) undetectable failure</strong> — <code>osascript</code> exit 0 only means the keystroke was <em>dispatched</em>, not that the screen locked; if the Ctrl-Cmd-Q shortcut is <strong>remapped/disabled</strong>, the keystroke can be dispatched while nothing locks and <code>lock()</code> still returns <code>true</code>. This is a <strong>known MVP gap</strong>; true lock-state verification (CGSession <code>CGSSessionScreenIsLocked</code>) is deferred (ND-014).</td>
+<td>DECIDED (gap noted)</td>
+<td>wiggum/homer</td>
+</tr>
 </tbody>
 </table>
 <h2 id="how-to-use-this-file">How to use this file<a class="headerlink" href="#how-to-use-this-file" title="Permanent link">&para;</a></h2>

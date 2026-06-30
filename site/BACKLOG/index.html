@@ -700,6 +700,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tooling-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tooling &amp; tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#icebox-later" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -849,6 +860,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tooling-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tooling &amp; tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#icebox-later" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -915,11 +937,12 @@
 <li>[ ] ND-011 Camera permission request + state handling (denied/restricted) — blart</li>
 <li>[ ] ND-012 Single-frame capture each tick from AVFoundation — blart</li>
 <li>[ ] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart</li>
-<li>[ ] ND-014 Verify a reliable programmatic <strong>screen lock</strong> under entitlements — wiggum</li>
+<li>[x] ND-014 Verify a reliable programmatic <strong>screen lock</strong> under entitlements — wiggum</li>
 <li>[x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer</li>
 <li>[ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon</li>
 <li>[ ] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty</li>
 <li>[ ] ND-018 Runnable <code>.app</code> bundle with camera entitlement (Xcode target / packaging; SPM exe can't get entitlements) — gordon</li>
+<li>[ ] ND-019 Fix duplicate ADR number: <code>0005-docs-site.md</code> and <code>0005-presence-loop-concurrency.md</code> both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon</li>
 </ul>
 <blockquote>
 <p><strong>Review follow-ups (from the ND-010/015 code review, deferred to their owning items):</strong>
@@ -927,6 +950,11 @@
 - <strong>ND-014</strong> (wiggum): <code>PresenceEngine</code> is now <code>@MainActor</code>, so a synchronous <code>ScreenLocker.lock()</code> would block the UI at lock time — run the real lock off the main actor (ADR-0005).
 - <strong>ND-025</strong> (homer): remove/<code>#if DEBUG</code>-fence <code>AlwaysPresent*</code> fakes so they can't ship in a release binary and silently defeat locking.
 - <strong>ND-042</strong> (blart/homer): loop period = work + <code>Task.sleep</code> (drifts longer than <code>tickIntervalSeconds</code>); and <code>loopTask</code> cancellation interrupts only the sleep, not an in-flight <code>capture()</code>/<code>recognize()</code> — make the real async calls cancellation-aware.</p>
+<p><strong>Lock follow-ups (from the ND-014 code review — accepted weaker guarantee for MVP):</strong>
+- <strong>Verified lock state</strong> (wiggum): osascript exit 0 ≠ screen locked (undetectable fail-open if Ctrl-Cmd-Q remapped/disabled). Confirm the real lock via <code>CGSessionCopyCurrentDictionary()</code> <code>CGSSessionScreenIsLocked</code> so <code>lock()</code> is honest regardless of mechanism.
+- <strong>Non-blocking lock</strong> (wiggum/homer): <code>lock()</code> runs <code>waitUntilExit()</code> on the <code>@MainActor</code> path; make it async so a hung <code>osascript</code> can't beachball the UI (pairs with the CGSession work).
+- <strong>Lock-failed retry/backoff</strong> (homer): after <code>.lockFailed</code> the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff so it recovers if Accessibility is granted mid-absence.
+- <strong>Log subsystem constant</strong> (gordon/wiggum): extract the hardcoded <code>"com.nodonuts.app"</code> Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.</p>
 </blockquote>
 <h2 id="m2-local-face-recognition-identity-post-mvp-v11">M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)<a class="headerlink" href="#m2-local-face-recognition-identity-post-mvp-v11" title="Permanent link">&para;</a></h2>
 <ul>
@@ -960,6 +988,11 @@
 <li>[ ] ND-051 Signed <code>.app</code> + DMG/installer — gordon</li>
 <li>[ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon</li>
 <li>[ ] ND-053 MDM/enterprise deployment notes — gordon</li>
+</ul>
+<h2 id="tooling-tests">Tooling &amp; tests<a class="headerlink" href="#tooling-tests" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[x] ND-046 Testable <code>NoDonutsCore</code> split + framework-free <code>EngineCheck</code> harness (<code>swift run EngineCheck</code>) — gordon/homer (<a href="../adr/0007-package-layout-testable-core/">ADR-0007</a>)</li>
+<li>[ ] ND-047 Add an XCTest/Swift-Testing target alongside EngineCheck once full Xcode is the baseline (richer reporting/IDE) — gordon</li>
 </ul>
 <hr />
 <h2 id="icebox-later">Icebox / later<a class="headerlink" href="#icebox-later" title="Permanent link">&para;</a></h2>

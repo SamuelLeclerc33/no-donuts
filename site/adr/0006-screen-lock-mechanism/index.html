@@ -11,28 +11,24 @@
       
       
       
-        <link rel="prev" href="../SECURITY_PRIVACY/">
-      
-      
-        <link rel="next" href="0001-form-factor/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Overview - No Donuts</title>
+        <title>ADR-0006 — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript - No Donuts</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -45,7 +41,7 @@
       
     
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -70,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#architecture-decision-records" class="md-skip">
+        <a href="#adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript" class="md-skip">
           Skip to content
         </a>
       
@@ -86,7 +82,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
+    <a href="../.." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
@@ -106,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Overview
+              ADR-0006 — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript
             
           </span>
         </div>
@@ -210,7 +206,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
+    <a href="../.." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
@@ -228,7 +224,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -255,7 +251,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../PRD/" class="md-nav__link">
+      <a href="../../PRD/" class="md-nav__link">
         
   
   
@@ -282,7 +278,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ARCHITECTURE/" class="md-nav__link">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -309,7 +305,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../SECURITY_PRIVACY/" class="md-nav__link">
+      <a href="../../SECURITY_PRIVACY/" class="md-nav__link">
         
   
   
@@ -333,8 +329,6 @@
       
   
   
-    
-  
   
   
     
@@ -347,11 +341,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -372,7 +366,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -387,37 +381,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Overview
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -433,48 +400,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#index" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Index
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#template" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Template
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -487,7 +412,7 @@
   
   
     <li class="md-nav__item">
-      <a href="0001-form-factor/" class="md-nav__link">
+      <a href="../0001-form-factor/" class="md-nav__link">
         
   
   
@@ -515,7 +440,7 @@
   
   
     <li class="md-nav__item">
-      <a href="0002-face-recognition-engine/" class="md-nav__link">
+      <a href="../0002-face-recognition-engine/" class="md-nav__link">
         
   
   
@@ -543,7 +468,7 @@
   
   
     <li class="md-nav__item">
-      <a href="0003-camera-in-use-policy/" class="md-nav__link">
+      <a href="../0003-camera-in-use-policy/" class="md-nav__link">
         
   
   
@@ -571,7 +496,7 @@
   
   
     <li class="md-nav__item">
-      <a href="0004-app-identity/" class="md-nav__link">
+      <a href="../0004-app-identity/" class="md-nav__link">
         
   
   
@@ -599,7 +524,7 @@
   
   
     <li class="md-nav__item">
-      <a href="0005-docs-site/" class="md-nav__link">
+      <a href="../0005-docs-site/" class="md-nav__link">
         
   
   
@@ -634,7 +559,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../BACKLOG/" class="md-nav__link">
+      <a href="../../BACKLOG/" class="md-nav__link">
         
   
   
@@ -661,7 +586,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../EDGE_CASES/" class="md-nav__link">
+      <a href="../../EDGE_CASES/" class="md-nav__link">
         
   
   
@@ -708,10 +633,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#index" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Index
+        Context
       
     </span>
   </a>
@@ -719,10 +644,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#template" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Template
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations-weaker-guarantee-mvp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitations / weaker guarantee (MVP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
       
     </span>
   </a>
@@ -746,39 +704,91 @@
 
 
 
-<h1 id="architecture-decision-records">Architecture Decision Records<a class="headerlink" href="#architecture-decision-records" title="Permanent link">&para;</a></h1>
-<p>Short, immutable records of significant decisions. Use the <code>adr</code> skill to add one.</p>
-<p>When a decision changes, don't edit the old ADR's decision — write a new ADR that <strong>supersedes</strong> it and update the status line of the old one.</p>
-<h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
+<h1 id="adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript">ADR-0006 — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript<a class="headerlink" href="#adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript" title="Permanent link">&para;</a></h1>
 <ul>
-<li><a href="0001-form-factor/">ADR-0001</a> — Form factor: menu-bar app + LaunchAgent — <strong>Accepted</strong></li>
-<li><a href="0002-face-recognition-engine/">ADR-0002</a> — Face engine: Apple Vision + Core ML embeddings — <strong>Accepted</strong></li>
-<li><a href="0003-camera-in-use-policy/">ADR-0003</a> — Camera-in-use: try shared frames, fall back to assume-present — <strong>Accepted</strong></li>
-<li><a href="0004-app-identity/">ADR-0004</a> — App identity: bundle id, name, minimum macOS — <strong>Accepted</strong></li>
-<li><a href="0005-presence-loop-concurrency/">ADR-0005</a> — Presence loop concurrency: main-actor-driven loop — <strong>Accepted</strong></li>
-<li><a href="0005-docs-site/">ADR-0005</a> — Documentation website: MkDocs + Material, offline, committed — <strong>Accepted</strong> ⚠️ duplicate number (see ND-019)</li>
-<li><a href="0006-screen-lock-mechanism/">ADR-0006</a> — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — <strong>Accepted</strong></li>
-<li><a href="0007-package-layout-testable-core/">ADR-0007</a> — Package layout: testable core library + framework-free checks — <strong>Accepted</strong></li>
+<li>Status: Accepted</li>
+<li>Date: 2026-06-30</li>
+<li>Owner: wiggum</li>
 </ul>
-<h2 id="template">Template<a class="headerlink" href="#template" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="gh"># ADR-NNNN — &lt;title&gt;</span>
-
-<span class="k">-</span><span class="w"> </span>Status: Proposed | Accepted | Superseded by ADR-XXXX
-<span class="k">-</span><span class="w"> </span>Date: YYYY-MM-DD
-<span class="k">-</span><span class="w"> </span>Owner: &lt;agent/person&gt;
-
-<span class="gu">## Context</span>
-What forces are at play? What problem are we deciding on?
-
-<span class="gu">## Decision</span>
-The choice we made, stated plainly.
-
-<span class="gu">## Consequences</span>
-Trade-offs, what becomes easier/harder, follow-up work.
-
-<span class="gu">## Alternatives considered</span>
-What else we looked at and why we didn&#39;t pick it.
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>The core action of No Donuts is to lock the Mac when the enrolled user is absent
+(ND-014). We need a <strong>reliable programmatic screen lock</strong> that works under our
+sandbox/entitlement posture. We lock only — unlock always stays with macOS
+(Touch ID / password). Whatever mechanism we pick, a lock request must either
+lock or <strong>loudly report failure</strong>; it must never silently fail open (a failed
+lock that is reported as success would leave an unattended machine unprotected).</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>The lock is issued by <strong>synthesizing the macOS Lock Screen shortcut
+Ctrl-Cmd-Q</strong> via <code>osascript</code> / System Events:</p>
+<div class="highlight"><pre><span></span><code>/usr/bin/osascript -e &#39;tell application &quot;System Events&quot; to key code 12 using {control down, command down}&#39;
 </code></pre></div>
+<p>(<code>key code 12</code> is the <code>Q</code> key; Ctrl-Cmd-Q is the system Lock Screen shortcut.)</p>
+<p><code>ScreenLocker.lock()</code> runs this through <code>Process</code>, calls <code>waitUntilExit()</code>, and
+returns <code>process.terminationStatus == 0</code>. A throw from <code>run()</code> or a non-zero exit
+status is logged via <code>os_log</code> (<code>Logger(subsystem: "com.nodonuts.app",
+category: "lock")</code>) and returns <code>false</code>. It <strong>never</strong> returns <code>true</code> on failure.
+The protocol is <code>@discardableResult func lock() -&gt; Bool</code> so callers (the presence
+engine / UI) can surface honest "not protecting" status.</p>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Requires a new TCC permission: Accessibility.</strong> Sending synthetic keystrokes
+  requires the app to be granted Accessibility (System Settings → Privacy &amp;
+  Security → Accessibility). This is a permission <strong>beyond</strong> the camera grant the
+  user already has to give. If Accessibility is <strong>denied</strong>, macOS drops the
+  keystroke and the screen does not lock — but <code>lock()</code> detects this (non-zero
+  status / dropped key path) and returns <code>false</code>, so the failure is <strong>surfaced,
+  never silent</strong> (see EC-19). gordon/krusty own prompting for and explaining this
+  grant.</li>
+<li>Spawns a <strong>short-lived <code>osascript</code> process</strong> per lock. Cheap, but it is an
+  out-of-process dependency on <code>/usr/bin/osascript</code> and AppleScript/System Events.</li>
+<li>No private API and no login-window switch — uses the same path a user would
+  use by hand.</li>
+</ul>
+<h2 id="known-limitations-weaker-guarantee-mvp">Known limitations / weaker guarantee (MVP)<a class="headerlink" href="#known-limitations-weaker-guarantee-mvp" title="Permanent link">&para;</a></h2>
+<p>The fail-safe guarantee above is <strong>weaker than it first appears</strong>, and we are
+accepting that for the MVP:</p>
+<ul>
+<li><strong><code>osascript</code> exit status ≠ confirmed lock.</strong> <code>lock()</code> returns <code>true</code> when
+  <code>osascript</code> launches and exits <code>0</code>. That only confirms the AppleScript ran and
+  the Ctrl-Cmd-Q keystroke was <strong>dispatched</strong> — it does <strong>not</strong> confirm the
+  screen actually locked. The exit status reflects whether the script executed,
+  not the resulting system state.</li>
+<li><strong>Undetectable fail-open if the shortcut is remapped/disabled.</strong> If the user
+  has remapped or disabled the Ctrl-Cmd-Q Lock-Screen shortcut (System Settings →
+  Keyboard → Keyboard Shortcuts), or in some Accessibility/permission paths, the
+  keystroke can be dispatched and <code>osascript</code> can exit <code>0</code> while <strong>nothing
+  locks</strong>. In that case <code>lock()</code> returns <code>true</code> even though the machine is still
+  unlocked. This is a silent fail-open we currently cannot detect.</li>
+<li><strong>Detectable failures are still surfaced.</strong> A throw from <code>run()</code> or a non-zero
+  exit (e.g. Accessibility outright denied) is still caught and returns <code>false</code>,
+  so those <em>detectable</em> failures are honestly reported (EC-19). The gap is only
+  the <em>undetectable</em> case above.</li>
+</ul>
+<p><strong>Decision:</strong> accept this weaker guarantee for the MVP (no change to the
+osascript mechanism). <strong>Defer</strong> to a follow-up pass (ND-014):</p>
+<ol>
+<li><strong>Verified lock state</strong> — after issuing the lock, query CGSession
+   (<code>CGSSessionScreenIsLocked</code> via <code>CGSessionCopyCurrentDictionary</code>) and only
+   report success once the session reports locked, closing the fail-open.</li>
+<li><strong>Non-blocking / async <code>lock()</code></strong> — the current implementation calls
+   <code>waitUntilExit()</code> synchronously; verification implies polling/waiting for the
+   lock state, which should be done off the calling actor.</li>
+</ol>
+<p>Until then, callers must treat a <code>true</code> return as "lock keystroke dispatched,"
+not "session confirmed locked."</p>
+<h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>SACLockScreenimmediate</code> (login.framework private API):</strong> locks immediately
+  with <strong>no Accessibility grant</strong> required. Rejected for v1 because it is a
+  <strong>private symbol</strong> — fragile across macOS releases and a code-signing/notarization
+  risk. Kept as a <strong>fallback</strong> if osascript proves unreliable.</li>
+<li><strong><code>/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession -suspend</code>:</strong>
+  public, switches to the login window. Also <strong>avoids the Accessibility grant</strong>.
+  Slightly different UX (fast-user-switch login window vs. lock screen). Kept as a
+  <strong>fallback</strong> alongside <code>SACLockScreenimmediate</code> if the osascript path is unreliable.</li>
+</ul>
+<p>Both fallbacks avoid the Accessibility permission; we accept the Accessibility
+cost for v1 in exchange for using only public, stable, hand-equivalent APIs.</p>
 
 
 
@@ -834,10 +844,10 @@ What else we looked at and why we didn&#39;t pick it.
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

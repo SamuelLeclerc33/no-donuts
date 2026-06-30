@@ -1,4 +1,5 @@
 import AppKit
+import NoDonutsCore
 
 // Owner: krusty (app shell) + homer (loop wiring). Entry point.
 // Backlog: ND-010, ND-015. Runs as an accessory (menu-bar only, no Dock icon).

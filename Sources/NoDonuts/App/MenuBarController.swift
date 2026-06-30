@@ -1,4 +1,5 @@
 import AppKit
+import NoDonutsCore
 
 // Owner: krusty — menu-bar UI, status, pause, enroll, settings.
 // Backlog: ND-010, ND-022 (enroll UI), ND-035, ND-040, ND-043.
