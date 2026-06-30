@@ -38,6 +38,10 @@ nav:
       - "ADR-0002 — Face recognition engine": adr/0002-face-recognition-engine.md
       - "ADR-0003 — Camera-in-use policy": adr/0003-camera-in-use-policy.md
       - "ADR-0004 — App identity": adr/0004-app-identity.md
+      - "ADR-0005 — Presence loop concurrency": adr/0005-presence-loop-concurrency.md
       - "ADR-0005 — Docs site": adr/0005-docs-site.md
+      - "ADR-0006 — Screen-lock mechanism": adr/0006-screen-lock-mechanism.md
+      - "ADR-0007 — Package layout (testable core)": adr/0007-package-layout-testable-core.md
+      - "ADR-0008 — App packaging": adr/0008-app-packaging.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

@@ -3,7 +3,7 @@
 The single source of truth for planned work. Keep it current (see the `backlog` skill).
 
 **Status legend:** `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked
-**Owner** = the responsible sub-agent (see [CLAUDE.md](../CLAUDE.md) module ownership).
+**Owner** = the responsible sub-agent (see `CLAUDE.md` at the repo root for module ownership).
 
 ---
 
