@@ -1055,8 +1055,8 @@
 7. ND-030 — grace + consecutive-absent debounce — homer</p>
 <p><strong>P1 — correct &amp; professional-friendly (completes MVP):</strong>
 8. ND-013 — suspend loop when locked/asleep/inactive — blart
-9. ND-031 — camera-in-use detection ("in a meeting" signal) — blart
-10. ND-033 — assume-present when camera busy + no frames (ADR-0003) — homer
+9. ~~ND-031 — camera-in-use detection ("in a meeting" signal) — blart~~ ✅
+10. ~~ND-033 — assume-present when camera busy + no frames (ADR-0003), bounded — homer~~ ✅
 11. ND-017 — menu-bar indicator: present / away / in a meeting / can't-see-you — krusty
 12. ND-016 — LaunchAgent autostart at login — gordon</p>
 <p><strong>Deferred to post-MVP:</strong> M2 identity (ND-021/022/023/024 = v1.1, "recognize you specifically", EC-03), ND-032, ND-034, ND-035 (pause — worth doing soon for trust), M4 (ND-040–044), M5 distribution (ND-050–053; run dev-signed via Xcode for MVP, notarize later).</p>
@@ -1122,9 +1122,9 @@
 <h2 id="m3-presence-policy-professional-friendliness">M3 — Presence policy &amp; professional-friendliness<a class="headerlink" href="#m3-presence-policy-professional-friendliness" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[ ] ND-030 Grace period + consecutive-absent debounce — homer</li>
-<li>[ ] ND-031 Camera-in-use detection (another app holds the device) — blart</li>
-<li>[ ] ND-032 Attempt multi-client shared frames during a call — blart</li>
-<li>[ ] ND-033 Fallback "assume present" when busy + no frames (ADR-0003) — homer</li>
+<li>[x] ND-031 Camera-in-use detection (another app holds the device) — blart</li>
+<li>[ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.</li>
+<li>[x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by <code>maxCallAssumedPresentSeconds</code> (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer</li>
 <li>[ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum</li>
 <li>[ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer</li>
 <li>[ ] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — user-configurable allowlist of SSIDs where No Donuts does NOT lock — krusty (settings) + homer (gating). Note: reading the current SSID needs Location permission on modern macOS (CoreWLAN). — krusty + homer</li>

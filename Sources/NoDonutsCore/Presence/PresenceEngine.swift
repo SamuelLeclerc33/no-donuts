@@ -18,6 +18,9 @@ public final class PresenceEngine {
     private var consecutiveErrorTicks = 0
     private var absentSince: Date?
     private var lockAttempted = false
+    /// First tick of an unbroken busy-no-frames run; nil when not in such a run.
+    /// Bounds the ADR-0003 assume-present fail-open (see handleCameraBusy).
+    private var callAssumedSince: Date?
     public var isPaused = false
 
     public init(camera: CameraCapturing,
@@ -42,16 +45,18 @@ public final class PresenceEngine {
             // happens mid-absence can't trigger a grace-less false lock on
             // resume — the next absence episode must rebuild the full consensus.
             state = .suspended
-            resetAbsenceAccounting()
+            resetAbsenceAccounting()     // also ends any busy run (clears callAssumedSince)
             return
         case .unavailable:
             state = .cameraUnavailable   // EC-08: can't verify presence → honest status, do not lock
-            resetAbsenceAccounting()     // camera down → we genuinely don't know; clear absence accounting
+            resetAbsenceAccounting()     // camera down → we don't know; clears absence accounting + busy run
             return
         case .cameraBusyNoFrames:
-            // ADR-0003: a busy camera means the user is almost certainly in front of it.
-            markPresent(.callAssumedPresent)
+            // ADR-0003 (bounded): a busy camera means the user is almost certainly
+            // in front of it — but only assume so up to maxCallAssumedPresentSeconds.
+            handleCameraBusy(now: now)
         case .frame(let frame):
+            callAssumedSince = nil        // a real frame ends any busy run (ND-033)
             switch await recognizer.recognize(frame) {
             case .enrolledUserPresent:
                 markPresent(.present)
@@ -80,14 +85,47 @@ public final class PresenceEngine {
         resetAbsenceAccounting()    // a real reading clears the absence + error streaks
     }
 
+    /// ADR-0003 with a bounded fail-open (ND-033). A busy-no-frames camera almost
+    /// always means a call is in progress and the user is present, so we assume
+    /// present and never lock — but only for up to maxCallAssumedPresentSeconds of
+    /// CONTINUOUS busy ticks. Past that bound (a call app left running unattended),
+    /// we stop assuming present and escalate to absence so the normal grace→lock
+    /// path can eventually fire. callAssumedSince is reset only on non-busy
+    /// outcomes (handled in tick()), so the window persists across consecutive
+    /// busy ticks and the escalation sticks once it expires.
+    private func handleCameraBusy(now: Date) {
+        if callAssumedSince == nil { callAssumedSince = now }
+        if let since = callAssumedSince,
+           now.timeIntervalSince(since) >= config.maxCallAssumedPresentSeconds {
+            // Bounded fail-open expired: a call app left running unattended too long
+            // → stop assuming present, treat as absence so it can eventually lock.
+            markAbsent(now: now)
+        } else {
+            // ADR-0003: camera busy → user almost certainly in front of it.
+            // markPresent() sets the state and clears all accounting via
+            // resetAbsenceAccounting() — which now also clears callAssumedSince.
+            // We must restore it so the assume-present window stays OPEN across
+            // consecutive busy ticks (otherwise the cap would never accumulate
+            // and the bounded fail-open could never expire).
+            let preserved = callAssumedSince
+            markPresent(.callAssumedPresent)
+            callAssumedSince = preserved
+        }
+    }
+
     /// Clear all absence/error accounting back to a clean slate. Used on a real
     /// present reading, on camera unavailable/suspended, and on session suspend —
     /// so the next absence episode must rebuild the full consensus + grace.
+    /// Also ends any open busy/assume-present window (callAssumedSince): every
+    /// reset path is a definitive non-busy outcome (real reading, camera down,
+    /// or session suspend), so a stale window must not survive into the next
+    /// episode and immediately escalate (ND-033 lock-during-fresh-call bug).
     private func resetAbsenceAccounting() {
         consecutiveAbsentTicks = 0
         absentSince = nil
         lockAttempted = false
         consecutiveErrorTicks = 0
+        callAssumedSince = nil
     }
 
     /// Entry point the app calls when the OS session is suspended

@@ -942,12 +942,12 @@
 <p>When another app is using the camera:
 1. <strong>Attempt multi-client capture</strong> to obtain frames alongside the call app, and run normal recognition if we get them.
 2. If frames are <strong>not available</strong> while the camera is busy, <strong>assume the user is present</strong> and do <strong>not</strong> lock (a camera-in-use almost always means the user is in front of it).</p>
-<p>A future refinement may add a max-duration guard for "busy but no frames" to avoid an indefinitely-open session if a call app is left running unattended (tracked as an edge case).</p>
+<p>The fail-open is <strong>bounded by a max-duration guard</strong> (ND-033, implemented): after <code>maxCallAssumedPresentSeconds</code> of CONTINUOUS busy-no-frames (default 30 min, tunable via <code>Config</code>), the engine stops assuming present and escalates to absence, so a call app left running unattended can't keep the Mac unlocked indefinitely. Any non-busy outcome resets the window.</p>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Calls are never interrupted — the primary professional requirement.</li>
 <li>Best-effort accuracy: when multi-client frames are available we still verify identity during calls.</li>
-<li>Introduces a deliberate fail-open path (busy + no frames → present). Documented and bounded; revisit with a max-duration guard (EC-01, ND-033).</li>
+<li>Introduces a deliberate fail-open path (busy + no frames → present). Documented and bounded: the max-duration guard is now implemented (default 30 min, tunable via <code>Config.maxCallAssumedPresentSeconds</code>), so the fail-open can no longer hold the Mac unlocked forever (EC-01, ND-033).</li>
 <li>Requires validating macOS multi-client camera capture feasibility (ND-032, owner: blart).</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>

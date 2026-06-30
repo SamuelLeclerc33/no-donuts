@@ -877,8 +877,8 @@
 <tr>
 <td>EC-01</td>
 <td><strong>On a video call</strong> (another app holds camera)</td>
-<td>Try multi-client shared frames; if none, assume PRESENT and don't lock. See <a href="../adr/0003-camera-in-use-policy/">ADR-0003</a>.</td>
-<td>DECIDED</td>
+<td>Try multi-client shared frames; if none, assume PRESENT and don't lock — <strong>bounded</strong> by <code>maxCallAssumedPresentSeconds</code> (default 30 min). After that many CONTINUOUS busy-no-frames seconds the assume-present window expires and the engine escalates to absence, so a call app left running unattended eventually runs the normal grace→lock path instead of staying unlocked forever. The cap is NOT the wall-clock time-to-lock: once it expires the engine only <em>begins</em> counting absence, so the effective unlock ceiling is <code>maxCallAssumedPresentSeconds</code> + the absence consensus (<code>consecutiveAbsentTicksToLock</code> ticks) + <code>graceSeconds</code>. A genuinely long call with no obtainable frames WILL be locked at the cap — an accepted, bounded fail-open tradeoff (tunable). Any non-busy outcome (real present/absent frame, suspend, unavailable) resets the window — including the production <code>sessionSuspended()</code> lock/unlock path, so a fresh call after an unlock starts a clean window rather than re-escalating on a stale one. See <a href="../adr/0003-camera-in-use-policy/">ADR-0003</a>, ND-033.</td>
+<td>IMPLEMENTED</td>
 <td>blart/homer</td>
 </tr>
 <tr>

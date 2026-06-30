@@ -75,6 +75,96 @@ func runAll() async -> Bool {
         await e.tick(now: t0)
         c.expect(e.state == .callAssumedPresent && locker.lockCallCount == 0, "camera busy → assume present, no lock (ADR-0003)")
     }
+
+    // ND-033: bounded busy→assume-present. Continuous busy UNDER the cap keeps
+    // assuming present and never locks.
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.cameraBusyNoFrames), StubRecognizer(.noFace), locker, config)
+        // Several busy ticks, all within maxCallAssumedPresentSeconds of the first.
+        for i in 0..<5 {
+            await e.tick(now: t0.addingTimeInterval(Double(i) * config.tickIntervalSeconds))
+        }
+        // One more, still under the cap.
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds - 1))
+        c.expect(e.state == .callAssumedPresent && locker.lockCallCount == 0,
+                 "busy under cap → assume present, no lock (ND-033/ADR-0003)")
+    }
+
+    // ND-033: continuous busy PAST the cap escalates to absence and, with continued
+    // busy ticks + grace, locks exactly once (a call app left running unattended).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.cameraBusyNoFrames), StubRecognizer(.noFace), locker, config)
+        // First busy tick opens the assume-present window at t0.
+        await e.tick(now: t0)
+        // Drive consecutiveAbsentTicksToLock busy escalations, all past the cap so
+        // each calls markAbsent and advances the absence consensus by one.
+        let base = config.maxCallAssumedPresentSeconds
+        for i in 0..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(base + Double(i)))
+        }
+        // Final busy tick after grace elapses → lock fires once.
+        await e.tick(now: t0.addingTimeInterval(base + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1))
+        c.expect(e.state == .suspended && locker.lockCallCount == 1,
+                 "busy past cap → escalates to absence, locks once (ND-033)")
+    }
+
+    // ND-033: busy → a real present frame resets the window; a subsequent SHORT busy
+    // burst assumes present again (the window was cleared, not still expired).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.cameraBusyNoFrames)
+        let recognizer = StubRecognizer(.noFace)
+        let e = makeEngine(camera, recognizer, locker, config)
+        // Busy past the cap would escalate — but first establish a long busy run,
+        // then a real present frame that must reset callAssumedSince.
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds - 1)) // still under cap
+        // Real frame with enrolled user present → resets the busy window.
+        camera.outcome = .frame(CapturedFrame())
+        recognizer.result = .enrolledUserPresent(confidence: 1)
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds))
+        let presentAfterFrame = e.state == .present
+        // A short busy burst right after must assume present again (window reset).
+        camera.outcome = .cameraBusyNoFrames
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds + 1))
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds + 2))
+        c.expect(presentAfterFrame && e.state == .callAssumedPresent && locker.lockCallCount == 0,
+                 "busy → present frame resets window → short busy assumes present again (ND-033)")
+    }
+
+    // ND-033 regression: sessionSuspended() (the production lock/unlock path) must
+    // clear the busy/assume-present window. Otherwise, after the cap fires + the
+    // user unlocks + rejoins a call, the engine sees the STALE callAssumedSince and
+    // immediately re-escalates → locks during a FRESH call. Drive busy ticks under
+    // the cap, simulate a lock via sessionSuspended(), then drive busy ticks again
+    // only slightly later: the window must have been cleared, so we assume present
+    // again (no immediate over-cap escalation).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.cameraBusyNoFrames)
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config)
+        // Open the busy window and accumulate toward (but not past) the cap.
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds - 1)) // still under cap
+        let assumedBeforeSuspend = e.state == .callAssumedPresent && locker.lockCallCount == 0
+        // Simulate the OS session suspend (lock). Production path — must clear the
+        // busy window via resetAbsenceAccounting().
+        e.sessionSuspended()
+        // Resume + rejoin a call: busy ticks again, only slightly later than the
+        // OLD window's start. If callAssumedSince had survived, the stale elapsed
+        // time would exceed the cap and escalate → lock. It must NOT.
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds + 5))
+        await e.tick(now: t0.addingTimeInterval(config.maxCallAssumedPresentSeconds + 6))
+        c.expect(assumedBeforeSuspend && e.state == .callAssumedPresent && locker.lockCallCount == 0,
+                 "sessionSuspended() clears busy window → fresh call assumes present, no lock (ND-033)")
+    }
+
     do {
         let locker = SpyLocker(succeed: true)
         let e = makeEngine(StubCamera(.suspended), StubRecognizer(.noFace), locker)

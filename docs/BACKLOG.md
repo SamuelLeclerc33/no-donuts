@@ -22,8 +22,8 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 
 **P1 — correct & professional-friendly (completes MVP):**
 8. ND-013 — suspend loop when locked/asleep/inactive — blart
-9. ND-031 — camera-in-use detection ("in a meeting" signal) — blart
-10. ND-033 — assume-present when camera busy + no frames (ADR-0003) — homer
+9. ~~ND-031 — camera-in-use detection ("in a meeting" signal) — blart~~ ✅
+10. ~~ND-033 — assume-present when camera busy + no frames (ADR-0003), bounded — homer~~ ✅
 11. ND-017 — menu-bar indicator: present / away / in a meeting / can't-see-you — krusty
 12. ND-016 — LaunchAgent autostart at login — gordon
 
@@ -93,9 +93,9 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 ## M3 — Presence policy & professional-friendliness
 
 - [ ] ND-030 Grace period + consecutive-absent debounce — homer
-- [ ] ND-031 Camera-in-use detection (another app holds the device) — blart
-- [ ] ND-032 Attempt multi-client shared frames during a call — blart
-- [ ] ND-033 Fallback "assume present" when busy + no frames (ADR-0003) — homer
+- [x] ND-031 Camera-in-use detection (another app holds the device) — blart
+- [ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.
+- [x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by `maxCallAssumedPresentSeconds` (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer
 - [ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum
 - [ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer
 - [ ] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — user-configurable allowlist of SSIDs where No Donuts does NOT lock — krusty (settings) + homer (gating). Note: reading the current SSID needs Location permission on modern macOS (CoreWLAN). — krusty + homer

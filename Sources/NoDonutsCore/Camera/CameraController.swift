@@ -105,10 +105,27 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         if let buffer = await waitForFirstFrame(timeout: 1.5) {
             return .frame(CapturedFrame(pixelBuffer: buffer))
         }
+
+        // macOS camera is multi-client: during a call our session usually still gets
+        // frames (handled above → normal recognition). We only get here with NO frame.
+        // If another app holds the camera, treat it as a busy call → assume present
+        // (ADR-0003); otherwise it's genuinely unavailable.
+        //
+        // `isInUseByAnotherApplication` is the documented macOS "busy" signal. It's
+        // imperfect (timing-sensitive, not guaranteed exhaustive) — verify on-device.
+        // The bounded assume-present policy (e.g. a max-duration guard so we don't
+        // stay unlocked forever behind a stuck call) lives in the engine (homer), not
+        // here; this controller only reports the raw outcome.
+        if AVCaptureDevice.default(for: .video)?.isInUseByAnotherApplication == true {
+            return .cameraBusyNoFrames   // ND-031/ADR-0003: busy + no frames
+        }
         return .unavailable("no frame")
 
-        // TODO(blart): ND-031/ND-032 — detect when another app holds the camera and
-        //   attempt multi-client shared frames; on failure emit .cameraBusyNoFrames (ADR-0003).
+        // TODO(blart): ND-032 — explicit multi-client *shared* frame acquisition.
+        //   macOS shares the camera by default, so our persistent session normally
+        //   keeps receiving frames during a call (handled by the .frame path above).
+        //   This busy fallback only triggers when no frame is obtainable at all; an
+        //   explicit multi-client/shared-stream attempt before giving up is still TODO.
         // TODO(blart): ND-013 — detect screen locked / display asleep / inactive session -> .suspended.
     }
 

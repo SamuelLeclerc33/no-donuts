@@ -18,6 +18,17 @@ public struct Config: Codable, Equatable {
     /// absence — so a wedged recognizer still locks rather than holding unlocked
     /// forever (EC-10, no indefinite fail-open).
     public var maxConsecutiveErrorsBeforeAbsent: Int = 3
+    /// Bounds the busy→assume-present fail-open (ADR-0003) so a call app left
+    /// running unattended can't keep the Mac unlocked forever; after this many
+    /// continuous seconds of busy-no-frames the engine treats it as absence.
+    ///
+    /// NOTE: this cap is NOT the wall-clock time to lock. Once the cap expires the
+    /// engine merely begins counting absence, so the effective unlock ceiling is
+    /// `maxCallAssumedPresentSeconds` + the absence consensus
+    /// (`consecutiveAbsentTicksToLock` ticks, ~`* tickIntervalSeconds`) + `graceSeconds`.
+    /// A genuinely long call with no obtainable frames WILL be locked at the cap —
+    /// an accepted, bounded fail-open tradeoff (tune this value if needed).
+    public var maxCallAssumedPresentSeconds: Double = 1800
     /// Slow the tick on battery to save power (EC-18). TODO(blart/homer).
     public var throttleOnBattery: Bool = true
 
