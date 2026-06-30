@@ -7,7 +7,7 @@ import PackageDescription
 // See .claude/skills/build-run/SKILL.md and ADR-0001.
 let package = Package(
     name: "NoDonuts",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     targets: [
         .executableTarget(
             name: "NoDonuts",

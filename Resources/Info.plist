@@ -18,6 +18,6 @@
     <key>NSCameraUsageDescription</key>
     <string>No Donuts checks the camera on-device to confirm you're at your Mac and locks it when you step away. Images never leave your device.</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>15.0</string>
 </dict>
 </plist>
