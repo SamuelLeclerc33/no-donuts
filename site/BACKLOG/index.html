@@ -1068,20 +1068,26 @@
 - <strong>Lock-failed retry/backoff</strong> (homer): after <code>.lockFailed</code> the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff so it recovers if Accessibility is granted mid-absence.
 - <strong>Log subsystem constant</strong> (gordon/wiggum): extract the hardcoded <code>"com.nodonuts.app"</code> Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.</p>
 <p><strong>Camera follow-ups (from the ND-018/011/012 code review — MUST resolve fail-opens BEFORE ND-025 wires the real recognizer; currently masked by the always-present fake):</strong>
-- <strong>⚠️ Fail-open policy</strong> (homer/blart): <code>.unavailable</code> (no camera device / clamshell EC-07/EC-09, or persistent no-frame) → engine <code>.cameraUnavailable</code> → never locks. With the real recognizer this becomes a silent fail-open. Decide the EC-07/EC-09 fail policy (lean-secure vs don't-lock-out) and route persistent-no-frame through the ND-031 busy-camera path before ND-025.
+- <strong>✅ Fail-open policy (resolved at ND-020/025):</strong> <code>.unavailable</code> → <code>.cameraUnavailable</code>, don't lock + honest status (EC-07/08/09 DECIDED; notification → ND-045). Sustained recognition <code>.error</code> now escalates to absence after <code>maxConsecutiveErrorsBeforeAbsent</code> (EC-10, no indefinite hold). Persistent no-frame routing through the busy-camera path remains for ND-031.
 - <strong>Retained pixel buffer</strong> (blart): the delegate pins one <code>CVPixelBuffer</code> from the pool between ticks; deep-copy on read (or stop session between ticks) so it can't stall delivery — do when the frame is actually consumed (ND-020) / ND-042.
 - <strong>First-tick latency</strong> (blart): <code>waitForFirstFrame</code> can add ~1.5s to the first tick after permission; pre-warm at launch / shorten — ND-042.
 - <strong>Duty-cycle</strong> (blart/homer): even at ~1fps the persistent session runs continuously; consider stop-between-ticks for real power savings — ND-042.</p>
 </blockquote>
 <h2 id="m2-local-face-recognition-identity-post-mvp-v11">M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)<a class="headerlink" href="#m2-local-face-recognition-identity-post-mvp-v11" title="Permanent link">&para;</a></h2>
 <ul>
-<li>[ ] ND-020 Vision face detection in the capture path — cooper</li>
+<li>[x] ND-020 Vision face detection in the capture path — cooper (presence-only <code>FaceDetectionRecognizer</code>; any face = present)</li>
 <li>[ ] ND-021 Select + bundle a Core ML face-embedding model — cooper</li>
 <li>[ ] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty</li>
 <li>[ ] ND-023 Encrypted-at-rest embedding store (Keychain/encrypted file) — cooper</li>
 <li>[ ] ND-024 Cosine matching + threshold; tune defaults on real data — cooper</li>
-<li>[ ] ND-025 Wire recognizer into presence engine (replace fake) — homer</li>
+<li>[x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted)</li>
 </ul>
+<blockquote>
+<p><strong>Recognition follow-ups (from the ND-020/025 code review):</strong>
+- <strong>Camera orientation</strong> (cooper): <code>FaceDetectionRecognizer</code> hardcodes Vision orientation <code>.up</code>; front-camera buffers may not be upright → could miss a present face → false lock. Verify on-device; thread the real orientation through <code>CapturedFrame</code> if needed.
+- <strong>Confidence semantics</strong> (cooper): presence-only <code>.enrolledUserPresent(confidence:)</code> carries <em>detection</em> confidence, not identity-match score — replace with the cosine score at ND-024 (engine currently ignores the value).
+- <strong>Two recognizer classes</strong> (cooper): <code>FaceDetectionRecognizer</code> (presence-only) vs the <code>VisionCoreMLRecognizer</code> stub (identity) overlap on detection; merge or layer when identity lands (ND-021/024).</p>
+</blockquote>
 <h2 id="m3-presence-policy-professional-friendliness">M3 — Presence policy &amp; professional-friendliness<a class="headerlink" href="#m3-presence-policy-professional-friendliness" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[ ] ND-030 Grace period + consecutive-absent debounce — homer</li>
@@ -1090,6 +1096,7 @@
 <li>[ ] ND-033 Fallback "assume present" when busy + no frames (ADR-0003) — homer</li>
 <li>[ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum</li>
 <li>[ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer</li>
+<li>[ ] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — user-configurable allowlist of SSIDs where No Donuts does NOT lock — krusty (settings) + homer (gating). Note: reading the current SSID needs Location permission on modern macOS (CoreWLAN). — krusty + homer</li>
 </ul>
 <h2 id="m4-settings-polish-anti-spoofing">M4 — Settings, polish, anti-spoofing<a class="headerlink" href="#m4-settings-polish-anti-spoofing" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1098,6 +1105,7 @@
 <li>[ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer</li>
 <li>[ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty</li>
 <li>[ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon</li>
+<li>[ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty</li>
 </ul>
 <h2 id="m5-distribution">M5 — Distribution<a class="headerlink" href="#m5-distribution" title="Permanent link">&para;</a></h2>
 <ul>

@@ -11,6 +11,7 @@ A macOS menu-bar app that periodically verifies — **fully on-device** — that
 ## Core principles
 
 - **Local-only face recognition.** All detection and matching runs on-device via Apple's Vision framework + a Core ML embedding model. No images leave the machine. No API calls, no per-frame token cost.
+- **No recording, ever.** No Donuts never records, saves, or shares video or images. Frames are sampled transiently for on-device presence detection and discarded immediately — nothing is written to disk or sent anywhere. See [`docs/SECURITY_PRIVACY.md`](docs/SECURITY_PRIVACY.md#no-recording-guarantee).
 - **Professional-friendly.** A video call should never get interrupted by an unexpected lock. See [ADR-0003](docs/adr/0003-camera-in-use-policy.md).
 - **Fail safe, not fail open — but configurable.** When uncertain, the default leans toward locking (security), with explicit grace periods and overrides to avoid annoyance.
 - **User in control.** Menu-bar status, pause, enroll/re-enroll, and tunable sensitivity.

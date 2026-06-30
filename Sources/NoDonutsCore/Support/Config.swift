@@ -9,8 +9,15 @@ public struct Config: Codable, Equatable {
     public var graceSeconds: Double = 25
     /// Cosine-similarity threshold for an embedding to count as the enrolled user.
     public var matchThreshold: Double = 0.6
-    /// Consecutive ABSENT ticks required to begin the grace countdown (debounce).
-    public var consecutiveAbsentTicksToLock: Int = 2
+    /// Consecutive no-face/stranger ticks required to begin the grace countdown
+    /// (the absence "consensus"). Debounces single-frame glitches: a lone bad
+    /// reading can't start the lock clock; it takes 3 in a row.
+    public var consecutiveAbsentTicksToLock: Int = 3
+    /// A transient recognition error is held (presence unchanged), but after this
+    /// many CONSECUTIVE errors the engine escalates to treating the tick as
+    /// absence — so a wedged recognizer still locks rather than holding unlocked
+    /// forever (EC-10, no indefinite fail-open).
+    public var maxConsecutiveErrorsBeforeAbsent: Int = 3
     /// Slow the tick on battery to save power (EC-18). TODO(blart/homer).
     public var throttleOnBattery: Bool = true
 

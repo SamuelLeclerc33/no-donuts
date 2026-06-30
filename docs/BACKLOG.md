@@ -67,19 +67,24 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 > - **Log subsystem constant** (gordon/wiggum): extract the hardcoded `"com.nodonuts.app"` Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.
 
 > **Camera follow-ups (from the ND-018/011/012 code review — MUST resolve fail-opens BEFORE ND-025 wires the real recognizer; currently masked by the always-present fake):**
-> - **⚠️ Fail-open policy** (homer/blart): `.unavailable` (no camera device / clamshell EC-07/EC-09, or persistent no-frame) → engine `.cameraUnavailable` → never locks. With the real recognizer this becomes a silent fail-open. Decide the EC-07/EC-09 fail policy (lean-secure vs don't-lock-out) and route persistent-no-frame through the ND-031 busy-camera path before ND-025.
+> - **✅ Fail-open policy (resolved at ND-020/025):** `.unavailable` → `.cameraUnavailable`, don't lock + honest status (EC-07/08/09 DECIDED; notification → ND-045). Sustained recognition `.error` now escalates to absence after `maxConsecutiveErrorsBeforeAbsent` (EC-10, no indefinite hold). Persistent no-frame routing through the busy-camera path remains for ND-031.
 > - **Retained pixel buffer** (blart): the delegate pins one `CVPixelBuffer` from the pool between ticks; deep-copy on read (or stop session between ticks) so it can't stall delivery — do when the frame is actually consumed (ND-020) / ND-042.
 > - **First-tick latency** (blart): `waitForFirstFrame` can add ~1.5s to the first tick after permission; pre-warm at launch / shorten — ND-042.
 > - **Duty-cycle** (blart/homer): even at ~1fps the persistent session runs continuously; consider stop-between-ticks for real power savings — ND-042.
 
 ## M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
 
-- [ ] ND-020 Vision face detection in the capture path — cooper
+- [x] ND-020 Vision face detection in the capture path — cooper (presence-only `FaceDetectionRecognizer`; any face = present)
 - [ ] ND-021 Select + bundle a Core ML face-embedding model — cooper
 - [ ] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty
 - [ ] ND-023 Encrypted-at-rest embedding store (Keychain/encrypted file) — cooper
 - [ ] ND-024 Cosine matching + threshold; tune defaults on real data — cooper
-- [ ] ND-025 Wire recognizer into presence engine (replace fake) — homer
+- [x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted)
+
+> **Recognition follow-ups (from the ND-020/025 code review):**
+> - **Camera orientation** (cooper): `FaceDetectionRecognizer` hardcodes Vision orientation `.up`; front-camera buffers may not be upright → could miss a present face → false lock. Verify on-device; thread the real orientation through `CapturedFrame` if needed.
+> - **Confidence semantics** (cooper): presence-only `.enrolledUserPresent(confidence:)` carries *detection* confidence, not identity-match score — replace with the cosine score at ND-024 (engine currently ignores the value).
+> - **Two recognizer classes** (cooper): `FaceDetectionRecognizer` (presence-only) vs the `VisionCoreMLRecognizer` stub (identity) overlap on detection; merge or layer when identity lands (ND-021/024).
 
 ## M3 — Presence policy & professional-friendliness
 
@@ -89,6 +94,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-033 Fallback "assume present" when busy + no frames (ADR-0003) — homer
 - [ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum
 - [ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer
+- [ ] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — user-configurable allowlist of SSIDs where No Donuts does NOT lock — krusty (settings) + homer (gating). Note: reading the current SSID needs Location permission on modern macOS (CoreWLAN). — krusty + homer
 
 ## M4 — Settings, polish, anti-spoofing
 
@@ -97,6 +103,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer
 - [ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty
 - [ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon
+- [ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty
 
 ## M5 — Distribution
 

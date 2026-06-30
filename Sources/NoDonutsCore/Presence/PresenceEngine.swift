@@ -15,6 +15,7 @@ public final class PresenceEngine {
 
     public private(set) var state: PresenceState = .unknown
     private var consecutiveAbsentTicks = 0
+    private var consecutiveErrorTicks = 0
     private var absentSince: Date?
     private var lockAttempted = false
     public var isPaused = false
@@ -54,8 +55,19 @@ public final class PresenceEngine {
             case .strangerOnly, .noFace:
                 markAbsent(now: now)            // stranger never counts as present (EC-03)
             case .error:
-                // TODO(homer): EC-10 — don't reset absence on error; count conservatively.
-                break
+                // EC-10 conservative HOLD (bounded): a transient Vision error
+                // neither advances nor resets the absence consensus — we do NOT
+                // call markAbsent (lock-storm on a glitchy frame) nor markPresent
+                // (false-unlock). But the hold is bounded: a wedged recognizer
+                // that keeps erroring must not hold unlocked forever (no
+                // indefinite fail-open).
+                consecutiveErrorTicks += 1
+                if consecutiveErrorTicks >= config.maxConsecutiveErrorsBeforeAbsent {
+                    // Sustained recognizer failure: stop holding unlocked — treat as absence
+                    // so the normal grace→lock path runs (EC-10, no indefinite fail-open).
+                    markAbsent(now: now)
+                }
+                // else: transient glitch → conservative hold (presence + absence counters untouched).
             }
         }
     }
@@ -63,6 +75,7 @@ public final class PresenceEngine {
     private func markPresent(_ newState: PresenceState) {
         state = newState
         consecutiveAbsentTicks = 0
+        consecutiveErrorTicks = 0    // a real reading clears the error streak
         absentSince = nil
         lockAttempted = false
     }
@@ -81,6 +94,7 @@ public final class PresenceEngine {
     }
 
     private func markAbsent(now: Date) {
+        consecutiveErrorTicks = 0    // a real (or escalated) reading clears the error streak
         consecutiveAbsentTicks += 1
         if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return }
         if absentSince == nil { absentSince = now }

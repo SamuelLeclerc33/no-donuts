@@ -863,9 +863,9 @@
 <tr>
 <td>EC-03</td>
 <td><strong>Stranger sits down, enrolled user absent</strong></td>
-<td>Treat as ABSENT → lock after grace. A non-matching face must NOT count as present.</td>
-<td>DECIDED</td>
-<td>homer/wiggum</td>
+<td><strong>Presence-only MVP (ND-020/025):</strong> detection has no identity, so ANY detected face counts as present — a stranger keeps the Mac unlocked. The strict policy (stranger = ABSENT → lock after grace; a non-matching face must NOT count as present) returns with identity matching in v1.1.</td>
+<td>DECIDED (strict behavior deferred to identity)</td>
+<td>homer/wiggum/cooper</td>
 </tr>
 <tr>
 <td>EC-04</td>
@@ -891,29 +891,29 @@
 <tr>
 <td>EC-07</td>
 <td><strong>External monitor, lid closed (clamshell)</strong></td>
-<td>Built-in camera unavailable. Behavior when no camera? (Assume present? Disable? Use external cam?) <strong>Interim:</strong> <code>.unavailable</code> → <code>cameraUnavailable</code>, no lock (fail-open — masked by the fake recognizer). <strong>MUST decide before ND-025</strong> (see Camera follow-ups).</td>
-<td>OPEN</td>
-<td>blart</td>
+<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A periodic "can't see you" notification is tracked as ND-045.</td>
+<td>DECIDED</td>
+<td>blart/homer</td>
 </tr>
 <tr>
 <td>EC-08</td>
 <td><strong>Camera permission denied / restricted (MDM)</strong></td>
-<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX.</td>
+<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX; periodic "can't see you" notification tracked as ND-045.</td>
 <td>DECIDED</td>
 <td>blart/homer/krusty</td>
 </tr>
 <tr>
 <td>EC-09</td>
 <td><strong>No camera at all / camera hardware error</strong></td>
-<td>Define fail policy (don't hard-lock the user out repeatedly). <strong>Interim:</strong> <code>.unavailable</code> → <code>cameraUnavailable</code>, no lock (fail-open — masked by the fake recognizer). <strong>MUST decide before ND-025</strong> (see Camera follow-ups).</td>
-<td>OPEN</td>
+<td>Same policy as EC-07/EC-08: <code>.unavailable</code> → <code>cameraUnavailable</code>, do NOT lock (never hard-lock the user out when we can't see). Honest visible status; periodic "can't see you" notification tracked as ND-045.</td>
+<td>DECIDED</td>
 <td>blart/homer</td>
 </tr>
 <tr>
 <td>EC-10</td>
 <td><strong>Recognition error / model timeout on a tick</strong></td>
-<td>Don't reset absence timer on error; count conservatively. Avoid lock-storms.</td>
-<td>OPEN</td>
+<td>Conservative HOLD (bounded): a transient <code>.error</code> tick neither advances nor resets the absence consensus — no markAbsent (no lock-storm) and no markPresent (no false-unlock); state + counters left untouched until the next clean reading. The 3-tick absence consensus (<code>consecutiveAbsentTicksToLock</code>) further damps single-frame glitches. <strong>The hold is bounded:</strong> after <code>maxConsecutiveErrorsBeforeAbsent</code> (default 3) CONSECUTIVE errors the engine escalates — it treats the tick as absence (markAbsent), so a wedged recognizer runs the normal grace→lock path and locks rather than holding unlocked forever (no indefinite fail-open). Any clean reading resets the error streak.</td>
+<td>DECIDED</td>
 <td>homer</td>
 </tr>
 <tr>
@@ -954,9 +954,9 @@
 <tr>
 <td>EC-16</td>
 <td><strong>Privacy/cover over camera (physical shutter)</strong></td>
-<td>Equivalent to "no face" → behaves like absent; consider distinct status.</td>
-<td>OPEN</td>
-<td>blart</td>
+<td>Expected: a covered lens yields a dark frame → Vision returns no faces → <code>noFace</code> → counts toward the absence consensus → ABSENT → locks after grace; pending on-device verification. (A distinct "covered" status remains a nice-to-have.)</td>
+<td>DECIDED</td>
+<td>blart/homer</td>
 </tr>
 <tr>
 <td>EC-17</td>

@@ -22,11 +22,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.menuBar = menuBar
 
         let config = Config()
-        // Wiring: real camera (ND-012) + fake recognizer (ND-020/025 pending).
+        // Wiring: real camera (ND-012) + presence-only Vision detector (ND-020).
         let camera = CameraController()
         let engine = PresenceEngine(
             camera: camera,
-            recognizer: AlwaysPresentRecognizer(),
+            recognizer: FaceDetectionRecognizer(),
             locker: locker,
             config: config
         )

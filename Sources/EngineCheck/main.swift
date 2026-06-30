@@ -132,6 +132,61 @@ func runAll() async -> Bool {
         c.expect(locker.lockCallCount == 1 && e.state == .lockFailed, "failed lock attempted once per episode (no storm)")
     }
 
+    // Recognition error → conservative HOLD (EC-10)
+    do {
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker)
+        await e.tick(now: t0)                       // establish .present
+        recognizer.result = .error("vision glitch")
+        await e.tick(now: t0.addingTimeInterval(1))  // error tick must not change state
+        c.expect(e.state == .present && locker.lockCallCount == 0, "recognition error from present → holds .present, no lock (EC-10)")
+    }
+
+    // Error mid-absence preserves absence progress (neither resets nor advances consensus).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.noFace)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        // 1 absent tick (below consensus).
+        await e.tick(now: t0)
+        // One transient error tick: must not reset or advance the absence consensus.
+        recognizer.result = .error("vision glitch")
+        await e.tick(now: t0.addingTimeInterval(1))
+        // Resume no-face ticks + time; absence must still reach grace and lock once.
+        recognizer.result = .noFace
+        for i in 1..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(Double(i) + 1))
+        }
+        await e.tick(now: t0.addingTimeInterval(Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 2))
+        c.expect(e.state == .suspended && locker.lockCallCount == 1, "error mid-absence preserves progress → still locks once (EC-10)")
+    }
+
+    // Sustained error from present escalates to absence → lock (bounded hold, no fail-open).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        await e.tick(now: t0)                       // establish .present
+        recognizer.result = .error("wedged recognizer")
+        // Drive consecutive error ticks. Each escalation (every Nth error, where
+        // N = maxConsecutiveErrorsBeforeAbsent) calls markAbsent — which resets the
+        // error streak and advances the absence consensus by one. So reaching the
+        // absence consensus takes maxConsecutiveErrorsBeforeAbsent escalations, i.e.
+        // maxConsecutiveErrorsBeforeAbsent * consecutiveAbsentTicksToLock error ticks.
+        // Then let grace elapse to actually lock.
+        let errorTicks = config.maxConsecutiveErrorsBeforeAbsent * config.consecutiveAbsentTicksToLock
+        for i in 0..<errorTicks {
+            await e.tick(now: t0.addingTimeInterval(Double(i) + 1))
+        }
+        // A clean no-face reading after grace elapses drives the grace→lock path.
+        recognizer.result = .noFace
+        await e.tick(now: t0.addingTimeInterval(Double(errorTicks) + config.graceSeconds + 2))
+        c.expect(e.state == .suspended && locker.lockCallCount == 1, "sustained error escalates to absence → locks once (EC-10, no fail-open)")
+    }
+
     // Recovery
     do {
         let config = Config()

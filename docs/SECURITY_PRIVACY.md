@@ -2,6 +2,10 @@
 
 Privacy is a hard product requirement, not a feature. The whole point of local recognition is that **your face never leaves your Mac.**
 
+## No-recording guarantee
+
+**No Donuts does not record, save, or share any video or images — ever.** While the app is running it samples individual camera frames only to answer one question on-device — "is a face in front of the screen right now?" — and each frame is discarded from memory immediately after that check. No frame is written to disk, kept in a buffer beyond the moment of analysis, uploaded, or sent over any network. There is no recording feature, no screenshot, no cloud, and no telemetry of image data. The macOS camera indicator light stays on the entire time the app is monitoring, so camera use is always visible and honest.
+
 ## Privacy principles
 
 1. **On-device only.** Detection, embedding, and matching run locally (Vision + Core ML). There are **no network code paths** in the recognition or presence flow.
