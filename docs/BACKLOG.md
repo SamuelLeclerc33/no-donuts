@@ -7,6 +7,30 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 
 ---
 
+## 🎯 MVP plan — current focus
+
+**MVP goal:** lock the Mac when no face is at it, **never lock during a video call**, show a live menu-bar indicator (present / away / in a meeting), start at login — all on-device. **Recognition is presence-only** ("any face = present"); recognizing *you specifically* (identity) is deferred to v1.1.
+
+**P0 — prove the core loop end-to-end (demoable lock):**
+1. ND-018 — runnable `.app` w/ camera entitlement (**prerequisite**; gates all P0 testing) — gordon
+2. ND-014 — reliable programmatic screen lock (**highest risk, start first**) — wiggum
+3. ND-011 — camera permission + denied/restricted — blart
+4. ND-012 — single-frame capture per tick — blart
+5. ND-020 — Vision face detection → presence-only recognizer — cooper
+6. ND-025 — wire detection recognizer into engine, drop the fake — homer
+7. ND-030 — grace + consecutive-absent debounce — homer
+
+**P1 — correct & professional-friendly (completes MVP):**
+8. ND-013 — suspend loop when locked/asleep/inactive — blart
+9. ND-031 — camera-in-use detection ("in a meeting" signal) — blart
+10. ND-033 — assume-present when camera busy + no frames (ADR-0003) — homer
+11. ND-017 — menu-bar indicator: present / away / in a meeting / can't-see-you — krusty
+12. ND-016 — LaunchAgent autostart at login — gordon
+
+**Deferred to post-MVP:** M2 identity (ND-021/022/023/024 = v1.1, "recognize you specifically", EC-03), ND-032, ND-034, ND-035 (pause — worth doing soon for trust), M4 (ND-040–044), M5 distribution (ND-050–053; run dev-signed via Xcode for MVP, notarize later).
+
+---
+
 ## M0 — Scaffolding ✅ (current)
 
 - [x] ND-001 Documentation: README, PRD, Architecture, Security/Privacy — gordon
@@ -26,6 +50,8 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
 - [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
 - [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
+- [ ] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty
+- [ ] ND-018 Runnable `.app` bundle with camera entitlement (Xcode target / packaging; SPM exe can't get entitlements) — gordon
 
 > **Review follow-ups (from the ND-010/015 code review, deferred to their owning items):**
 > - **ND-011** (blart): on `.unavailable` the engine returns without updating state, so the menu shows stale "present" — fix honest-status display + EC-08/09 fail policy. Also: the loop's first tick fires immediately at launch → real camera permission prompt would pop on every login; consider delaying the first real capture.
@@ -33,7 +59,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 > - **ND-025** (homer): remove/`#if DEBUG`-fence `AlwaysPresent*` fakes so they can't ship in a release binary and silently defeat locking.
 > - **ND-042** (blart/homer): loop period = work + `Task.sleep` (drifts longer than `tickIntervalSeconds`); and `loopTask` cancellation interrupts only the sleep, not an in-flight `capture()`/`recognize()` — make the real async calls cancellation-aware.
 
-## M2 — Local face recognition
+## M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
 
 - [ ] ND-020 Vision face detection in the capture path — cooper
 - [ ] ND-021 Select + bundle a Core ML face-embedding model — cooper
