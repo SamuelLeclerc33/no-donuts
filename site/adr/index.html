@@ -897,10 +897,11 @@
 <li><a href="0004-app-identity/">ADR-0004</a> — App identity: bundle id, name, minimum macOS — <strong>Accepted</strong></li>
 <li><a href="0005-presence-loop-concurrency/">ADR-0005</a> — Presence loop concurrency: main-actor-driven loop — <strong>Accepted</strong></li>
 <li><a href="0005-docs-site/">ADR-0005</a> — Documentation website: MkDocs + Material, offline, committed — <strong>Accepted</strong> ⚠️ duplicate number (see ND-019)</li>
-<li><a href="0006-screen-lock-mechanism/">ADR-0006</a> — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — <strong>Accepted</strong></li>
+<li><a href="0006-screen-lock-mechanism/">ADR-0006</a> — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — <strong>Superseded by ADR-0010</strong></li>
 <li><a href="0007-package-layout-testable-core/">ADR-0007</a> — Package layout: testable core library + framework-free checks — <strong>Accepted</strong></li>
 <li><a href="0008-app-packaging/">ADR-0008</a> — Local app packaging: SPM build + bundling script (ad-hoc signed) — <strong>Accepted</strong></li>
 <li><a href="0009-session-suspend/">ADR-0009</a> — Suspend the presence loop + camera while locked/asleep/inactive — <strong>Accepted</strong></li>
+<li><a href="0010-screen-lock-no-accessibility/">ADR-0010</a> — Screen-lock mechanism: layered no-Accessibility lock (SACLockScreenImmediate → CGSession -suspend), CGSession-verified, async — <strong>Accepted</strong></li>
 </ul>
 <h2 id="template">Template<a class="headerlink" href="#template" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="gh"># ADR-NNNN — &lt;title&gt;</span>

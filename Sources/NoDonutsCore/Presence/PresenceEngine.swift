@@ -18,6 +18,12 @@ public final class PresenceEngine {
     private var consecutiveErrorTicks = 0
     private var absentSince: Date?
     private var lockAttempted = false
+    /// True while an async `locker.lock()` is in flight. Prevents a manual
+    /// `lockNow()` and the auto tick loop (or two of either) from running two
+    /// overlapping `locker.lock()` calls that would clobber `state`/accounting.
+    /// Safe as a plain flag because the engine is `@MainActor`: it's read/written
+    /// atomically between suspension points.
+    private var isLocking = false
     /// First tick of an unbroken busy-no-frames run; nil when not in such a run.
     /// Bounds the ADR-0003 assume-present fail-open (see handleCameraBusy).
     private var callAssumedSince: Date?
@@ -54,14 +60,14 @@ public final class PresenceEngine {
         case .cameraBusyNoFrames:
             // ADR-0003 (bounded): a busy camera means the user is almost certainly
             // in front of it — but only assume so up to maxCallAssumedPresentSeconds.
-            handleCameraBusy(now: now)
+            await handleCameraBusy(now: now)
         case .frame(let frame):
             callAssumedSince = nil        // a real frame ends any busy run (ND-033)
             switch await recognizer.recognize(frame) {
             case .enrolledUserPresent:
                 markPresent(.present)
             case .strangerOnly, .noFace:
-                markAbsent(now: now)            // stranger never counts as present (EC-03)
+                await markAbsent(now: now)            // stranger never counts as present (EC-03)
             case .error:
                 // EC-10 conservative HOLD (bounded): a transient Vision error
                 // neither advances nor resets the absence consensus — we do NOT
@@ -73,7 +79,7 @@ public final class PresenceEngine {
                 if consecutiveErrorTicks >= config.maxConsecutiveErrorsBeforeAbsent {
                     // Sustained recognizer failure: stop holding unlocked — treat as absence
                     // so the normal grace→lock path runs (EC-10, no indefinite fail-open).
-                    markAbsent(now: now)
+                    await markAbsent(now: now)
                 }
                 // else: transient glitch → conservative hold (presence + absence counters untouched).
             }
@@ -93,13 +99,13 @@ public final class PresenceEngine {
     /// path can eventually fire. callAssumedSince is reset only on non-busy
     /// outcomes (handled in tick()), so the window persists across consecutive
     /// busy ticks and the escalation sticks once it expires.
-    private func handleCameraBusy(now: Date) {
+    private func handleCameraBusy(now: Date) async {
         if callAssumedSince == nil { callAssumedSince = now }
         if let since = callAssumedSince,
            now.timeIntervalSince(since) >= config.maxCallAssumedPresentSeconds {
             // Bounded fail-open expired: a call app left running unattended too long
             // → stop assuming present, treat as absence so it can eventually lock.
-            markAbsent(now: now)
+            await markAbsent(now: now)
         } else {
             // ADR-0003: camera busy → user almost certainly in front of it.
             // markPresent() sets the state and clears all accounting via
@@ -140,8 +146,11 @@ public final class PresenceEngine {
     }
 
     @discardableResult
-    private func attemptLock() -> Bool {
-        if locker.lock() {
+    private func attemptLock() async -> Bool {
+        if isLocking { return false }   // a lock attempt is already in flight (async) — skip; don't double-fire or clobber state (NOT a failure, so leave state untouched)
+        isLocking = true
+        defer { isLocking = false }
+        if await locker.lock() {
             state = .suspended
             consecutiveAbsentTicks = 0   // reset stale absence accounting on successful lock
             absentSince = nil
@@ -152,7 +161,7 @@ public final class PresenceEngine {
         }
     }
 
-    private func markAbsent(now: Date) {
+    private func markAbsent(now: Date) async {
         consecutiveErrorTicks = 0    // a real (or escalated) reading clears the error streak
         consecutiveAbsentTicks += 1
         if lockAttempted {
@@ -173,10 +182,10 @@ public final class PresenceEngine {
         if absentSince == nil { absentSince = now }
         if let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds {
             lockAttempted = true
-            attemptLock()
+            await attemptLock()
         }
     }
 
     /// Manual lock trigger (menu "Lock now"). Updates state honestly via attemptLock().
-    public func lockNow() { attemptLock() }
+    public func lockNow() async { await attemptLock() }
 }

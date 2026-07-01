@@ -19,9 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let menuBar = MenuBarController(onLockNow: { [weak self] in
-            guard let self, let engine = self.engine, let menuBar = self.menuBar else { return }
-            engine.lockNow()
-            menuBar.render(state: engine.state)
+            Task { @MainActor in
+                guard let self, let engine = self.engine, let menuBar = self.menuBar else { return }
+                await engine.lockNow()
+                menuBar.render(state: engine.state)
+            }
         })
         self.menuBar = menuBar
 
@@ -48,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if active {
                 self.camera?.resume()
                 self.startLoop()
+                // Defer priming to the first active transition when launched
+                // while locked, so the explainer precedes the camera prompt.
+                self.primeIfActive()
             } else {
                 self.stopLoop()
                 self.camera?.suspend()
@@ -57,11 +62,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         monitor.start()
 
-        // Trigger the camera permission prompt once at launch so it never blocks a
-        // presence tick — unconditionally, so a launch-while-locked start still
-        // prompts (rather than only when the session happens to be active).
-        Task { await camera.requestAccessIfNeeded() }
-
         if monitor.isActive {
             startLoop()
         } else {
@@ -70,6 +70,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             engine.sessionSuspended()   // reset absence accounting in production (EC-02/EC-13)
             menuBar.render(state: engine.state)
         }
+
+        // Prime permissions once we're active. Self-guards on isActive, so a
+        // launch-while-locked start defers priming to the first unlock/active
+        // transition — guaranteeing the explainer always precedes the OS camera
+        // prompt (never a bare dialog). See monitor.onChange active branch.
+        primeIfActive()
+    }
+
+    /// Show the one-time camera explainer (if not yet shown) and then trigger the
+    /// OS camera-permission prompt — explainer first, always. Self-guards on
+    /// `isActive` so nothing prompts while locked/asleep. Idempotent: safe to call
+    /// on every active transition — the explainer shows at most once (gated by
+    /// `hasPrimedPermissions`) and `requestAccessIfNeeded()` only prompts when the
+    /// camera authorization is still not-determined.
+    private func primeIfActive() {
+        guard let monitor = sessionMonitor, monitor.isActive, let camera = self.camera else { return }
+        if !Permissions.hasPrimedPermissions {
+            Permissions.hasPrimedPermissions = true
+            // One-time camera-only explainer, shown *before* the OS camera prompt.
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "Enable No Donuts"
+            alert.informativeText = "No Donuts uses your camera to check you're at your Mac and locks the screen when you step away — all on-device, nothing is recorded."
+            alert.addButton(withTitle: "Continue")
+            alert.runModal()
+        }
+        Task { await camera.requestAccessIfNeeded() }   // idempotent; only prompts if not-yet-determined
     }
 
     /// Start the presence loop if it isn't already running. A single cancellable

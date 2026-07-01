@@ -1090,11 +1090,14 @@
 - <strong>ND-014</strong> (wiggum): <code>PresenceEngine</code> is now <code>@MainActor</code>, so a synchronous <code>ScreenLocker.lock()</code> would block the UI at lock time — run the real lock off the main actor (ADR-0005).
 - <strong>ND-025</strong> (homer): remove/<code>#if DEBUG</code>-fence <code>AlwaysPresent*</code> fakes so they can't ship in a release binary and silently defeat locking.
 - <strong>ND-042</strong> (blart/homer): loop period = work + <code>Task.sleep</code> (drifts longer than <code>tickIntervalSeconds</code>); and <code>loopTask</code> cancellation interrupts only the sleep, not an in-flight <code>capture()</code>/<code>recognize()</code> — make the real async calls cancellation-aware.</p>
-<p><strong>Lock follow-ups (from the ND-014 code review — accepted weaker guarantee for MVP):</strong>
-- <strong>Verified lock state</strong> (wiggum): osascript exit 0 ≠ screen locked (undetectable fail-open if Ctrl-Cmd-Q remapped/disabled). Confirm the real lock via <code>CGSessionCopyCurrentDictionary()</code> <code>CGSSessionScreenIsLocked</code> so <code>lock()</code> is honest regardless of mechanism.
-- <strong>Non-blocking lock</strong> (wiggum/homer): <code>lock()</code> runs <code>waitUntilExit()</code> on the <code>@MainActor</code> path; make it async so a hung <code>osascript</code> can't beachball the UI (pairs with the CGSession work).
-- <strong>Lock-failed retry/backoff</strong> (homer): after <code>.lockFailed</code> the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff so it recovers if Accessibility is granted mid-absence.
-- <strong>Log subsystem constant</strong> (gordon/wiggum): extract the hardcoded <code>"com.nodonuts.app"</code> Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.</p>
+<p><strong>Lock follow-ups:</strong>
+- ✅ <strong>Verified lock state</strong> — resolved: lock is CGSession-verified (ADR-0010).
+- ✅ <strong>Non-blocking lock</strong> — resolved: <code>lock()</code> is async; verify poll uses <code>Task.sleep</code> + shared ~3s deadline (ND-048; osascript/<code>waitUntilExit</code> mechanism replaced by SAC/CGSession, ADR-0010).
+- ✅ <strong>No-Accessibility mechanism</strong> — resolved: SACLockScreenImmediate → CGSession -suspend (ADR-0010, supersedes 0006); Accessibility no longer needed.
+- <strong>Lock-failed retry/backoff</strong> (homer): after <code>.lockFailed</code> the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff.
+- <strong>Log subsystem constant</strong> (gordon/wiggum): extract the hardcoded <code>"com.nodonuts.app"</code> Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.
+- <strong>Dedupe CGSession lock-detection</strong> (wiggum/homer): <code>ScreenLocker.isScreenLockedNow()</code> and <code>SessionStateMonitor.currentlyActive()</code> both read <code>CGSessionCopyCurrentDictionary()</code> (locked/on-console) — extract one AppKit-free NoDonutsCore helper so they can't drift.
+- <strong>First-run explainer non-blocking</strong> (krusty): <code>NSAlert.runModal()</code> briefly starves the main-actor loop; make the one-time explainer non-blocking (only bites first-run before camera permission, so low impact).</p>
 <p><strong>Camera follow-ups (from the ND-018/011/012 code review — MUST resolve fail-opens BEFORE ND-025 wires the real recognizer; currently masked by the always-present fake):</strong>
 - <strong>✅ Fail-open policy (resolved at ND-020/025):</strong> <code>.unavailable</code> → <code>.cameraUnavailable</code>, don't lock + honest status (EC-07/08/09 DECIDED; notification → ND-045). Sustained recognition <code>.error</code> now escalates to absence after <code>maxConsecutiveErrorsBeforeAbsent</code> (EC-10, no indefinite hold). Persistent no-frame routing through the busy-camera path remains for ND-031.
 - <strong>Retained pixel buffer</strong> (blart): the delegate pins one <code>CVPixelBuffer</code> from the pool between ticks; deep-copy on read (or stop session between ticks) so it can't stall delivery — do when the frame is actually consumed (ND-020) / ND-042.
@@ -1137,6 +1140,7 @@
 <li>[ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty</li>
 <li>[ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon</li>
 <li>[ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty</li>
+<li>[x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty</li>
 </ul>
 <h2 id="m5-distribution">M5 — Distribution<a class="headerlink" href="#m5-distribution" title="Permanent link">&para;</a></h2>
 <ul>

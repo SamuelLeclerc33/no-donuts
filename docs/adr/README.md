@@ -12,10 +12,11 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0004](0004-app-identity.md) — App identity: bundle id, name, minimum macOS — **Accepted**
 - [ADR-0005](0005-presence-loop-concurrency.md) — Presence loop concurrency: main-actor-driven loop — **Accepted**
 - [ADR-0005](0005-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted** ⚠️ duplicate number (see ND-019)
-- [ADR-0006](0006-screen-lock-mechanism.md) — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — **Accepted**
+- [ADR-0006](0006-screen-lock-mechanism.md) — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — **Superseded by ADR-0010**
 - [ADR-0007](0007-package-layout-testable-core.md) — Package layout: testable core library + framework-free checks — **Accepted**
 - [ADR-0008](0008-app-packaging.md) — Local app packaging: SPM build + bundling script (ad-hoc signed) — **Accepted**
 - [ADR-0009](0009-session-suspend.md) — Suspend the presence loop + camera while locked/asleep/inactive — **Accepted**
+- [ADR-0010](0010-screen-lock-no-accessibility.md) — Screen-lock mechanism: layered no-Accessibility lock (SACLockScreenImmediate → CGSession -suspend), CGSession-verified, async — **Accepted**
 
 ## Template
 

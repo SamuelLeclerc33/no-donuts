@@ -100,7 +100,7 @@ public final class MenuBarController: NSObject {
                          label: "locked / asleep", fallbackText: "lock")
         case .lockFailed:
             return Glyph(symbolName: "exclamationmark.triangle.fill", tint: .systemRed,
-                         label: "can't lock — grant Accessibility", fallbackText: "!lock")
+                         label: "couldn't lock the screen", fallbackText: "!lock")
         case .cameraUnavailable:
             return Glyph(symbolName: "video.slash.fill", tint: .systemOrange,
                          label: "camera unavailable — grant access", fallbackText: "!cam")
@@ -119,7 +119,7 @@ public final class MenuBarController: NSObject {
         case .paused:             return "No Donuts — paused"
         case .callAssumedPresent: return "No Donuts — on a call"
         case .suspended:          return "No Donuts — locked/asleep"
-        case .lockFailed:         return "No Donuts — ⚠️ can't lock (grant Accessibility)"
+        case .lockFailed:         return "No Donuts — ⚠️ couldn't lock the screen"
         case .cameraUnavailable:  return "No Donuts — ⚠️ camera unavailable (grant access)"
         }
     }

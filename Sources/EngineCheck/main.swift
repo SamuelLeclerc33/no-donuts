@@ -27,7 +27,28 @@ final class SpyLocker: ScreenLocking, @unchecked Sendable {
     private(set) var lockCallCount = 0
     init(succeed: Bool) { shouldSucceed = succeed }
     @discardableResult
-    func lock() -> Bool { lockCallCount += 1; return shouldSucceed }
+    func lock() async -> Bool { lockCallCount += 1; return shouldSucceed }
+}
+
+/// Locker whose `lock()` yields (a suspension point) before returning, and records
+/// both how many times it was entered and whether two calls were ever in flight at
+/// once. Used to prove the engine's in-flight guard prevents overlapping locks.
+@MainActor
+final class SlowSpyLocker: ScreenLocking {
+    var shouldSucceed: Bool
+    private(set) var lockCallCount = 0
+    private(set) var maxConcurrent = 0
+    private var inFlight = 0
+    init(succeed: Bool) { shouldSucceed = succeed }
+    @discardableResult
+    func lock() async -> Bool {
+        lockCallCount += 1
+        inFlight += 1
+        maxConcurrent = max(maxConcurrent, inFlight)
+        await Task.yield()   // suspension point: lets a second concurrent call interleave if unguarded
+        inFlight -= 1
+        return shouldSucceed
+    }
 }
 
 // MARK: - Tiny check runner
@@ -315,13 +336,13 @@ func runAll() async -> Bool {
     do {
         let locker = SpyLocker(succeed: true)
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.enrolledUserPresent(confidence: 1)), locker)
-        e.lockNow()
+        await e.lockNow()
         c.expect(e.state == .suspended && locker.lockCallCount == 1, "lockNow success → suspended")
     }
     do {
         let locker = SpyLocker(succeed: false)
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.enrolledUserPresent(confidence: 1)), locker)
-        e.lockNow()
+        await e.lockNow()
         c.expect(e.state == .lockFailed && locker.lockCallCount == 1, "lockNow failure → .lockFailed")
     }
 
@@ -331,10 +352,27 @@ func runAll() async -> Bool {
     do {
         let locker = SpyLocker(succeed: false)
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker)
-        e.lockNow()                                  // → .lockFailed (manual, lockAttempted stays false)
+        await e.lockNow()                            // → .lockFailed (manual, lockAttempted stays false)
         await e.tick(now: t0.addingTimeInterval(1))  // single no-face tick
         c.expect(e.state == .lockFailed,
                  "no-face tick after failed lockNow keeps .lockFailed warning (not clobbered to .absent) [code review 1]")
+    }
+
+    // Code review [2]: async reentrancy guard. Now that locker.lock() is async
+    // (~3s in prod), a manual lockNow() and the auto tick loop (or two lockNow()
+    // calls) can both reach attemptLock() and run two OVERLAPPING locker.lock()
+    // calls that clobber state/accounting. The in-flight guard (isLocking) must
+    // ensure the second attempt is SKIPPED while the first is suspended. Fire two
+    // overlapping lockNow() calls at a locker that yields mid-lock: exactly one
+    // must enter, and the two must never be in flight at once.
+    do {
+        let locker = SlowSpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.enrolledUserPresent(confidence: 1)), locker)
+        async let a: Void = e.lockNow()
+        async let b: Void = e.lockNow()
+        _ = await (a, b)
+        c.expect(locker.lockCallCount == 1 && locker.maxConcurrent <= 1 && e.state == .suspended,
+                 "overlapping lockNow() → guard skips the second, no concurrent lock (code review 2)")
     }
 
     // Pause

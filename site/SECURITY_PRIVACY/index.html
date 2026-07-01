@@ -1058,10 +1058,10 @@
 </ul>
 <h2 id="permissions-entitlements">Permissions &amp; entitlements<a class="headerlink" href="#permissions-entitlements" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>NSCameraUsageDescription</code> — honest, specific copy.</li>
-<li>Camera access entitlement; avoid anything broader than required.</li>
+<li><strong>Camera is the only permission the app needs.</strong> <code>NSCameraUsageDescription</code> — honest, specific copy. Camera access entitlement; avoid anything broader than required.</li>
+<li><strong>The screen lock no longer requires Accessibility</strong> (<a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>). The lock mechanism is being moved off the synthetic-keystroke approach that needed Accessibility trust, so there is no Accessibility permission to request, prompt for, or recover from.</li>
 <li>Programmatic screen-lock mechanism validated against sandbox/entitlement constraints (ND-014, owner: wiggum).</li>
-<li><strong>Accessibility permission</strong> (System Settings → Privacy &amp; Security → Accessibility) — required by the screen-lock mechanism, which sends a synthetic <strong>Ctrl-Cmd-Q</strong> (Lock Screen) keystroke via System Events (<a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>). This is a permission <strong>distinct from</strong> the camera grant; if denied, the lock keystroke is dropped (EC-19).</li>
+<li><strong>The camera permission is requested at first launch.</strong> On the very first run — and only while the session is active — the app shows a one-time, plain-language explainer that it uses the <strong>Camera</strong> to check you're at your Mac and locks the screen when you step away, all on-device with nothing recorded. It then triggers the macOS Camera prompt.</li>
 </ul>
 <h2 id="open-items">Open items<a class="headerlink" href="#open-items" title="Permanent link">&para;</a></h2>
 <ul>

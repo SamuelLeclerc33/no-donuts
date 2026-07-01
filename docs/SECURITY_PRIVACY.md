@@ -39,10 +39,10 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 
 ## Permissions & entitlements
 
-- `NSCameraUsageDescription` — honest, specific copy.
-- Camera access entitlement; avoid anything broader than required.
+- **Camera is the only permission the app needs.** `NSCameraUsageDescription` — honest, specific copy. Camera access entitlement; avoid anything broader than required.
+- **The screen lock no longer requires Accessibility** ([ADR-0010](adr/0010-screen-lock-no-accessibility.md)). The lock mechanism is being moved off the synthetic-keystroke approach that needed Accessibility trust, so there is no Accessibility permission to request, prompt for, or recover from.
 - Programmatic screen-lock mechanism validated against sandbox/entitlement constraints (ND-014, owner: wiggum).
-- **Accessibility permission** (System Settings → Privacy & Security → Accessibility) — required by the screen-lock mechanism, which sends a synthetic **Ctrl-Cmd-Q** (Lock Screen) keystroke via System Events ([ADR-0006](adr/0006-screen-lock-mechanism.md)). This is a permission **distinct from** the camera grant; if denied, the lock keystroke is dropped (EC-19).
+- **The camera permission is requested at first launch.** On the very first run — and only while the session is active — the app shows a one-time, plain-language explainer that it uses the **Camera** to check you're at your Mac and locks the screen when you step away, all on-device with nothing recorded. It then triggers the macOS Camera prompt.
 
 ## Open items
 

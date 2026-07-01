@@ -60,11 +60,14 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 > - **ND-025** (homer): remove/`#if DEBUG`-fence `AlwaysPresent*` fakes so they can't ship in a release binary and silently defeat locking.
 > - **ND-042** (blart/homer): loop period = work + `Task.sleep` (drifts longer than `tickIntervalSeconds`); and `loopTask` cancellation interrupts only the sleep, not an in-flight `capture()`/`recognize()` — make the real async calls cancellation-aware.
 
-> **Lock follow-ups (from the ND-014 code review — accepted weaker guarantee for MVP):**
-> - **Verified lock state** (wiggum): osascript exit 0 ≠ screen locked (undetectable fail-open if Ctrl-Cmd-Q remapped/disabled). Confirm the real lock via `CGSessionCopyCurrentDictionary()` `CGSSessionScreenIsLocked` so `lock()` is honest regardless of mechanism.
-> - **Non-blocking lock** (wiggum/homer): `lock()` runs `waitUntilExit()` on the `@MainActor` path; make it async so a hung `osascript` can't beachball the UI (pairs with the CGSession work).
-> - **Lock-failed retry/backoff** (homer): after `.lockFailed` the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff so it recovers if Accessibility is granted mid-absence.
+> **Lock follow-ups:**
+> - ✅ **Verified lock state** — resolved: lock is CGSession-verified (ADR-0010).
+> - ✅ **Non-blocking lock** — resolved: `lock()` is async; verify poll uses `Task.sleep` + shared ~3s deadline (ND-048; osascript/`waitUntilExit` mechanism replaced by SAC/CGSession, ADR-0010).
+> - ✅ **No-Accessibility mechanism** — resolved: SACLockScreenImmediate → CGSession -suspend (ADR-0010, supersedes 0006); Accessibility no longer needed.
+> - **Lock-failed retry/backoff** (homer): after `.lockFailed` the engine attempts once per absence episode and then stops; add a coarse retry-with-backoff.
 > - **Log subsystem constant** (gordon/wiggum): extract the hardcoded `"com.nodonuts.app"` Logger subsystem to a shared constant tied to the bundle id (ADR-0004) so it can't drift at ND-050 rename.
+> - **Dedupe CGSession lock-detection** (wiggum/homer): `ScreenLocker.isScreenLockedNow()` and `SessionStateMonitor.currentlyActive()` both read `CGSessionCopyCurrentDictionary()` (locked/on-console) — extract one AppKit-free NoDonutsCore helper so they can't drift.
+> - **First-run explainer non-blocking** (krusty): `NSAlert.runModal()` briefly starves the main-actor loop; make the one-time explainer non-blocking (only bites first-run before camera permission, so low impact).
 
 > **Camera follow-ups (from the ND-018/011/012 code review — MUST resolve fail-opens BEFORE ND-025 wires the real recognizer; currently masked by the always-present fake):**
 > - **✅ Fail-open policy (resolved at ND-020/025):** `.unavailable` → `.cameraUnavailable`, don't lock + honest status (EC-07/08/09 DECIDED; notification → ND-045). Sustained recognition `.error` now escalates to absence after `maxConsecutiveErrorsBeforeAbsent` (EC-10, no indefinite hold). Persistent no-frame routing through the busy-camera path remains for ND-031.
@@ -108,6 +111,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty
 - [ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon
 - [ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty
+- [x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty
 
 ## M5 — Distribution
 

@@ -1,8 +1,15 @@
 # ADR-0006 — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript
 
-- Status: Accepted
+- Status: Superseded by ADR-0010
 - Date: 2026-06-30
 - Owner: wiggum
+
+> **Superseded by [ADR-0010](0010-screen-lock-no-accessibility.md).** The
+> osascript / Ctrl-Cmd-Q path required Accessibility, which was unreliable
+> (especially on ad-hoc-signed builds) and did not lock on the target Mac. The
+> lock is now a layered, no-Accessibility mechanism
+> (`SACLockScreenImmediate` → `CGSession -suspend`), CGSession-verified and
+> async. The record below is kept for history.
 
 ## Context
 
@@ -25,11 +32,19 @@ Ctrl-Cmd-Q** via `osascript` / System Events:
 (`key code 12` is the `Q` key; Ctrl-Cmd-Q is the system Lock Screen shortcut.)
 
 `ScreenLocker.lock()` runs this through `Process`, calls `waitUntilExit()`, and
-returns `process.terminationStatus == 0`. A throw from `run()` or a non-zero exit
-status is logged via `os_log` (`Logger(subsystem: "com.nodonuts.app",
-category: "lock")`) and returns `false`. It **never** returns `true` on failure.
-The protocol is `@discardableResult func lock() -> Bool` so callers (the presence
-engine / UI) can surface honest "not protecting" status.
+then **verifies the screen actually locked** before returning `true`. A throw
+from `run()` or a non-zero exit status is logged via `os_log`
+(`Logger(subsystem: "com.nodonuts.app", category: "lock")`) and returns `false`.
+It **never** returns `true` on failure. The protocol is
+`@discardableResult func lock() -> Bool` so callers (the presence engine / UI)
+can surface honest "not protecting" status.
+
+**CGSession verification.** osascript exiting 0 only proves the keystroke was
+*dispatched*, not that the screen locked. After a 0 exit, `lock()` polls
+`CGSessionCopyCurrentDictionary()` for the `CGSSessionScreenIsLocked` flag (raw
+string key — the constant is not bridged to Swift) every ~0.1s up to a 1s
+timeout, and returns `true` **only** once the session reports locked. So the
+Bool now reflects a **confirmed lock**, not mere keystroke dispatch.
 
 ## Consequences
 
@@ -46,39 +61,34 @@ engine / UI) can surface honest "not protecting" status.
 - No private API and no login-window switch — uses the same path a user would
   use by hand.
 
-## Known limitations / weaker guarantee (MVP)
+## Known limitations / guarantee
 
-The fail-safe guarantee above is **weaker than it first appears**, and we are
-accepting that for the MVP:
+The lock is now **CGSession-verified**, which closes the previously
+"undetectable" fail-open for everything we can observe after the fact:
 
-- **`osascript` exit status ≠ confirmed lock.** `lock()` returns `true` when
-  `osascript` launches and exits `0`. That only confirms the AppleScript ran and
-  the Ctrl-Cmd-Q keystroke was **dispatched** — it does **not** confirm the
-  screen actually locked. The exit status reflects whether the script executed,
-  not the resulting system state.
-- **Undetectable fail-open if the shortcut is remapped/disabled.** If the user
-  has remapped or disabled the Ctrl-Cmd-Q Lock-Screen shortcut (System Settings →
-  Keyboard → Keyboard Shortcuts), or in some Accessibility/permission paths, the
-  keystroke can be dispatched and `osascript` can exit `0` while **nothing
-  locks**. In that case `lock()` returns `true` even though the machine is still
-  unlocked. This is a silent fail-open we currently cannot detect.
-- **Detectable failures are still surfaced.** A throw from `run()` or a non-zero
-  exit (e.g. Accessibility outright denied) is still caught and returns `false`,
-  so those *detectable* failures are honestly reported (EC-19). The gap is only
-  the *undetectable* case above.
+- **`lock()` returns a confirmed lock, not just keystroke dispatch.** After
+  `osascript` exits `0`, `lock()` polls CGSession's `CGSSessionScreenIsLocked`
+  and only returns `true` once the session reports locked. osascript exiting 0
+  no longer counts as success on its own.
+- **Remapped/disabled shortcut is now detected.** If the user has remapped or
+  disabled the Ctrl-Cmd-Q Lock-Screen shortcut (System Settings → Keyboard →
+  Keyboard Shortcuts), or Accessibility is denied so the keystroke is dropped,
+  the keystroke can still be dispatched with a 0 exit — but the session never
+  reports locked, so `lock()` returns `false` → the engine surfaces
+  `.lockFailed`. The prior "exit 0 while nothing locks → wrongly returns `true`"
+  gap (which produced a stuck fake `.suspended`) is closed (EC-19).
+- **Detectable-up-front failures are still surfaced.** A throw from `run()` or a
+  non-zero exit is still caught and returns `false`.
 
-**Decision:** accept this weaker guarantee for the MVP (no change to the
-osascript mechanism). **Defer** to a follow-up pass (ND-014):
+### Remaining caveats / follow-up
 
-1. **Verified lock state** — after issuing the lock, query CGSession
-   (`CGSSessionScreenIsLocked` via `CGSessionCopyCurrentDictionary`) and only
-   report success once the session reports locked, closing the fail-open.
-2. **Non-blocking / async `lock()`** — the current implementation calls
-   `waitUntilExit()` synchronously; verification implies polling/waiting for the
-   lock state, which should be done off the calling actor.
-
-Until then, callers must treat a `true` return as "lock keystroke dispatched,"
-not "session confirmed locked."
+- **Bounded blocking.** Verification calls `waitUntilExit()` synchronously and
+  then polls for up to ~1s, so `lock()` briefly blocks the caller (~≤1s).
+  Making `lock()` async / non-blocking (do the poll off the calling actor)
+  remains a tracked follow-up (ND-014).
+- **Not anti-spoofing.** This verification is about *did the screen lock*, not
+  about defeating a determined attacker; v1 anti-spoofing scope is unchanged
+  (EC-12, SECURITY_PRIVACY.md).
 
 ## Alternatives considered
 

@@ -11,10 +11,6 @@
       
       
       
-        <link rel="prev" href="../0005-docs-site/">
-      
-      
-        <link rel="next" href="../0007-package-layout-testable-core/">
       
       
         
@@ -25,7 +21,7 @@
     
     
       
-        <title>ADR-0006 — Screen-lock mechanism - No Donuts</title>
+        <title>ADR-0010 — Screen-lock mechanism: layered no-Accessibility lock - No Donuts</title>
       
     
     
@@ -70,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript" class="md-skip">
+        <a href="#adr-0010-screen-lock-mechanism-layered-no-accessibility-lock" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0006 — Screen-lock mechanism
+              ADR-0010 — Screen-lock mechanism: layered no-Accessibility lock
             
           </span>
         </div>
@@ -333,8 +329,6 @@
       
   
   
-    
-  
   
   
     
@@ -347,11 +341,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -372,7 +366,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -583,37 +577,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0006 — Screen-lock mechanism
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0006-screen-lock-mechanism/" class="md-nav__link">
         
   
   
@@ -629,98 +596,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#known-limitations-guarantee" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Known limitations / guarantee
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Known limitations / guarantee">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#remaining-caveats-follow-up" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Remaining caveats / follow-up
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -939,23 +814,6 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Known limitations / guarantee">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#remaining-caveats-follow-up" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Remaining caveats / follow-up
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
@@ -986,102 +844,113 @@
 
 
 
-<h1 id="adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript">ADR-0006 — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript<a class="headerlink" href="#adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0010-screen-lock-mechanism-layered-no-accessibility-lock">ADR-0010 — Screen-lock mechanism: layered no-Accessibility lock<a class="headerlink" href="#adr-0010-screen-lock-mechanism-layered-no-accessibility-lock" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Status: Superseded by ADR-0010</li>
+<li>Status: Accepted</li>
 <li>Date: 2026-06-30</li>
 <li>Owner: wiggum</li>
 </ul>
-<blockquote>
-<p><strong>Superseded by <a href="../0010-screen-lock-no-accessibility/">ADR-0010</a>.</strong> The
-osascript / Ctrl-Cmd-Q path required Accessibility, which was unreliable
-(especially on ad-hoc-signed builds) and did not lock on the target Mac. The
-lock is now a layered, no-Accessibility mechanism
-(<code>SACLockScreenImmediate</code> → <code>CGSession -suspend</code>), CGSession-verified and
-async. The record below is kept for history.</p>
-</blockquote>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
 <p>The core action of No Donuts is to lock the Mac when the enrolled user is absent
-(ND-014). We need a <strong>reliable programmatic screen lock</strong> that works under our
+(ND-014). We need a <strong>reliable programmatic screen lock</strong> under our
 sandbox/entitlement posture. We lock only — unlock always stays with macOS
-(Touch ID / password). Whatever mechanism we pick, a lock request must either
-lock or <strong>loudly report failure</strong>; it must never silently fail open (a failed
-lock that is reported as success would leave an unattended machine unprotected).</p>
+(Touch ID / password). A lock request must either lock or <strong>loudly report
+failure</strong>; it must never silently fail open.</p>
+<p>ADR-0006 chose a synthetic <strong>Ctrl-Cmd-Q via <code>osascript</code> / System Events</strong>. That
+path requires the macOS <strong>Accessibility</strong> permission to deliver the synthetic
+keystroke. In practice this was unreliable — especially on <strong>ad-hoc-signed
+builds</strong> — and on the target Mac it <strong>did not lock at all</strong> even with the grant
+attempted. It also added a second TCC prompt (beyond camera) and blocked the
+caller during verification. We need a lock that works <strong>without Accessibility</strong>
+and that does not block the presence poll's main actor.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>The lock is issued by <strong>synthesizing the macOS Lock Screen shortcut
-Ctrl-Cmd-Q</strong> via <code>osascript</code> / System Events:</p>
-<div class="highlight"><pre><span></span><code>/usr/bin/osascript -e &#39;tell application &quot;System Events&quot; to key code 12 using {control down, command down}&#39;
-</code></pre></div>
-<p>(<code>key code 12</code> is the <code>Q</code> key; Ctrl-Cmd-Q is the system Lock Screen shortcut.)</p>
-<p><code>ScreenLocker.lock()</code> runs this through <code>Process</code>, calls <code>waitUntilExit()</code>, and
-then <strong>verifies the screen actually locked</strong> before returning <code>true</code>. A throw
-from <code>run()</code> or a non-zero exit status is logged via <code>os_log</code>
-(<code>Logger(subsystem: "com.nodonuts.app", category: "lock")</code>) and returns <code>false</code>.
-It <strong>never</strong> returns <code>true</code> on failure. The protocol is
-<code>@discardableResult func lock() -&gt; Bool</code> so callers (the presence engine / UI)
-can surface honest "not protecting" status.</p>
-<p><strong>CGSession verification.</strong> osascript exiting 0 only proves the keystroke was
-<em>dispatched</em>, not that the screen locked. After a 0 exit, <code>lock()</code> polls
-<code>CGSessionCopyCurrentDictionary()</code> for the <code>CGSSessionScreenIsLocked</code> flag (raw
-string key — the constant is not bridged to Swift) every ~0.1s up to a 1s
-timeout, and returns <code>true</code> <strong>only</strong> once the session reports locked. So the
-Bool now reflects a <strong>confirmed lock</strong>, not mere keystroke dispatch.</p>
+<p>Use a <strong>layered, no-Accessibility</strong> lock, verified against CGSession and
+implemented as an <code>async</code>, non-blocking call:</p>
+<ol>
+<li><strong><code>SACLockScreenImmediate</code></strong> — resolved at runtime via
+   <code>dlopen("/System/Library/PrivateFrameworks/login.framework/login", RTLD_NOW)</code></li>
+<li><code>dlsym(handle, "SACLockScreenImmediate")</code>, cast to
+   <code>@convention(c) () -&gt; Void</code> and called. No link-time dependency on the private
+   framework; if <code>dlopen</code>/<code>dlsym</code> returns <code>nil</code>, skip to the fallback. Locks
+   immediately, <strong>no Accessibility grant</strong>.</li>
+<li><strong><code>CGSession -suspend</code></strong> (fallback) — spawn the public tool at
+   <code>/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession</code>
+   with <code>["-suspend"]</code>. Switches to the login window; also <strong>no Accessibility
+   grant</strong>.</li>
+</ol>
+<p><strong>CGSession verification.</strong> After each attempt, <code>lock()</code> verifies via
+<code>CGSessionCopyCurrentDictionary()</code>: the screen counts as locked if EITHER
+<code>CGSSessionScreenIsLocked</code> is true OR the session is no longer on the console
+(<code>kCGSSessionOnConsoleKey == false</code>, how <code>-suspend</code> presents). Values are
+<code>CFBoolean</code> and may bridge as <code>Bool</code> or <code>NSNumber</code>, so both are read
+defensively; the on-console signal is only trusted when the key is present so a
+normal unlocked session reports NOT locked. <code>lock()</code> returns <code>true</code> <strong>only</strong> on
+a confirmed lock.</p>
+<p><strong>Async / non-blocking.</strong> <code>ScreenLocking.lock()</code> is now
+<code>@discardableResult func lock() async -&gt; Bool</code>. <code>lock()</code> computes ONE ~3s
+deadline and shares it across both mechanisms — the SAC poll and the CGSession
+fallback poll draw from the same budget, so the whole call is bounded at ~3s
+(not ~3s per mechanism = ~6s), keeping the awaiting presence tick loop
+responsive. The verification poll (<code>waitForScreenLocked(deadline:)</code>) uses
+<code>Task.sleep</code>, <strong>not</strong> <code>Thread.sleep</code>, so the presence engine's main actor is
+never blocked while a lock is pending, and it is <strong>cancellation-aware</strong>: on task
+cancellation it returns the current lock state immediately instead of
+busy-spinning to the deadline. The <code>CGSession -suspend</code> fallback is spawned
+<strong>without</strong> <code>waitUntilExit()</code> (no synchronous block on the actor; the exit code
+is irrelevant because the verify poll is what confirms the lock) and a launch
+failure is logged rather than silently swallowed.</p>
+<p>If neither mechanism produces a confirmed lock, <code>lock()</code> logs a warning via
+<code>os_log</code> (<code>Logger(subsystem: "com.nodonuts.app", category: "lock")</code>) and returns
+<code>false</code>. It <strong>never</strong> returns <code>true</code> on failure — the engine surfaces honest
+<code>.lockFailed</code>.</p>
+<p>This supersedes <strong>ADR-0006</strong>.</p>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Requires a new TCC permission: Accessibility.</strong> Sending synthetic keystrokes
-  requires the app to be granted Accessibility (System Settings → Privacy &amp;
-  Security → Accessibility). This is a permission <strong>beyond</strong> the camera grant the
-  user already has to give. If Accessibility is <strong>denied</strong>, macOS drops the
-  keystroke and the screen does not lock — but <code>lock()</code> detects this (non-zero
-  status / dropped key path) and returns <code>false</code>, so the failure is <strong>surfaced,
-  never silent</strong> (see EC-19). gordon/krusty own prompting for and explaining this
-  grant.</li>
-<li>Spawns a <strong>short-lived <code>osascript</code> process</strong> per lock. Cheap, but it is an
-  out-of-process dependency on <code>/usr/bin/osascript</code> and AppleScript/System Events.</li>
-<li>No private API and no login-window switch — uses the same path a user would
-  use by hand.</li>
+<li><strong>No Accessibility grant needed or requested.</strong> The lock works with only the
+  camera permission the user already grants. Removes the second TCC prompt and
+  the ad-hoc-signing fragility that broke the osascript path.</li>
+<li><strong><code>SACLockScreenImmediate</code> is a private symbol</strong>, loaded <strong>defensively</strong> at
+  runtime (no link-time dependency), with a <strong>public fallback</strong> (<code>CGSession
+  -suspend</code>) if the symbol can't be resolved on a given macOS release. This
+  contains the code-signing/notarization and cross-version risk of the private
+  API.</li>
+<li><strong><code>CGSession -suspend</code> uses the login window</strong> (fast-user-switch style) rather
+  than the in-place lock screen — a slightly different UX, but a real, confirmed
+  lock, and no Accessibility.</li>
+<li><strong><code>kCGSSessionOnConsoleKey == false</code> is ambiguous</strong> — it means "not on the
+  console," which can be a genuine password-lock/<code>-suspend</code> OR a fast-user-switch
+  to another account. We rely on it as a lock signal anyway because it is safe in
+  context: <code>lock()</code> is only ever called while this session is <strong>on console</strong>
+  (<code>SessionStateMonitor</code> pauses the presence loop when off-console, ND-013,
+  EC-14). So at verify time, off-console reliably means our own <code>CGSession
+  -suspend</code> succeeded, not a stray FUS state. This is documented as a comment in
+  <code>isScreenLockedNow()</code>; no logic change.</li>
+<li><strong>Non-blocking.</strong> <code>lock()</code> being <code>async</code> means callers must <code>await</code> it; homer's
+  engine calls <code>await locker.lock()</code>. The verify poll runs off the calling
+  actor's blocking path.</li>
+<li>Still spawns a short-lived process only in the fallback case; the primary path
+  is an in-process function call.</li>
 </ul>
 <h2 id="known-limitations-guarantee">Known limitations / guarantee<a class="headerlink" href="#known-limitations-guarantee" title="Permanent link">&para;</a></h2>
-<p>The lock is now <strong>CGSession-verified</strong>, which closes the previously
-"undetectable" fail-open for everything we can observe after the fact:</p>
 <ul>
-<li><strong><code>lock()</code> returns a confirmed lock, not just keystroke dispatch.</strong> After
-  <code>osascript</code> exits <code>0</code>, <code>lock()</code> polls CGSession's <code>CGSSessionScreenIsLocked</code>
-  and only returns <code>true</code> once the session reports locked. osascript exiting 0
-  no longer counts as success on its own.</li>
-<li><strong>Remapped/disabled shortcut is now detected.</strong> If the user has remapped or
-  disabled the Ctrl-Cmd-Q Lock-Screen shortcut (System Settings → Keyboard →
-  Keyboard Shortcuts), or Accessibility is denied so the keystroke is dropped,
-  the keystroke can still be dispatched with a 0 exit — but the session never
-  reports locked, so <code>lock()</code> returns <code>false</code> → the engine surfaces
-  <code>.lockFailed</code>. The prior "exit 0 while nothing locks → wrongly returns <code>true</code>"
-  gap (which produced a stuck fake <code>.suspended</code>) is closed (EC-19).</li>
-<li><strong>Detectable-up-front failures are still surfaced.</strong> A throw from <code>run()</code> or a
-  non-zero exit is still caught and returns <code>false</code>.</li>
-</ul>
-<h3 id="remaining-caveats-follow-up">Remaining caveats / follow-up<a class="headerlink" href="#remaining-caveats-follow-up" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Bounded blocking.</strong> Verification calls <code>waitUntilExit()</code> synchronously and
-  then polls for up to ~1s, so <code>lock()</code> briefly blocks the caller (~≤1s).
-  Making <code>lock()</code> async / non-blocking (do the poll off the calling actor)
-  remains a tracked follow-up (ND-014).</li>
-<li><strong>Not anti-spoofing.</strong> This verification is about <em>did the screen lock</em>, not
-  about defeating a determined attacker; v1 anti-spoofing scope is unchanged
-  (EC-12, SECURITY_PRIVACY.md).</li>
+<li>The lock is <strong>CGSession-verified</strong>: <code>lock()</code> returns a confirmed lock, not a
+  mere "mechanism invoked." An invoked <code>SACLockScreenImmediate</code> that doesn't lock
+  falls through to the fallback; a fallback that doesn't lock returns <code>false</code>.</li>
+<li><strong>Not anti-spoofing.</strong> This is about <em>did the screen lock</em>, not defeating a
+  determined attacker; v1 anti-spoofing scope is unchanged (EC-12,
+  SECURITY_PRIVACY.md).</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>SACLockScreenimmediate</code> (login.framework private API):</strong> locks immediately
-  with <strong>no Accessibility grant</strong> required. Rejected for v1 because it is a
-  <strong>private symbol</strong> — fragile across macOS releases and a code-signing/notarization
-  risk. Kept as a <strong>fallback</strong> if osascript proves unreliable.</li>
-<li><strong><code>/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession -suspend</code>:</strong>
-  public, switches to the login window. Also <strong>avoids the Accessibility grant</strong>.
-  Slightly different UX (fast-user-switch login window vs. lock screen). Kept as a
-  <strong>fallback</strong> alongside <code>SACLockScreenimmediate</code> if the osascript path is unreliable.</li>
+<li><strong>Synthetic Ctrl-Cmd-Q via <code>osascript</code> (ADR-0006):</strong> required Accessibility,
+  was unreliable on ad-hoc-signed builds, and did not lock on the target Mac.
+  Superseded by this ADR.</li>
+<li><strong><code>SACLockScreenImmediate</code> only (no fallback):</strong> simplest, but a single private
+  symbol with no public backstop is too fragile across macOS releases — hence the
+  layered design with <code>CGSession -suspend</code>.</li>
+<li><strong><code>pmset</code> + require-password:</strong> indirect and does not deterministically lock on
+  demand; rejected.</li>
 </ul>
-<p>Both fallbacks avoid the Accessibility permission; we accept the Accessibility
-cost for v1 in exchange for using only public, stable, hand-equivalent APIs.</p>
 
 
 
