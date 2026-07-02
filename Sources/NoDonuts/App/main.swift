@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 import NoDonutsCore
 
 // Owner: krusty (app shell) + homer (loop wiring). Entry point.
@@ -17,6 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let config = Config()
     // All held in stored properties so they aren't deallocated while observing.
     private var sessionMonitor: SessionStateMonitor?
+    /// Out-of-band "we can't see you" signal (ND-045): posts a local notification
+    /// when the display state is .cameraUnavailable so the user is told they're not
+    /// protected even without opening the menu; withdraws on recovery. Fed from the
+    /// SAME render path as the menu bar (no second source of truth). Fail-safe silent
+    /// when notifications are unauthorized. Held so it isn't deallocated.
+    private let cameraNotifier = CameraStatusNotifier()
     private let trustedNetworks = TrustedNetworksStore()
     private var pauseController: PauseController?
     private var wifiMonitor: WiFiMonitor?
@@ -207,6 +214,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Always re-render + refresh menu item state so the UI stays in sync.
         menuBar.render(state: engine.state)
+        // Feed the SAME state to the camera-unavailable notifier (ND-045). This is the
+        // one gate/render path; hooking it here (not a separate observer) keeps a single
+        // source of truth for the honest "not protecting you" signal.
+        cameraNotifier.update(state: engine.state)
         refreshMenuItems()
     }
 
@@ -335,6 +346,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.runModal()
         }
         Task { await camera.requestAccessIfNeeded() }   // idempotent; only prompts if not-yet-determined
+        requestNotificationAuthorizationIfNeeded()       // ND-045: one banner permission for the "can't see you" alert
+    }
+
+    /// One-time launch-time request for LOCAL notification permission (ND-045), so the
+    /// CameraStatusNotifier's "not protecting you — camera unavailable" banner can be
+    /// delivered. Owner: gordon (the notifier itself is fail-safe silent and never asks).
+    ///
+    /// Mirrors the camera prompt above: fire-and-forget async off the main-actor loop
+    /// (`requestAuthorization` hops to a background queue and calls back), so it never
+    /// blocks. It's naturally idempotent — after the first grant/deny macOS resolves the
+    /// stored decision without re-prompting — and degrades silently: a denial just means
+    /// the notifier stays a no-op (the app behaves identically), so we don't surface the
+    /// error. `.alert` only: the minimum for the banner, no `.sound`/`.badge` — a
+    /// menu-bar accessory app has no Dock badge and shouldn't make noise for a status
+    /// signal.
+    private func requestNotificationAuthorizationIfNeeded() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in
+            // Intentionally ignore result + error: denial/failure is fine (silent no-op).
+        }
     }
 
     /// Start the presence loop if it isn't already running. A single cancellable
@@ -349,6 +379,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // render stale state on top of a freshly-resumed loop.
                 if Task.isCancelled { break }
                 menuBar.render(state: engine.state)
+                // Same render path → same notifier feed (ND-045). A camera removed mid-
+                // run (EC-08/09) surfaces here as .cameraUnavailable; recovery withdraws.
+                cameraNotifier.update(state: engine.state)
                 try? await Task.sleep(for: .seconds(config.tickIntervalSeconds))
             }
         }

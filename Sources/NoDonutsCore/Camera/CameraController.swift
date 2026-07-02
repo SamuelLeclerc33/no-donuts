@@ -63,6 +63,28 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// the session needs (re)starting after a `suspend()`.
     private var running = false
 
+    /// The active input, retained so `teardown()` can `removeInput` it cleanly.
+    /// Guarded by `sessionQueue` — set in `ensureConfigured()`, cleared in
+    /// `teardown()`. (The disconnect observer is scoped to the local `device`
+    /// captured in `registerObservers`, so no separate device field is needed.)
+    private var activeInput: AVCaptureDeviceInput?
+
+    /// NotificationCenter observer tokens for the active device/session
+    /// (disconnect, runtime error, interruption begin/end). Registered in
+    /// `ensureConfigured()` on success, removed + dropped in `teardown()` so a
+    /// re-configure re-registers cleanly (no duplicates, no retain cycle).
+    /// Guarded by `sessionQueue`.
+    private var observerTokens: [NSObjectProtocol] = []
+
+    /// ND-054: how stale a cached frame may be before `capture()` treats it as
+    /// "no frame". A dead/removed-camera session stops delivering buffers but the
+    /// last one lingers in the delegate; without this guard we'd report a phantom
+    /// present. Chosen as ~2x the presence tick (~1.5s) so a couple of missed
+    /// deliveries during normal jitter don't trip it, but a genuinely stalled
+    /// session (device gone, teardown in flight) does. The tick interval isn't
+    /// visible to this file, hence a documented constant rather than a parameter.
+    private static let staleFrameThreshold: TimeInterval = 3.0
+
     public init() {}
 
     /// Triggers the macOS camera permission prompt once, at app launch — NOT from
@@ -105,7 +127,10 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
 
         // 3. Sample the latest frame. If none yet (session just started), wait
         //    briefly for the first delivery before giving up.
-        if let buffer = delegate.latestBuffer() {
+        // ND-054: honor the freshness guard. A removed/dead camera stops
+        // delivering buffers but the delegate still holds the last one; without
+        // this bound we'd return a phantom stale frame and falsely report present.
+        if let buffer = delegate.latestBuffer(maxAge: Self.staleFrameThreshold) {
             return .frame(CapturedFrame(pixelBuffer: buffer))
         }
         if let buffer = await waitForFirstFrame(timeout: 1.5) {
@@ -148,31 +173,72 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
                     return
                 }
 
+                // ND-054: auto-switch — this re-selects the current default video
+                // device. After an external camera is torn down (see teardown()),
+                // the next capture() re-enters here and picks the built-in camera.
+                // If none exists we fail SAFE to .unavailable, never fail-open.
                 guard let device = AVCaptureDevice.default(for: .video) else {
                     continuation.resume(returning: "no camera device")
                     return
                 }
 
-                self.session.beginConfiguration()
+                // ND-054: every session mutation below runs inside the ObjC
+                // exception shim. A DAL-backed external device can THROW an
+                // NSException during (re)configure (as it does on teardown);
+                // Swift can't catch that, so an unguarded call would abort().
+                // A throw here is non-fatal: we log, roll back what we can, and
+                // return a reason string leaving `configured == false` so the
+                // next capture() retries.
+                if !self.runCatching("beginConfiguration", { self.session.beginConfiguration() }) {
+                    continuation.resume(returning: "camera configuration failed (begin)")
+                    return
+                }
 
-                guard let input = try? AVCaptureDeviceInput(device: device),
+                // ND-054: constructing the input can ALSO throw an ObjC
+                // NSException on a DAL/virtual device (same crash class as the
+                // session mutations) — Swift `try?` only catches Swift errors, not
+                // an NSException, so wrap the construction in the ObjC shim too.
+                // Fail cleanly on an ObjC throw, a Swift throw, OR canAddInput==false.
+                var builtInput: AVCaptureDeviceInput?
+                let inputBuilt = self.runCatching("AVCaptureDeviceInput(device:)") {
+                    builtInput = try? AVCaptureDeviceInput(device: device)
+                }
+                guard inputBuilt, let input = builtInput,
                       self.session.canAddInput(input) else {
-                    self.session.commitConfiguration()
+                    _ = self.runCatching("commitConfiguration") { self.session.commitConfiguration() }
                     continuation.resume(returning: "cannot open camera input")
                     return
                 }
-                self.session.addInput(input)
+                guard self.runCatching("addInput", { self.session.addInput(input) }) else {
+                    _ = self.runCatching("commitConfiguration") { self.session.commitConfiguration() }
+                    continuation.resume(returning: "camera configuration failed (addInput)")
+                    return
+                }
 
                 self.output.alwaysDiscardsLateVideoFrames = true
                 self.output.setSampleBufferDelegate(self.delegate, queue: self.sessionQueue)
                 guard self.session.canAddOutput(self.output) else {
-                    self.session.commitConfiguration()
+                    _ = self.runCatching("removeInput") { self.session.removeInput(input) }
+                    _ = self.runCatching("commitConfiguration") { self.session.commitConfiguration() }
                     continuation.resume(returning: "cannot add camera output")
                     return
                 }
-                self.session.addOutput(self.output)
+                guard self.runCatching("addOutput", { self.session.addOutput(self.output) }) else {
+                    _ = self.runCatching("removeInput") { self.session.removeInput(input) }
+                    _ = self.runCatching("commitConfiguration") { self.session.commitConfiguration() }
+                    continuation.resume(returning: "camera configuration failed (addOutput)")
+                    return
+                }
 
-                self.session.commitConfiguration()
+                guard self.runCatching("commitConfiguration", { self.session.commitConfiguration() }) else {
+                    continuation.resume(returning: "camera configuration failed (commit)")
+                    return
+                }
+
+                // Retain the active input (guarded by sessionQueue) so teardown()
+                // can remove it. The disconnect observer is scoped to this device
+                // via the `device` value captured in registerObservers().
+                self.activeInput = input
 
                 // Low frame rate where supported — we only need ~1 frame per tick.
                 // Aim for ~1 fps, clamped into the format's supported range. Only
@@ -214,12 +280,138 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
                     }
                 }
 
-                self.session.startRunning()
+                guard self.runCatching("startRunning", { self.session.startRunning() }) else {
+                    // A DAL device can throw on start too. Roll back the input so
+                    // a retry re-adds cleanly, leave configured == false.
+                    _ = self.runCatching("beginConfiguration") { self.session.beginConfiguration() }
+                    _ = self.runCatching("removeInput") { self.session.removeInput(input) }
+                    _ = self.runCatching("removeOutput") { self.session.removeOutput(self.output) }
+                    _ = self.runCatching("commitConfiguration") { self.session.commitConfiguration() }
+                    self.activeInput = nil
+                    continuation.resume(returning: "camera configuration failed (start)")
+                    return
+                }
                 self.running = true
                 self.configured = true
+
+                // ND-054: register observers now that the session is live. Scope
+                // the disconnect observer to THIS device and the session
+                // observers to `self.session`. The blocks re-dispatch onto
+                // sessionQueue — we must not mutate the session on the
+                // notification's delivery thread.
+                self.registerObservers(device: device)
+
                 continuation.resume(returning: nil)
             }
         }
+    }
+
+    /// Run a session mutation inside the ObjC exception shim (ND-054). A DAL
+    /// (external/virtual) device can throw an NSException from these calls,
+    /// especially during teardown after the device is yanked. Swift cannot catch
+    /// that, so an unguarded call aborts the process. We catch, log via
+    /// `cameraLog`, and return `false` so the caller can treat it as a non-fatal
+    /// configuration failure. Must be called on `sessionQueue`.
+    @discardableResult
+    private func runCatching(_ label: String, _ block: @escaping () -> Void) -> Bool {
+        var shimError: NSError?
+        let ok = nd_runCatchingObjCException(block, &shimError)
+        if !ok {
+            cameraLog.error("Session.\(label, privacy: .public) threw (\(shimError?.localizedDescription ?? "unknown", privacy: .public)); treating as non-fatal")
+        }
+        return ok
+    }
+
+    /// ND-054: register device-disconnect + session runtime-error/interruption
+    /// observers. Called on `sessionQueue` from `ensureConfigured()` on success.
+    ///
+    /// Disconnect (physical removal) and runtime-error (hard fault) blocks
+    /// re-dispatch onto `sessionQueue` and run `teardown()` so the next
+    /// `capture()` re-configures against the current default device (auto-switch
+    /// to built-in), or fails safe to `.unavailable` if none.
+    ///
+    /// Interruption begin/end are LOG-ONLY (no teardown): on macOS the camera is
+    /// multi-client and `AVCaptureSessionWasInterrupted` fires with reason
+    /// `videoDeviceInUseByAnotherClient` when a video-call app grabs the camera.
+    /// Tearing down there would defeat the deliberate ADR-0003 "assume present
+    /// during a call, never lock mid-meeting" policy (EC-01) and could route a
+    /// call into a spurious `.cameraUnavailable`. AVFoundation auto-resumes the
+    /// session when the interruption ends, and the busy/assume-present path in
+    /// `capture()` (`.cameraBusyNoFrames`) already handles the no-frame call case.
+    private func registerObservers(device: AVCaptureDevice) {
+        let nc = NotificationCenter.default
+
+        // Disconnect: scoped to THIS device object so we only react to the
+        // camera we're actually using being removed.
+        let disconnect = nc.addObserver(forName: .AVCaptureDeviceWasDisconnected,
+                                        object: device, queue: nil) { [weak self] _ in
+            self?.sessionQueue.async {
+                cameraLog.notice("Active camera disconnected; tearing down for auto-switch")
+                self?.teardown()
+            }
+        }
+
+        // Runtime error: the session hit a fault (e.g. the underlying device
+        // vanished). Full teardown; next capture() rebuilds.
+        let runtimeError = nc.addObserver(forName: .AVCaptureSessionRuntimeError,
+                                          object: self.session, queue: nil) { [weak self] note in
+            self?.sessionQueue.async {
+                let err = note.userInfo?[AVCaptureSessionErrorKey]
+                cameraLog.error("Capture session runtime error (\(String(describing: err), privacy: .public)); tearing down")
+                self?.teardown()
+            }
+        }
+
+        // Interruption begin/end: LOG-ONLY, no teardown (ADR-0003 / EC-01).
+        // An interruption is most often `videoDeviceInUseByAnotherClient` — a
+        // video-call app grabbing the camera on multi-client macOS. Tearing down
+        // would defeat the assume-present-during-a-call policy and could route a
+        // call into a spurious `.cameraUnavailable`. AVFoundation auto-resumes
+        // when the interruption ends; the busy path in capture() covers the
+        // no-frame call case. We only log the reason for diagnostics.
+        // Note: `AVCaptureSessionInterruptionReasonKey` is iOS-only (unavailable
+        // on macOS), so we log the interruption itself. The dominant macOS cause
+        // is another client (a call) grabbing the camera — exactly the case we
+        // must NOT tear down for.
+        let interrupted = nc.addObserver(forName: .AVCaptureSessionWasInterrupted,
+                                         object: self.session, queue: nil) { _ in
+            cameraLog.notice("Capture session interrupted (likely another client/call); log-only, not tearing down (ADR-0003)")
+        }
+        let interruptionEnded = nc.addObserver(forName: .AVCaptureSessionInterruptionEnded,
+                                               object: self.session, queue: nil) { _ in
+            cameraLog.notice("Capture session interruption ended; log-only, session auto-resumes")
+        }
+
+        self.observerTokens = [disconnect, runtimeError, interrupted, interruptionEnded]
+    }
+
+    /// ND-054: tear the session all the way down (runs on `sessionQueue`). Stop
+    /// running, remove input+output, clear the cached frame, drop the retained
+    /// device/input, and remove + drop every observer token so a re-configure
+    /// re-registers cleanly (no duplicates, no retain cycle). Sets
+    /// `configured = false` / `running = false` so the next `capture()` naturally
+    /// re-runs `ensureConfigured()` → re-selects `AVCaptureDevice.default` (the
+    /// built-in camera, auto-switch) or fails safe to `.unavailable` if no device.
+    /// Every session mutation is wrapped in the ObjC exception shim because a
+    /// yanked DAL device is exactly what throws on teardown (the ND-054 crash).
+    private func teardown() {
+        _ = self.runCatching("stopRunning") { self.session.stopRunning() }
+
+        if let input = self.activeInput {
+            _ = self.runCatching("beginConfiguration") { self.session.beginConfiguration() }
+            _ = self.runCatching("removeInput") { self.session.removeInput(input) }
+            _ = self.runCatching("removeOutput") { self.session.removeOutput(self.output) }
+            _ = self.runCatching("commitConfiguration") { self.session.commitConfiguration() }
+        }
+
+        self.activeInput = nil
+        self.configured = false
+        self.running = false
+        self.delegate.clear()
+
+        let nc = NotificationCenter.default
+        for token in self.observerTokens { nc.removeObserver(token) }
+        self.observerTokens = []
     }
 
     /// ND-013: stop the running capture session so the camera indicator light
@@ -230,7 +422,8 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     public func suspend() {
         sessionQueue.async {
             guard self.running else { return }
-            self.session.stopRunning()
+            // ND-054: shim the stop — a DAL device can throw here too.
+            _ = self.runCatching("stopRunning") { self.session.stopRunning() }
             self.running = false
             // Drop the last live frame so the first post-resume capture() can't
             // return a stale pre-suspend frame (stale-frame false-present).
@@ -247,22 +440,36 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// launch-while-locked start (session not yet configured) is instead brought
     /// up by the first post-resume capture()'s ensureConfigured(), which is an
     /// acceptable minor first-tick delay.
+    ///
+    /// Self-heal note: this guards on `self.configured`. If a teardown ran while
+    /// suspended (e.g. a disconnect/runtime-error fired during suspend, clearing
+    /// `configured`), this resume() is a deliberate no-op — recovery instead
+    /// happens on the next `capture()` tick, whose `ensureConfigured()` rebuilds
+    /// against the current default device. No behavioral change needed here.
     public func resume() {
         sessionQueue.async {
             guard self.configured, !self.running else { return }
-            self.session.startRunning()
+            // ND-054: shim the (re)start — a DAL device can throw here too. If it
+            // throws we tear down so the next capture() rebuilds against the
+            // current default device rather than leaving a half-live session.
+            guard self.runCatching("startRunning", { self.session.startRunning() }) else {
+                self.teardown()
+                return
+            }
             self.running = true
         }
     }
 
     /// Poll the delegate for the first delivered frame, up to `timeout` seconds.
+    /// ND-054: honors the freshness guard so a stalled/removed camera can't have
+    /// its lingering last buffer resurrected here.
     private func waitForFirstFrame(timeout: TimeInterval) async -> CVPixelBuffer? {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let buffer = delegate.latestBuffer() { return buffer }
+            if let buffer = delegate.latestBuffer(maxAge: Self.staleFrameThreshold) { return buffer }
             try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
         }
-        return delegate.latestBuffer()
+        return delegate.latestBuffer(maxAge: Self.staleFrameThreshold)
     }
 }
 
@@ -272,6 +479,11 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
 private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private let lock = NSLock()
     private var buffer: CVPixelBuffer?
+    /// ND-054: monotonic delivery time of `buffer`, stamped in `captureOutput`.
+    /// Used by `latestBuffer(maxAge:)` to reject a frame that's too old (a
+    /// removed/dead camera stops delivering but the last buffer lingers). Uses
+    /// `DispatchTime` (mach clock) so it isn't affected by wall-clock changes.
+    private var bufferStamp: DispatchTime?
 
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
@@ -279,23 +491,32 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lock.lock()
         buffer = pixelBuffer
+        bufferStamp = DispatchTime.now()
         lock.unlock()
     }
 
-    func latestBuffer() -> CVPixelBuffer? {
+    /// Return the cached frame only if it was delivered within the last `maxAge`
+    /// seconds; otherwise nil (ND-054 freshness guard). A stalled session — dead
+    /// or removed camera — thus reports "no frame" instead of a phantom present.
+    func latestBuffer(maxAge: TimeInterval) -> CVPixelBuffer? {
         lock.lock()
         defer { lock.unlock() }
-        return buffer
+        guard let buffer, let stamp = bufferStamp else { return nil }
+        let ageNanos = DispatchTime.now().uptimeNanoseconds &- stamp.uptimeNanoseconds
+        let age = TimeInterval(ageNanos) / 1_000_000_000
+        return age <= maxAge ? buffer : nil
     }
 
-    /// Drop the cached frame under the lock. Called from `suspend()` so a stale
-    /// pre-suspend frame (e.g. the previous user's face) can never be returned by
-    /// the first post-resume `capture()` — that would falsely report present and
+    /// Drop the cached frame (and its timestamp) under the lock. Called from
+    /// `suspend()` / `teardown()` so a stale pre-suspend frame (e.g. the previous
+    /// user's face, or the last frame from a now-removed camera) can never be
+    /// returned by a later `capture()` — that would falsely report present and
     /// leave a stranger unlocked. After clear, `capture()` waits for a fresh live
     /// frame via `waitForFirstFrame`.
     func clear() {
         lock.lock()
         buffer = nil
+        bufferStamp = nil
         lock.unlock()
     }
 }

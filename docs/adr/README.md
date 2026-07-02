@@ -19,6 +19,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0010](0010-screen-lock-no-accessibility.md) — Screen-lock mechanism: layered no-Accessibility lock (SACLockScreenImmediate → CGSession -suspend), CGSession-verified, async — **Accepted**
 - [ADR-0011](0011-enforcement-gating.md) — Enforcement gating: single gate combining session + pause + trusted Wi-Fi; disable reuses the suspend path; SSID fail-safe; lazy Location — **Accepted**
 - [ADR-0012](0012-local-identity-featureprint.md) — Local identity: Vision feature-print embedder (behind a protocol, future Core ML swap) + Keychain enrollment store — **Accepted** (amends ADR-0002)
+- [ADR-0013](0013-camera-session-resilience.md) — Camera session resilience: ObjC-exception shim on all session mutations + disconnect/runtime-error teardown → auto-reselect built-in; interruptions log-only; fail-safe on no camera — **Accepted** (extends EC-21 to runtime removal, ND-054)
 
 ## Template
 

@@ -52,6 +52,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon (fixed plist path + `KeepAlive` dict `SuccessfulExit=false` = crash-recovery that honors a clean Quit; `scripts/install-launchagent.sh` installs to `/Applications` + bootstraps, `scripts/uninstall-launchagent.sh` undoes; ADR-0001)
 - [x] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty/homer (per-state SF Symbol glyph + tint; `.absent` shown from the FIRST no-face tick (responsive); render cached to skip no-op redraws. Timing sped up for office-donut threat: tick 4→1s, consensus 3→5, grace 25→5 → walk-away→lock ≈ 10s. Fixed: a failed `lockNow()`'s "can't lock" warning was being clobbered to "away" by the next tick.)
 - [x] ND-018 Runnable `.app` bundle with camera entitlement — `scripts/make-app.sh` (SPM build + bundle + ad-hoc codesign; CLT-only, no Xcode), ADR-0008 — gordon
+- [x] ND-054 App crashes/wedges when an external camera is removed at runtime (EC-22, [ADR-0013](adr/0013-camera-session-resilience.md)) — blart. `CameraController` binds to `AVCaptureDevice.default` once and never re-evaluates; no `AVCaptureDeviceWasDisconnected`/`AVCaptureSessionRuntimeError`/interruption observers; session lifecycle mutations aren't wrapped in the `ObjCExceptionCatcher` shim (only the frame-duration setter is, from EC-21), so a DAL device's NSException on teardown reaches `abort()` (confirmed: SIGABRT via `objc_exception_throw` in `AVCaptureDALDevice`, crash report 2026-07-02). Also stale-frame false-present in `latestBuffer()`. Fix: observe device/session-error/interruption → tear down to `configured=false` and re-select an available camera; shim the session mutations; freshness-guard the buffer; fail-safe `.unavailable` when no device. UX (camera-gone) coordinates with ND-045.
 - [ ] ND-019 Fix duplicate ADR number: `0005-docs-site.md` and `0005-presence-loop-concurrency.md` both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon
 
 > **Review follow-ups (from the ND-010/015 code review, deferred to their owning items):**
@@ -117,7 +118,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer
 - [ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty
 - [ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon
-- [ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty
+- [x] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — krusty + gordon (landed with ND-054: `CameraStatusNotifier` posts a throttled local `UNUserNotificationCenter` notification on `.cameraUnavailable`, withdraws on recovery, fail-safe silent if unauthorized; launch-time `requestAuthorization([.alert])`; no entitlement needed for a non-sandboxed app. EC-07/08/09)
 - [x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty
 
 ## M5 — Distribution
