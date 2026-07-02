@@ -875,10 +875,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mvp-plan-current-focus" class="md-nav__link">
+  <a href="#v12-plan-hardening-trust-current-focus" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🎯 MVP plan — current focus
+        🎯 v1.2 plan — hardening &amp; trust (current focus)
       
     </span>
   </a>
@@ -945,6 +945,17 @@
     <span class="md-ellipsis">
       
         M5 — Distribution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#m6-v12-hardening-from-the-2026-07-02-full-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6 — v1.2 Hardening (from the 2026-07-02 full review)
       
     </span>
   </a>
@@ -1035,10 +1046,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mvp-plan-current-focus" class="md-nav__link">
+  <a href="#v12-plan-hardening-trust-current-focus" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🎯 MVP plan — current focus
+        🎯 v1.2 plan — hardening &amp; trust (current focus)
       
     </span>
   </a>
@@ -1112,6 +1123,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#m6-v12-hardening-from-the-2026-07-02-full-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6 — v1.2 Hardening (from the 2026-07-02 full review)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tooling-tests" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1155,23 +1177,26 @@
 <p><strong>Status legend:</strong> <code>[ ]</code> todo · <code>[~]</code> in progress · <code>[x]</code> done · <code>[!]</code> blocked
 <strong>Owner</strong> = the responsible sub-agent (see <code>CLAUDE.md</code> at the repo root for module ownership).</p>
 <hr />
-<h2 id="mvp-plan-current-focus">🎯 MVP plan — current focus<a class="headerlink" href="#mvp-plan-current-focus" title="Permanent link">&para;</a></h2>
-<p><strong>MVP goal:</strong> lock the Mac when no face is at it, <strong>never lock during a video call</strong>, show a live menu-bar indicator (present / away / in a meeting), start at login — all on-device. <strong>Recognition is presence-only</strong> ("any face = present"); recognizing <em>you specifically</em> (identity) is deferred to v1.1.</p>
-<p><strong>P0 — prove the core loop end-to-end (demoable lock):</strong>
-1. ND-018 — runnable <code>.app</code> w/ camera entitlement (<strong>prerequisite</strong>; gates all P0 testing) — gordon
-2. ND-014 — reliable programmatic screen lock (<strong>highest risk, start first</strong>) — wiggum
-3. ND-011 — camera permission + denied/restricted — blart
-4. ND-012 — single-frame capture per tick — blart
-5. ND-020 — Vision face detection → presence-only recognizer — cooper
-6. ND-025 — wire detection recognizer into engine, drop the fake — homer
-7. ND-030 — grace + consecutive-absent debounce — homer</p>
-<p><strong>P1 — correct &amp; professional-friendly (completes MVP):</strong>
-8. ND-013 — suspend loop when locked/asleep/inactive — blart
-9. ~~ND-031 — camera-in-use detection ("in a meeting" signal) — blart~~ ✅
-10. ~~ND-033 — assume-present when camera busy + no frames (ADR-0003), bounded — homer~~ ✅
-11. ND-017 — menu-bar indicator: present / away / in a meeting / can't-see-you — krusty
-12. ND-016 — LaunchAgent autostart at login — gordon</p>
-<p><strong>Deferred to post-MVP:</strong> M2 identity (ND-021/022/023/024 = v1.1, "recognize you specifically", EC-03), ND-032, ND-034, ND-035 (pause — worth doing soon for trust), M4 (ND-040–044), M5 distribution (ND-050–053; run dev-signed via Xcode for MVP, notarize later).</p>
+<h2 id="v12-plan-hardening-trust-current-focus">🎯 v1.2 plan — hardening &amp; trust (current focus)<a class="headerlink" href="#v12-plan-hardening-trust-current-focus" title="Permanent link">&para;</a></h2>
+<p><em>MVP + v1.1 identity are shipped and were </em><em>code-verified in the 2026-07-02 full-backlog review</em><em> (all six domain owners audited their done items: build green, <code>EngineCheck</code> 47/47, no functional regressions). The plan below is what that review surfaced — see <a href="#m6--v12-hardening-from-the-2026-07-02-full-review">M6</a> for full item descriptions.</em></p>
+<p><strong>Goal:</strong> eliminate the remaining silent fail-opens, put identity on a measured footing, and never let the UI claim protection it isn't delivering.</p>
+<p><strong>P0 — fail-safe integrity (the app must never silently not-protect):</strong>
+1. ND-054 — lock-failed alarm + retry w/ backoff (the biggest real fail-open left) — wiggum + homer + krusty
+2. ND-055 — stale-frame guard (dead frame source currently serves the last good frame forever → never locks) — blart
+3. ND-056 — threshold tuning study → data-driven <code>matchThreshold</code> default (identity currently hangs on an untuned 0.6 guess) — cooper
+4. ND-057 — menu honesty: <code>autoenablesItems = false</code> + <code>menuWillOpen</code> refresh — krusty
+5. ND-058 — launch-time lock self-test — wiggum</p>
+<p><strong>P1 — correctness &amp; policy:</strong>
+6. ND-059 — multi-face matching (EC-06; after ND-056) — cooper
+7. ND-060 — EC-10 error-escalation cadence decision — homer
+8. ND-061 — stranger-at-keyboard urgency (needs ADR) — homer + cooper
+9. ND-062 — validated runtime tunables (substrate for ND-040) — homer
+10. ND-063 — enrollment quality: distinct frames + consistency gate — blart + cooper
+11. ND-064 — shared CGSession reader (drift is already live) — wiggum
+12. ND-065 — identity constants + Keychain migration plan (gates ND-050) — gordon</p>
+<p><strong>P2 — features &amp; polish (M4 settings/onboarding/diagnostics/anti-spoofing v1 already shipped; remaining):</strong>
+ND-042 loop timing/power (absorbs several camera follow-ups) · ND-066 on-device multi-client validation (discharges the ND-032 caveat).</p>
+<p><strong>Hygiene batch (cheap, batchable):</strong> ND-019 (ADR renumber — target is now <strong>0013</strong>, not 0007) · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceDetectionRecognizer</code> · ND-069 <code>throttleOnBattery</code> implement-or-delete · ND-070 de-modalize alerts.</p>
 <hr />
 <h2 id="m0-scaffolding-current">M0 — Scaffolding ✅ (current)<a class="headerlink" href="#m0-scaffolding-current" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1188,13 +1213,13 @@
 <li>[x] ND-010 Buildable menu-bar app (<code>LSUIElement</code>), status item, quit — krusty</li>
 <li>[x] ND-011 Camera permission request + state handling (denied/restricted) — blart (camera layer: <code>capture()</code> resolves auth, returns <code>.unavailable</code> on notDetermined-denied/denied/restricted/no-device; honest engine display tracked as a homer follow-up below)</li>
 <li>[x] ND-012 Single-frame capture each tick from AVFoundation — blart (persistent low-FPS <code>AVCaptureSession</code>, samples one <code>CVPixelBuffer</code> per tick; frames in-memory only)</li>
-<li>[x] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart/homer (event-driven <code>SessionStateMonitor</code> in App target pauses loop + stops camera while locked/asleep/not-on-console, resumes on unlock/wake; app calls <code>engine.sessionSuspended()</code> on suspend to reset absence for false-lock-free resume (the in-tick <code>.suspended</code> path is a backstop); ADR-0009, EC-02/EC-13)</li>
+<li>[x] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart/homer (event-driven <code>SessionStateMonitor</code> in App target pauses loop + stops camera while locked/asleep/not-on-console, resumes on unlock/wake; app calls <code>engine.sessionSuspended()</code> on suspend to reset absence for false-lock-free resume (in-tick backstop: a tick racing a suspend falls through to <code>.unavailable</code> — the live camera never emits <code>CaptureOutcome.suspended</code>, see ND-067); ADR-0009, EC-02/EC-13)</li>
 <li>[x] ND-014 Verify a reliable programmatic <strong>screen lock</strong> under entitlements — wiggum</li>
 <li>[x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer</li>
 <li>[x] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon (fixed plist path + <code>KeepAlive</code> dict <code>SuccessfulExit=false</code> = crash-recovery that honors a clean Quit; <code>scripts/install-launchagent.sh</code> installs to <code>/Applications</code> + bootstraps, <code>scripts/uninstall-launchagent.sh</code> undoes; ADR-0001)</li>
 <li>[x] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty/homer (per-state SF Symbol glyph + tint; <code>.absent</code> shown from the FIRST no-face tick (responsive); render cached to skip no-op redraws. Timing sped up for office-donut threat: tick 4→1s, consensus 3→5, grace 25→5 → walk-away→lock ≈ 10s. Fixed: a failed <code>lockNow()</code>'s "can't lock" warning was being clobbered to "away" by the next tick.)</li>
 <li>[x] ND-018 Runnable <code>.app</code> bundle with camera entitlement — <code>scripts/make-app.sh</code> (SPM build + bundle + ad-hoc codesign; CLT-only, no Xcode), ADR-0008 — gordon</li>
-<li>[ ] ND-019 Fix duplicate ADR number: <code>0005-docs-site.md</code> and <code>0005-presence-loop-concurrency.md</code> both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon</li>
+<li>[ ] ND-019 Fix duplicate ADR number: <code>0005-docs-site.md</code> and <code>0005-presence-loop-concurrency.md</code> both numbered 0005 — renumber docs-site → <strong>0013</strong> (0007–0012 are all taken now; the old "→ 0007" plan is stale) and update the file's title line, <code>docs/adr/README.md</code>, <code>mkdocs.yml</code> nav, CLAUDE.md, <code>.githooks/pre-commit</code>, the <code>.gitignore</code> comment; rebuild <code>site/</code> — gordon</li>
 </ul>
 <blockquote>
 <p><strong>Review follow-ups (from the ND-010/015 code review, deferred to their owning items):</strong>
@@ -1256,22 +1281,53 @@
 <ul>
 <li>[x] ND-040 Settings UI: tick interval, grace, sensitivity, anti-spoof, autostart, trusted-network list — krusty (<a href="../adr/0013-settings-ui-and-login-item/">ADR-0013</a>). SwiftUI <code>SettingsView</code> hosted via <code>AppWindows</code>/NSHostingController in the LSUIElement app; <code>SettingsStore</code> (UserDefaults-backed) with clamped ranges (threshold 0.05–0.95, grace 2–60, tick 0.5–10). <strong>Live-apply:</strong> engine via <code>updateConfig</code>; matchThreshold/antiSpoofEnabled/spoofTextureFloor read LIVE by the recognizer; tick read live by the loop. "Start at login" via <code>SMAppService</code> (<code>LoginItem</code>). Refresh-on-show fixes stale state; grace floor ≥ 2s. "Copy diagnostics" wired to ND-044.</li>
 <li>[x] ND-041 Basic anti-spoofing (reject obvious flat photo/screen) — wiggum + cooper (<a href="../EDGE_CASES/">EC-12</a>). Variance-of-Laplacian texture/liveness score computed on the INNER face region (<code>FaceLiveness.swift</code>), carried via <code>FaceEmbeddingResult</code> (App enum unchanged). ON by default (<code>antiSpoofEnabled</code>); only flags on the ENROLLED+matched path when the score is below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12) → <code>.strangerOnly</code>. Conservative (errs LIVE on ambiguity/failure); texture compute skipped when the toggle is off. <strong>NOT hardened</strong> (a sharp high-res photo/high-DPI screen can pass); floor needs on-device tuning; motion/blink liveness = future (wiggum).</li>
-<li>[ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer (deferred this round — edits <code>CameraController.swift</code> (concurrent external-camera work) + needs on-device profiling)</li>
+<li>[ ] ND-042 Loop timing + power — blart + homer (re-scoped 2026-07-02, absorbs the camera follow-ups: fixed-cadence tick (deadline-based, not work+<code>sleep</code> — drift silently lengthens the ~10s walk-away math), cancellation-aware <code>capture()</code>, session pre-warm at launch (kills the ~1.5s first tick AND the resume-before-configured no-op), deep-copy the retained pixel buffer, duty-cycle measurement (EC-18; stop-between-ticks vs the deliberate camera-light-on honesty stance → ADR note if changed))</li>
 <li>[x] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty<blockquote>
 <p>Guided first-run window (<code>App/OnboardingView.swift</code>, SwiftUI, hosted via <code>AppWindows</code> <code>.onboarding</code>), 4-step stepper: Welcome (on-device/camera-only/nothing recorded) → Enable camera (button → <code>camera.requestAccessIfNeeded()</code> + <code>notProtectingNotifier.requestAuthorizationIfNeeded()</code>, reflects granted/denied) → Enroll my face (reuses <code>startEnrollment()</code>) or Skip → Done (points to the menu-bar icon). Replaces the old one-time camera-explainer NSAlert in <code>primeIfActive()</code>; shown at most once (gated by <code>Permissions.hasPrimedPermissions</code>, set before presenting), preserving the launch-while-locked deferral. View owns no singletons — everything injected via <code>OnboardingActions</code> closures, mirroring <code>SettingsActions</code>. Subsequent launches unchanged (idempotent <code>requestAccessIfNeeded()</code>). Keychain explainer in <code>startEnrollment()</code> untouched.</p>
 </blockquote>
 </li>
 <li>[x] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon (<code>DiagnosticsReporter</code>: app/OS versions, permission statuses, enrolled y/n, <strong>effective (live-resolved)</strong> Config/threshold/anti-spoof/floor, trusted-network COUNT only, recent <code>OSLogStore</code> tail scoped to our subsystem+process → "Copy diagnostics" in Settings. No embeddings/images/SSID values. Shared <code>Support/Log.swift</code> subsystem/category constants for new code — existing loggers' migration is a tracked follow-up.)</li>
 <li>[x] ND-045 "Not protecting" notification when camera unavailable (on entry + repeats ~5 min, clears on recovery) — krusty (<code>NotProtectingNotifier</code>, local UserNotifications; permission requested at first launch; no entitlement needed). EC-07/08/09 IMPLEMENTED.</li>
-<li>[x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty</li>
+<li>[x] ND-048 Request all required permissions at first launch (camera + <strong>notifications</strong>; the SAC/CGSession lock needs no Accessibility, ADR-0010 — original "Accessibility" wording corrected in the 2026-07-02 review; Location stays lazy by design, ND-036) — krusty (stale "grant Accessibility" code comments → ND-067)</li>
 </ul>
 <h2 id="m5-distribution">M5 — Distribution<a class="headerlink" href="#m5-distribution" title="Permanent link">&para;</a></h2>
 <ul>
-<li>[ ] ND-050 Codesign + notarization pipeline — gordon</li>
+<li>[ ] ND-050 Codesign + notarization pipeline — gordon (needs a decision ADR first: signing account (personal/Chrono — <strong>not</strong> the Serko account), final bundle id, hardened-runtime entitlement audit, <code>notarytool</code> flow. <strong>Blocked on ND-065</strong> — renaming the bundle id without the Keychain-service migration plan silently orphans enrollments)</li>
 <li>[ ] ND-051 Signed <code>.app</code> + DMG/installer — gordon</li>
-<li>[ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon</li>
+<li>[ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon (scope from review: <code>uninstall.sh --purge</code> = agent + <code>/Applications</code> app + Keychain enrollment item + <code>defaults delete com.nodonuts.app</code> + <code>tccutil reset Camera</code> — a trust/privacy story this app markets on)</li>
 <li>[ ] ND-053 MDM/enterprise deployment notes — gordon</li>
 </ul>
+<h2 id="m6-v12-hardening-from-the-2026-07-02-full-review">M6 — v1.2 Hardening (from the 2026-07-02 full review)<a class="headerlink" href="#m6-v12-hardening-from-the-2026-07-02-full-review" title="Permanent link">&para;</a></h2>
+<p><em>Each done item in M0–M3 was re-verified against the code by its owning agent. All claims held (no functional regressions; <code>EngineCheck</code> 47/47). These are the gaps and promotions the review produced. Several existing follow-up bullets above are absorbed by these items — the item text says which.</em></p>
+<p><strong>P0 — fail-safe integrity:</strong></p>
+<ul>
+<li>[ ] ND-054 Lock-failed alarm + retry — on <code>.lockFailed</code>: notify via <code>NotProtectingNotifier</code> (on entry + repeat, clear on recovery), audible alert, and retry <code>locker.lock()</code> on coarse backoff (~30s, capped) while the absence episode persists. Today <code>lockAttempted</code> is set once per episode with no retry, and the only surfacing is a red menu glyph shown to an empty chair — the single biggest real fail-open (flagged independently by homer, wiggum, AND krusty). Absorbs the "Lock-failed retry/backoff" follow-up. A retry pass also absorbs the shared-3s-deadline nuance (slow CGSession <code>-suspend</code> locking <em>after</em> <code>lock()</code> returned false → transient false <code>.lockFailed</code>). EC-19. — wiggum + homer + krusty</li>
+<li>[ ] ND-055 Stale-frame fail-open guard — the delegate's cached <code>CVPixelBuffer</code> has no timestamp, and nothing observes <code>AVCaptureSessionRuntimeError</code> / <code>AVCaptureSessionWasInterrupted</code> / device-disconnect: if frame delivery dies while <code>running == true</code> (external cam unplugged, wedged virtual cam — the same DAL hardware class as EC-21), <code>capture()</code> serves the last good frame <strong>forever</strong> and the Mac never locks. Fix: timestamp the cached buffer, reject frames older than ~2× tick (routes into the existing honest busy/unavailable paths), observe runtime-error/disconnect to reset <code>configured</code>. — blart</li>
+<li>[ ] ND-056 Threshold tuning study — structured on-device captures (enrolled user across lighting/glasses/angles/distance vs 2–3 other faces), harvest scores from the existing per-tick logging, pick a data-driven <code>matchThreshold</code> default (current 0.6 is a self-documented guess on a <em>general-purpose</em> feature print — the EC-03 stranger-rejection guarantee is weaker than the ✅ rows imply), amend ADR-0012. Unblocks the ND-040 sensitivity slider with real endpoints. Carries the ND-024 follow-up. — cooper</li>
+<li>[ ] ND-057 Menu honesty pass — <code>menu.autoenablesItems = false</code> + <code>validateMenuItem</code>/<code>menuWillOpen</code> refresh. NSMenu auto-enablement currently force-enables items the code disabled (enroll-during-enrollment, trust-with-unknown-SSID) — functionally guarded, but the menu visually offers actions it claims are disabled; also fixes the stale "Resume (N min left)" label (computed at the last gate pass, never on open). One small change. — krusty</li>
+<li>[ ] ND-058 Launch-time lock self-test — at startup verify <code>dlsym(SACLockScreenImmediate)</code> resolves and the CGSession tool exists; if not, surface "locking may not work on this macOS" immediately instead of at the first real absence. Log which mechanism confirmed each lock (canary for macOS breaking the private API that ADR-0010 accepted as a risk). — wiggum</li>
+</ul>
+<p><strong>P1 — correctness &amp; policy:</strong></p>
+<ul>
+<li>[ ] ND-059 Multi-face matching (EC-06) — embed the top-2/3 detected faces by size and report present if ANY clears the threshold; <code>.strangerOnly</code> only when none do. Today only the LARGEST face is embedded: a colleague leaning in closer than the enrolled user → stranger score → false lock of the present user. Bounded top-N because matching any-of-N multiplies false-accept surface → sequence AFTER ND-056. EngineCheck via a per-face fake embedder. — cooper</li>
+<li>[ ] ND-060 EC-10 escalation cadence decision — <code>markAbsent</code> resets <code>consecutiveErrorTicks</code>, so a fully wedged recognizer needs 3×5 error ticks + grace ≈ <strong>20s</strong> to lock vs ~10s for plain absence. Either count an escalated tick without resetting the streak, or record the 2× behavior as intended (EDGE_CASES EC-10 + config comment). One line either way + an EngineCheck assertion pinning the chosen time-to-lock. — homer</li>
+<li>[ ] ND-061 Stranger-at-keyboard urgency — sustained <code>.strangerOnly</code> currently gets the identical 5-tick consensus + 5s grace as an empty desk, but grace exists to absorb the enrolled user turning away, not to give a stranger 10 seconds at the keyboard. Consider a shorter consensus/grace pair (e.g. 3 ticks + 0s) for the highest-threat observable state. Policy change → needs an ADR; interacts with ND-056/ND-059 false-positive rates. — homer + cooper</li>
+<li>[ ] ND-062 Validated runtime tunables — <code>matchThreshold</code> has a validated defaults-override resolver; <code>tickIntervalSeconds</code>/<code>graceSeconds</code>/<code>consecutiveAbsentTicksToLock</code> have none, and unvalidated values are dangerous (0s tick = CPU spin; huge grace = fail-open). Ship Core resolvers mirroring <code>resolvedMatchThreshold</code> (clamped ranges, EngineCheck-covered) so ND-040 builds on a safe substrate. — homer</li>
+<li>[ ] ND-063 Enrollment quality — two halves: (a) <strong>distinct frames</strong> (blart): the coordinator samples every 200ms but the camera delivers ~1fps, so "10 frames" ≈ 2–3 distinct images and <code>minimumVectors=3</code> can be met by one frame embedded thrice — expose frame identity/timestamp (or raise fps during the enrollment window) and require N distinct; (b) <strong>consistency gate</strong> (cooper): reject vector sets (or outliers) whose pairwise cosine falls below a floor, so a photobombed/blurry capture can't silently poison the reference set — honest <code>notEnoughFaces</code>-style retry, guidance wording with krusty. — blart + cooper + krusty</li>
+<li>[ ] ND-064 Shared CGSession reader — one defensive AppKit-free <code>NoDonutsCore/Support</code> helper (Bool <strong>and</strong> NSNumber bridging; locked / on-console / display-asleep) consumed by both <code>ScreenLocker.isScreenLockedNow()</code> and <code>SessionStateMonitor.currentlyActive()</code>. The feared drift already exists: the locker bridges NSNumber defensively, the monitor uses bare <code>as? Bool</code> only. Enables EngineCheck coverage of the parsing. Absorbs the "Dedupe CGSession lock-detection" follow-up. — wiggum + homer</li>
+<li>[ ] ND-065 Identity constants + Keychain migration plan — extract one shared constant for the 7+ hardcoded <code>"com.nodonuts.app"</code> Logger subsystems (ADR-0004), and decide (note in ADR-0004 or mini-ADR) whether the <strong>Keychain service string</strong> (<code>EnrollmentStore</code>, same literal) tracks the bundle id or stays fixed at the ND-050 rename — as-is it's a silent enrollment-loss trap. Gates ND-050 and ND-044. Absorbs the "Log subsystem constant" follow-up. — gordon + wiggum + cooper</li>
+<li>[ ] ND-066 On-device multi-client validation — live test with FaceTime/Photo Booth/Zoom holding the camera: (a) confirm our session still receives frames (the ADR-0003/ND-032 design rationale), and (b) when it doesn't, confirm <code>isInUseByAnotherApplication</code> actually fires within the 1.5s window — else the fallback lands on <code>.unavailable</code> and an on-a-call user gets "not protecting" nags instead of "in a meeting". Also fix the busy probe to query the <em>configured</em> input device rather than re-resolving <code>.default</code>. Discharges the explicit reopen-clause caveat on ND-032. — blart</li>
+</ul>
+<p><strong>Hygiene (cheap, batchable):</strong></p>
+<ul>
+<li>[ ] ND-067 Stale-docs/comments sweep — (a) Accessibility ghosts (ADR-0010 removed the need): <code>Types.swift</code> "(e.g. Accessibility not granted)", <code>PresenceEngine</code> "grant Accessibility" comment, the EngineCheck label; (b) closed-item TODOs in <code>CameraController</code> (ND-032 "still TODO", ND-013 "detect locked → .suspended", header note); (c) <code>Package.swift</code> + <code>Info.plist</code> "requires full Xcode" comments contradicting ADR-0008; (d) <code>main.swift</code> threshold doc-comment says "(0.0, 1.0]" while the resolver correctly rejects 1.0; (e) stamp <code>CFBundleShortVersionString</code>/<code>CFBundleVersion</code> from <code>git describe</code> in <code>make-app.sh</code> (bundle still says 0.0.1 while the backlog calls this v1.1). — gordon + all</li>
+<li>[ ] ND-068 Delete dead <code>FaceDetectionRecognizer</code> — zero references anywhere (app, EngineCheck, Package); a compiled-in presence-only recognizer whose semantics contradict the enrolled identity policy is a wiring footgun (exactly the class of code the ND-025 follow-up worried about). Migrate its useful doc comments into <code>FaceRecognizer.swift</code>. Absorbs the "Two recognizer classes" follow-up. — cooper</li>
+<li>[ ] ND-069 <code>throttleOnBattery</code> implement-or-delete — declared in <code>Config</code>, read by nothing (EC-18). A tunable that silently does nothing is a trust hazard in a security tool; implement with ND-042's duty-cycle work or remove until real. — homer + blart</li>
+<li>[ ] ND-070 De-modalize alerts — three <code>NSAlert.runModal()</code> sites starve the main-actor loop (first-run explainer, Keychain explainer, enrollment-result); the enrollment-result one now runs while enforcement is active, so this grew since first filed. Absorbs the "First-run explainer non-blocking" follow-up. — krusty</li>
+</ul>
+<blockquote>
+<p><strong>Still-open small follow-ups retained from above (not promoted, do opportunistically):</strong> consolidate the three identical engine disable methods into <code>disable(as:)</code>; wire <code>WiFiMonitor.stop()</code> (+ add a <code>SessionStateMonitor.stop()</code>) to an explicit shutdown path if one appears; gate no-op short-circuit in <code>applyEnforcement()</code> (real cost is the synchronous SSID read per gate pass); make <code>TrustedNetworksStore.contains(_:)</code> non-public so the single-trust-path invariant can't regress; enrolled-but-empty-references → presence-only branch in <code>FaceRecognizer</code> is a deliberate fail-open — keep an eye on it; auto-derive Vision orientation per device instead of the manual override; <code>kSecUseDataProtectionKeychain</code> hardening once real signing exists (ND-050).</p>
+</blockquote>
 <h2 id="tooling-tests">Tooling &amp; tests<a class="headerlink" href="#tooling-tests" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[x] ND-046 Testable <code>NoDonutsCore</code> split + framework-free <code>EngineCheck</code> harness (<code>swift run EngineCheck</code>) — gordon/homer (<a href="../adr/0007-package-layout-testable-core/">ADR-0007</a>)</li>
