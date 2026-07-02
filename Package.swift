@@ -9,10 +9,18 @@ let package = Package(
     name: "NoDonuts",
     platforms: [.macOS(.v15)],
     targets: [
+        // Foundation-only ObjC shim so Swift can survive AVFoundation setters
+        // that throw NSException (e.g. AVCaptureDALDevice frame-duration). Must
+        // stay CLT-buildable: no AVFoundation/AppKit imports here.
+        .target(
+            name: "ObjCExceptionCatcher",
+            path: "Sources/ObjCExceptionCatcher"
+        ),
         // Testable, AppKit-free core: presence engine, camera/recognition/lock
         // protocols + stubs, shared types. Imported by the app and the checks.
         .target(
             name: "NoDonutsCore",
+            dependencies: ["ObjCExceptionCatcher"],
             path: "Sources/NoDonutsCore"
         ),
         // The menu-bar app shell (AppKit). Owns main.swift + App/.

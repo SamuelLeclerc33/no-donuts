@@ -1,5 +1,11 @@
 import Foundation
 import AVFoundation
+import os
+import ObjCExceptionCatcher
+
+/// Camera-layer logger. os_log is safe on the session queue and never touches
+/// the network / disk beyond the unified log.
+private let cameraLog = Logger(subsystem: "com.nodonuts.app", category: "camera")
 
 // Owner: blart — camera capture, camera-in-use monitoring, display/session state.
 // Backlog: ND-011 (permission), ND-012 (single-frame capture), ND-013 (suspend/resume).
@@ -172,14 +178,40 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
                 // Aim for ~1 fps, clamped into the format's supported range. Only
                 // set the duration if 1 fps actually fits the range; otherwise
                 // leave the device defaults alone.
+                //
+                // Some devices (e.g. an external UVC webcam surfaced as an
+                // AVCaptureDALDevice) reject `activeVideoMin/MaxFrameDuration`
+                // by THROWING an NSException, which Swift cannot catch with
+                // do/try/catch — it would propagate to abort() and crash on
+                // launch. So we (1) clamp the CMTime into the range's own
+                // [minFrameDuration, maxFrameDuration] and (2) perform the
+                // assignment inside an ObjC @try/@catch shim. A throwing device
+                // is NON-fatal: we just log and continue at the default rate.
                 if let range = device.activeFormat.videoSupportedFrameRateRanges.first,
                    (try? device.lockForConfiguration()) != nil {
                     let targetFPS = min(max(1.0, range.minFrameRate), range.maxFrameRate)
-                    let frameDuration = CMTime(value: 1,
+                    var frameDuration = CMTime(value: 1,
                                                timescale: CMTimeScale(targetFPS.rounded()))
-                    device.activeVideoMinFrameDuration = frameDuration
-                    device.activeVideoMaxFrameDuration = frameDuration
+                    // Clamp into the range's advertised duration bounds. Note
+                    // duration is inversely related to rate: min rate -> max
+                    // duration, max rate -> min duration.
+                    if CMTimeCompare(frameDuration, range.minFrameDuration) < 0 {
+                        frameDuration = range.minFrameDuration
+                    }
+                    if CMTimeCompare(frameDuration, range.maxFrameDuration) > 0 {
+                        frameDuration = range.maxFrameDuration
+                    }
+                    var shimError: NSError?
+                    let ok = nd_runCatchingObjCException({
+                        device.activeVideoMinFrameDuration = frameDuration
+                        device.activeVideoMaxFrameDuration = frameDuration
+                    }, &shimError)
+                    // Always unlock, regardless of whether the setter threw
+                    // (the throw is caught by the shim before returning here).
                     device.unlockForConfiguration()
+                    if !ok {
+                        cameraLog.notice("Device rejected a fixed frame rate (\(shimError?.localizedDescription ?? "unknown", privacy: .public)); continuing at the default rate")
+                    }
                 }
 
                 self.session.startRunning()
