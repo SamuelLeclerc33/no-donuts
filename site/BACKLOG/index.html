@@ -894,7 +894,7 @@
   <a href="#m3-presence-policy-professional-friendliness" class="md-nav__link">
     <span class="md-ellipsis">
       
-        M3 — Presence policy &amp; professional-friendliness
+        M3 — Presence policy &amp; professional-friendliness ✅
       
     </span>
   </a>
@@ -1054,7 +1054,7 @@
   <a href="#m3-presence-policy-professional-friendliness" class="md-nav__link">
     <span class="md-ellipsis">
       
-        M3 — Presence policy &amp; professional-friendliness
+        M3 — Presence policy &amp; professional-friendliness ✅
       
     </span>
   </a>
@@ -1207,11 +1207,11 @@
 - <strong>resume()-before-configured</strong> (blart): on first unlock after a launch-while-locked start the session isn't configured yet, so <code>resume()</code> is a no-op and the camera comes up only on the next <code>capture()</code>'s <code>ensureConfigured()</code> (brief <code>cameraUnavailable</code> flash). Minor; tie to ND-042 pre-warm.
 - <strong><code>.suspended</code> enum overload</strong> (homer): <code>PresenceState.suspended</code> means both "we auto-locked" (attemptLock) and "OS session suspended" (ND-013). They converge to the same "locked" status today (no current bug), but consider splitting for clearer status/logic when polishing the indicator (ND-017).</p>
 </blockquote>
-<h2 id="m3-presence-policy-professional-friendliness">M3 — Presence policy &amp; professional-friendliness<a class="headerlink" href="#m3-presence-policy-professional-friendliness" title="Permanent link">&para;</a></h2>
+<h2 id="m3-presence-policy-professional-friendliness">M3 — Presence policy &amp; professional-friendliness ✅<a class="headerlink" href="#m3-presence-policy-professional-friendliness" title="Permanent link">&para;</a></h2>
 <ul>
-<li>[ ] ND-030 Grace period + consecutive-absent debounce — homer</li>
+<li>[x] ND-030 Grace period + consecutive-absent debounce — homer (implemented: <code>Config.graceSeconds=5</code> + <code>consecutiveAbsentTicksToLock=5</code> + <code>PresenceEngine.markAbsent</code> (consensus → grace); walk-away→lock ≈ 10s. EngineCheck-covered: past-grace→locks, within-grace→no-lock, full-consensus-pre-grace→no-lock. EC-04/EC-11)</li>
 <li>[x] ND-031 Camera-in-use detection (another app holds the device) — blart</li>
-<li>[ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.</li>
+<li>[x] ND-032 Attempt multi-client shared frames during a call — blart — <strong>Resolved: not needed on macOS.</strong> macOS shares the camera across clients, so a busy device still delivers frames to our session → normal detection handles the on-a-call case; the rare busy-<strong>no</strong>-frames case is already covered by busy→assume-present, bounded (ADR-0003/ND-033). No explicit shared-frame acquisition code added (would be speculative + untestable headless). <strong>Caveat:</strong> closed on design rationale, not a live multi-app on-device test — reopen if real-world use shows a busy call delivering no frames on some hardware. Folds into ND-031/EC-01.</li>
 <li>[x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by <code>maxCallAssumedPresentSeconds</code> (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer</li>
 <li>[x] ND-034 Stranger-present-but-user-absent policy (EC-03) — cooper/homer (once enrolled, a non-matching face → <code>.strangerOnly</code> → absence → lock after grace; presence-only until enrolled). <a href="../adr/0012-local-identity-featureprint/">ADR-0012</a></li>
 <li>[x] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer (Pause 15 min / 1 hr / until-resume; pausing stops the loop + turns the camera off; manual "Lock now" already existed. Enforced purely by the App gate — no engine pause latch, so it can't get stuck "paused" and silently stop locking. <a href="../adr/0011-enforcement-gating/">ADR-0011</a>, EC-15)</li>

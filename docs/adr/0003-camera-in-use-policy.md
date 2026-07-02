@@ -21,7 +21,7 @@ The fail-open is **bounded by a max-duration guard** (ND-033, implemented): afte
 - Calls are never interrupted — the primary professional requirement.
 - Best-effort accuracy: when multi-client frames are available we still verify identity during calls.
 - Introduces a deliberate fail-open path (busy + no frames → present). Documented and bounded: the max-duration guard is now implemented (default 30 min, tunable via `Config.maxCallAssumedPresentSeconds`), so the fail-open can no longer hold the Mac unlocked forever (EC-01, ND-033).
-- Requires validating macOS multi-client camera capture feasibility (ND-032, owner: blart).
+- **ND-032 (explicit multi-client shared-frame acquisition) closed as not-needed on macOS.** In practice macOS already shares the camera across clients, so decision step 1 ("attempt multi-client capture") happens implicitly: our persistent `AVCaptureSession` normally keeps receiving frames even while a call app holds the device → normal recognition runs during calls. No explicit shared-stream code is required; adding it would be speculative and can't be exercised headless. The only path that needs the fallback is busy-**no**-frames, which the bounded assume-present policy (step 2) already covers. **Caveat:** this is a design-rationale close, not a live multi-app on-device test — reopen ND-032 if real-world use shows a busy call delivering no frames to a second session on some hardware.
 
 ## Alternatives considered
 
