@@ -202,6 +202,18 @@ public final class PresenceEngine {
         if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return }
         if absentSince == nil { absentSince = now }
         if let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds {
+            // Cooperative cancellation guard ("nothing locks mid-capture / mid-pause"):
+            // the App cancels the loop Task on pause / trusted-network / enrollment /
+            // session-suspend, but Swift does not abort an already-suspended `await`,
+            // so an in-flight tick can reach here AFTER the user hit "Enroll" or paused.
+            // Bail before locking (and before setting lockAttempted, so nothing is left
+            // half-done). This gate is placed here — NOT inside attemptLock() — precisely
+            // because the manual `lockNow()` path runs in its OWN uncancelled Task and
+            // MUST still lock; only the auto path (markAbsent → attemptLock) flows through
+            // the cancellable loop Task. All auto callers reach locking via markAbsent
+            // (the .strangerOnly/.noFace path, the error-escalation path, and the bounded
+            // busy/callAssumedPresent escalation), so this single guard covers them all.
+            guard !Task.isCancelled else { return }
             lockAttempted = true
             await attemptLock()
         }

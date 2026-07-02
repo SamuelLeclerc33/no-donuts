@@ -75,19 +75,20 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 > - **First-tick latency** (blart): `waitForFirstFrame` can add ~1.5s to the first tick after permission; pre-warm at launch / shorten — ND-042.
 > - **Duty-cycle** (blart/homer): even at ~1fps the persistent session runs continuously; consider stop-between-ticks for real power savings — ND-042.
 
-## M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
+## M2 — Local face recognition (identity) — ✅ v1.1 (feature-print embedder; Core ML swap optional)
 
 - [x] ND-020 Vision face detection in the capture path — cooper (presence-only `FaceDetectionRecognizer`; any face = present)
-- [ ] ND-021 Select + bundle a Core ML face-embedding model — cooper
-- [ ] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty
-- [ ] ND-023 Encrypted-at-rest embedding store (Keychain/encrypted file) — cooper
-- [ ] ND-024 Cosine matching + threshold; tune defaults on real data — cooper
-- [x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted)
+- [~] ND-021 Upgrade embedder to a Core ML face model (optional accuracy improvement) — cooper. **Reframed:** identity ships in v1.1 using Apple `VNGenerateImageFeaturePrint` behind the `FaceEmbedding` protocol ([ADR-0012](adr/0012-local-identity-featureprint.md)); this item is now the OPTIONAL drop-in of a FaceNet/ArcFace-class Core ML model for better accuracy (needs sourcing/licensing/bundling — blocked on a model file).
+- [x] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty (`EnrollmentCoordinator`: menu "Enroll my face…" → ~10 frames over ~2–3s via `CameraController`, embed, store; enforcement gated off during capture; "Reset enrollment")
+- [x] ND-023 Encrypted-at-rest embedding store (Keychain) — cooper (`EnrollmentStore`: Keychain generic-password, device-only, embeddings-only; `InMemoryEnrollmentStore` for tests)
+- [x] ND-024 Cosine matching + threshold — cooper (`cosineSimilarity` + `IdentityRecognizer`; `.enrolledUserPresent(confidence:)` now the real max score; lenient default, **needs on-device tuning**)
+- [x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted) — see ND-034 (M3) for the strict stranger policy that identity enables
 
-> **Recognition follow-ups (from the ND-020/025 code review):**
-> - **Camera orientation** (cooper): `FaceDetectionRecognizer` hardcodes Vision orientation `.up`; front-camera buffers may not be upright → could miss a present face → false lock. Verify on-device; thread the real orientation through `CapturedFrame` if needed.
-> - **Confidence semantics** (cooper): presence-only `.enrolledUserPresent(confidence:)` carries *detection* confidence, not identity-match score — replace with the cosine score at ND-024 (engine currently ignores the value).
-> - **Two recognizer classes** (cooper): `FaceDetectionRecognizer` (presence-only) vs the `VisionCoreMLRecognizer` stub (identity) overlap on detection; merge or layer when identity lands (ND-021/024).
+> **Identity follow-ups (from M2 / ND-021–024):**
+> - **On-device threshold tuning** (cooper): `Config.matchThreshold` default is lenient and UNVERIFIED — tune against real captures (false-accept vs false-reject); expose in settings (ND-040). The v1.1 feature print is not face-optimized, so expect to tune.
+> - **Camera orientation** (cooper): the embedder + `FaceDetectionRecognizer` use Vision orientation `.up`; front-camera buffers may not be upright → worse matching / missed face → false lock. Verify on-device; thread real orientation through `CapturedFrame`.
+> - **Multi-face (EC-06)** (cooper): the embedder matches only the LARGEST face; if a colleague's face is larger than the enrolled user's, the user could be missed → false lock. Scan all detected faces and match against any.
+> - **Two recognizer classes** (cooper): `FaceDetectionRecognizer` (presence-only) and `IdentityRecognizer` (identity, with its own presence-only fallback) overlap on detection — the standalone `FaceDetectionRecognizer` is now unused in the app; consider removing or merging.
 
 > **Suspend follow-ups (from the ND-013 code review):**
 > - **resume()-before-configured** (blart): on first unlock after a launch-while-locked start the session isn't configured yet, so `resume()` is a no-op and the camera comes up only on the next `capture()`'s `ensureConfigured()` (brief `cameraUnavailable` flash). Minor; tie to ND-042 pre-warm.
@@ -99,7 +100,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-031 Camera-in-use detection (another app holds the device) — blart
 - [ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.
 - [x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by `maxCallAssumedPresentSeconds` (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer
-- [ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum
+- [x] ND-034 Stranger-present-but-user-absent policy (EC-03) — cooper/homer (once enrolled, a non-matching face → `.strangerOnly` → absence → lock after grace; presence-only until enrolled). [ADR-0012](adr/0012-local-identity-featureprint.md)
 - [x] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer (Pause 15 min / 1 hr / until-resume; pausing stops the loop + turns the camera off; manual "Lock now" already existed. Enforced purely by the App gate — no engine pause latch, so it can't get stuck "paused" and silently stop locking. [ADR-0011](adr/0011-enforcement-gating.md), EC-15)
 - [x] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — krusty + homer (checkable "Trust this Wi-Fi network" menu item for the current SSID; list in UserDefaults; reading SSID uses CoreWLAN + Location (when-in-use), requested lazily on first trust. Fail-safe: unknown/unreadable SSID → never trusted → enforcement stays ON. [ADR-0011](adr/0011-enforcement-gating.md), EC-20). Follow-up: full trusted-list settings UI stays with ND-040.
 

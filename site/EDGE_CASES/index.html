@@ -743,6 +743,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0012-local-identity-featureprint/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0012 — Local identity (feature print)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -947,8 +975,8 @@
 <tr>
 <td>EC-03</td>
 <td><strong>Stranger sits down, enrolled user absent</strong></td>
-<td><strong>Presence-only MVP (ND-020/025):</strong> detection has no identity, so ANY detected face counts as present — a stranger keeps the Mac unlocked. The strict policy (stranger = ABSENT → lock after grace; a non-matching face must NOT count as present) returns with identity matching in v1.1.</td>
-<td>DECIDED (strict behavior deferred to identity)</td>
+<td><strong>Identity (v1.1, ND-021–024/ND-034, <a href="../adr/0012-local-identity-featureprint/">ADR-0012</a>):</strong> once the user has enrolled, a detected face is embedded (<code>VNGenerateImageFeaturePrint</code>) and cosine-matched against the enrolled reference vectors; a face that doesn't clear <code>Config.matchThreshold</code> returns <code>.strangerOnly</code> → the engine treats it as absence → locks after grace. A non-matching face NEVER counts as present. <strong>Before enrollment</strong> the app falls back to presence-only (any face = present), so this strict behavior is active only after the user enrolls. Accuracy caveat: the v1.1 embedder is a general (not face-optimized) feature print with a lenient default threshold, so a determined look-alike/stranger may occasionally pass until the threshold is tuned (ND-024) or a Core ML face model is swapped in (ND-021).</td>
+<td>IMPLEMENTED (after enrollment; presence-only until then)</td>
 <td>homer/wiggum/cooper</td>
 </tr>
 <tr>
@@ -968,8 +996,8 @@
 <tr>
 <td>EC-06</td>
 <td><strong>Multiple faces in frame</strong> (user + colleague)</td>
-<td>If enrolled user matches any face → PRESENT. Define behavior re: shoulder-surfing later.</td>
-<td>OPEN</td>
+<td>If the enrolled user matches any face → PRESENT (v1.1: the embedder currently evaluates the largest face; multi-face scan-all is a follow-up). Shoulder-surfing (user present but a stranger also watching) is out of scope for v1.</td>
+<td>PARTIAL (single/largest face)</td>
 <td>cooper/homer</td>
 </tr>
 <tr>

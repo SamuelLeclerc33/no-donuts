@@ -10,7 +10,7 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 
 1. **On-device only.** Detection, embedding, and matching run locally (Vision + Core ML). There are **no network code paths** in the recognition or presence flow.
 2. **No raw images persisted.** Camera frames live in memory for the duration of a tick and are discarded. We persist embeddings, not photos, wherever possible.
-3. **Encrypted at rest.** Enrolled embeddings + settings are stored encrypted (Keychain or an encrypted local store). Reset/uninstall fully removes them.
+3. **Encrypted at rest.** Enrolled face **embeddings** (not images) are stored in the macOS **Keychain** (generic-password item, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — device-only, never iCloud-synced), so they are encrypted at rest and access-controlled ([ADR-0012](adr/0012-local-identity-featureprint.md), ND-023). Identity itself is computed on-device via Apple Vision (`VNGenerateImageFeaturePrint`) with no bundled third-party model and no network. "Reset enrollment" deletes the Keychain item.
 4. **No telemetry by default.** Any diagnostics are local-only and opt-in.
 5. **Least privilege.** Only the camera entitlement we need; clear `NSCameraUsageDescription` explaining why.
 6. **Visible, honest camera use.** Monitoring uses a **persistent low-FPS capture session**, so the macOS **camera indicator light stays on the whole time** No Donuts is watching — there is no hidden or intermittent recording. Captured frames live **in memory only** and are never written to disk.

@@ -11,28 +11,28 @@
       
       
       
-        <link rel="prev" href="../ARCHITECTURE/">
+        <link rel="prev" href="../0011-enforcement-gating/">
       
       
-        <link rel="next" href="../adr/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Security & Privacy - No Donuts</title>
+        <title>ADR-0012 — Local identity (feature print) - No Donuts</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -45,7 +45,7 @@
       
     
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#security-privacy-no-donuts" class="md-skip">
+        <a href="#adr-0012-local-identity-vision-feature-print-embedder-keychain-enrollment" class="md-skip">
           Skip to content
         </a>
       
@@ -86,7 +86,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
+    <a href="../.." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Security & Privacy
+              ADR-0012 — Local identity (feature print)
             
           </span>
         </div>
@@ -210,7 +210,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
+    <a href="../.." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
@@ -228,7 +228,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -255,7 +255,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../PRD/" class="md-nav__link">
+      <a href="../../PRD/" class="md-nav__link">
         
   
   
@@ -282,7 +282,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ARCHITECTURE/" class="md-nav__link">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -306,37 +306,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Security & Privacy
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../SECURITY_PRIVACY/" class="md-nav__link">
         
   
   
@@ -352,103 +325,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#no-recording-guarantee" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        No-recording guarantee
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#privacy-principles" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Privacy principles
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#threat-model" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Threat model
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#explicit-non-goals-v1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Explicit non-goals (v1)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fail-safe-posture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fail-safe posture
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#permissions-entitlements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Permissions &amp; entitlements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#open-items" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Open items
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -457,8 +333,10 @@
       
   
   
+    
   
   
+  
     
     
     
@@ -469,11 +347,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
@@ -494,7 +372,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -512,7 +390,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -540,7 +418,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0001-form-factor/" class="md-nav__link">
+      <a href="../0001-form-factor/" class="md-nav__link">
         
   
   
@@ -568,7 +446,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0002-face-recognition-engine/" class="md-nav__link">
+      <a href="../0002-face-recognition-engine/" class="md-nav__link">
         
   
   
@@ -596,7 +474,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0003-camera-in-use-policy/" class="md-nav__link">
+      <a href="../0003-camera-in-use-policy/" class="md-nav__link">
         
   
   
@@ -624,7 +502,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0004-app-identity/" class="md-nav__link">
+      <a href="../0004-app-identity/" class="md-nav__link">
         
   
   
@@ -652,7 +530,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0005-presence-loop-concurrency/" class="md-nav__link">
+      <a href="../0005-presence-loop-concurrency/" class="md-nav__link">
         
   
   
@@ -680,7 +558,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0005-docs-site/" class="md-nav__link">
+      <a href="../0005-docs-site/" class="md-nav__link">
         
   
   
@@ -708,7 +586,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0006-screen-lock-mechanism/" class="md-nav__link">
+      <a href="../0006-screen-lock-mechanism/" class="md-nav__link">
         
   
   
@@ -736,7 +614,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0007-package-layout-testable-core/" class="md-nav__link">
+      <a href="../0007-package-layout-testable-core/" class="md-nav__link">
         
   
   
@@ -764,7 +642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0008-app-packaging/" class="md-nav__link">
+      <a href="../0008-app-packaging/" class="md-nav__link">
         
   
   
@@ -792,7 +670,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0009-session-suspend/" class="md-nav__link">
+      <a href="../0009-session-suspend/" class="md-nav__link">
         
   
   
@@ -820,7 +698,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0010-screen-lock-no-accessibility/" class="md-nav__link">
+      <a href="../0010-screen-lock-no-accessibility/" class="md-nav__link">
         
   
   
@@ -848,7 +726,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../adr/0011-enforcement-gating/" class="md-nav__link">
+      <a href="../0011-enforcement-gating/" class="md-nav__link">
         
   
   
@@ -873,10 +751,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../adr/0012-local-identity-featureprint/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0012 — Local identity (feature print)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -892,6 +797,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -911,7 +880,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../BACKLOG/" class="md-nav__link">
+      <a href="../../BACKLOG/" class="md-nav__link">
         
   
   
@@ -938,7 +907,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../EDGE_CASES/" class="md-nav__link">
+      <a href="../../EDGE_CASES/" class="md-nav__link">
         
   
   
@@ -985,10 +954,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#no-recording-guarantee" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        No-recording guarantee
+        Context
       
     </span>
   </a>
@@ -996,10 +965,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#privacy-principles" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Privacy principles
+        Decision
       
     </span>
   </a>
@@ -1007,10 +976,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#threat-model" class="md-nav__link">
+  <a href="#consequences" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Threat model
+        Consequences
       
     </span>
   </a>
@@ -1018,43 +987,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#explicit-non-goals-v1" class="md-nav__link">
+  <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Explicit non-goals (v1)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fail-safe-posture" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fail-safe posture
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#permissions-entitlements" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Permissions &amp; entitlements
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#open-items" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Open items
+        Alternatives considered
       
     </span>
   </a>
@@ -1078,86 +1014,37 @@
 
 
 
-<h1 id="security-privacy-no-donuts">Security &amp; Privacy — No Donuts<a class="headerlink" href="#security-privacy-no-donuts" title="Permanent link">&para;</a></h1>
-<p>Privacy is a hard product requirement, not a feature. The whole point of local recognition is that <strong>your face never leaves your Mac.</strong></p>
-<h2 id="no-recording-guarantee">No-recording guarantee<a class="headerlink" href="#no-recording-guarantee" title="Permanent link">&para;</a></h2>
-<p><strong>No Donuts does not record, save, or share any video or images — ever.</strong> While the app is running it samples individual camera frames only to answer one question on-device — "is a face in front of the screen right now?" — and each frame is discarded from memory immediately after that check. No frame is written to disk, kept in a buffer beyond the moment of analysis, uploaded, or sent over any network. There is no recording feature, no screenshot, no cloud, and no telemetry of image data. The macOS camera indicator light stays on the entire time the app is monitoring, so camera use is always visible and honest.</p>
-<h2 id="privacy-principles">Privacy principles<a class="headerlink" href="#privacy-principles" title="Permanent link">&para;</a></h2>
-<ol>
-<li><strong>On-device only.</strong> Detection, embedding, and matching run locally (Vision + Core ML). There are <strong>no network code paths</strong> in the recognition or presence flow.</li>
-<li><strong>No raw images persisted.</strong> Camera frames live in memory for the duration of a tick and are discarded. We persist embeddings, not photos, wherever possible.</li>
-<li><strong>Encrypted at rest.</strong> Enrolled face <strong>embeddings</strong> (not images) are stored in the macOS <strong>Keychain</strong> (generic-password item, <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code> — device-only, never iCloud-synced), so they are encrypted at rest and access-controlled (<a href="../adr/0012-local-identity-featureprint/">ADR-0012</a>, ND-023). Identity itself is computed on-device via Apple Vision (<code>VNGenerateImageFeaturePrint</code>) with no bundled third-party model and no network. "Reset enrollment" deletes the Keychain item.</li>
-<li><strong>No telemetry by default.</strong> Any diagnostics are local-only and opt-in.</li>
-<li><strong>Least privilege.</strong> Only the camera entitlement we need; clear <code>NSCameraUsageDescription</code> explaining why.</li>
-<li><strong>Visible, honest camera use.</strong> Monitoring uses a <strong>persistent low-FPS capture session</strong>, so the macOS <strong>camera indicator light stays on the whole time</strong> No Donuts is watching — there is no hidden or intermittent recording. Captured frames live <strong>in memory only</strong> and are never written to disk.</li>
-</ol>
-<h2 id="threat-model">Threat model<a class="headerlink" href="#threat-model" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Asset</th>
-<th>Threat</th>
-<th>Mitigation</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Unattended unlocked session</td>
-<td>User walks away; opportunistic snooping / "donuting"</td>
-<td>Core function: detect absence → lock within grace period</td>
-</tr>
-<tr>
-<td>Enrolled face data</td>
-<td>Exfiltration of biometric data</td>
-<td>Local-only, encrypted at rest, embeddings (not images), no network</td>
-</tr>
-<tr>
-<td>Spoofing presence</td>
-<td>Photo/phone held to camera to keep it unlocked</td>
-<td>Basic anti-spoofing (M4): reject obvious flat/static photo, liveness signals. <strong>v1 not hardened against determined attackers.</strong></td>
-</tr>
-<tr>
-<td>Fail-open</td>
-<td>Bug/permission issue makes it silently never lock</td>
-<td>Explicit fail policy + visible status; uncertain states lean conservative. <code>lock()</code> is <strong>CGSession-verified</strong> — it returns <code>true</code> only once the session actually reports locked, else it surfaces honest <code>.lockFailed</code> (no silent fail-open, EC-19, <a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>).</td>
-</tr>
-<tr>
-<td>Stranger present</td>
-<td>Someone else sits down while user is gone</td>
-<td>Non-matching face never counts as PRESENT (EC-03)</td>
-</tr>
-<tr>
-<td>Enforcement disabled without user intent</td>
-<td>A bug in pause / trusted-Wi-Fi gating silently stops protecting</td>
-<td>Gating <strong>fails toward enforcing</strong>: an unknown/unreadable SSID is never "trusted" (ND-036, EC-20); disabled states are shown honestly in the menu bar and turn the camera light off, so "not watching" is always visible.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="explicit-non-goals-v1">Explicit non-goals (v1)<a class="headerlink" href="#explicit-non-goals-v1" title="Permanent link">&para;</a></h2>
+<h1 id="adr-0012-local-identity-vision-feature-print-embedder-keychain-enrollment">ADR-0012 — Local identity: Vision feature-print embedder + Keychain enrollment<a class="headerlink" href="#adr-0012-local-identity-vision-feature-print-embedder-keychain-enrollment" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Defeating a determined, prepared spoofing attacker (high-quality 3D mask, etc.).</li>
-<li>Replacing macOS authentication. We <strong>lock only</strong>; unlock remains macOS/Touch ID/password. We never authenticate the user <em>into</em> the machine via face.</li>
+<li>Status: Accepted (amends ADR-0002)</li>
+<li>Date: 2026-07-02</li>
+<li>Owner: cooper (+ krusty enrollment UX)</li>
 </ul>
-<h2 id="fail-safe-posture">Fail-safe posture<a class="headerlink" href="#fail-safe-posture" title="Permanent link">&para;</a></h2>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p><a href="../0002-face-recognition-engine/">ADR-0002</a> chose Apple Vision for detection and a <strong>local Core ML face-embedding model</strong> for identity. Detection shipped (ND-020, presence-only). Identity (ND-021–024, ND-034) needs an embedding to tell the enrolled user from a stranger (EC-03). But a Core ML face model (FaceNet/ArcFace-class) must be <strong>sourced and bundled</strong> — licensing, tens of MB in the bundle, conversion, and it can't be downloaded or tested in our build environment. That was blocking identity from shipping at all, while the product gap (a colleague sitting down keeps the Mac unlocked) is real.</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>Ship identity now using an <strong>Apple-native, no-model embedder</strong>, behind a protocol so a Core ML model can replace it later without touching the rest of the pipeline.</p>
 <ul>
-<li>Default leans <strong>secure</strong> (lock) under sustained uncertainty, balanced against not annoying the user via grace periods and call-awareness.</li>
-<li>Camera permission denied/restricted: do <strong>not</strong> silently pretend to protect. Surface clear status; pick a documented safe default (EC-08).</li>
-<li>A <strong>failed lock is detected and surfaced</strong>, never silently treated as "locked". <code>lock()</code> is <strong>CGSession-verified</strong>: it returns <code>true</code> only once the session actually reports locked (<code>CGSSessionScreenIsLocked</code>, or off-console as <code>CGSession -suspend</code> presents), otherwise the engine shows honest <code>.lockFailed</code> (EC-19, <a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>, supersedes ADR-0006).</li>
-<li><strong>Enforcement is disabled only on explicit signals, and always visibly.</strong> The app stops locking only when (a) the session is already locked/asleep, (b) the user paused it, or (c) the current Wi-Fi is on the user's trusted list. All three turn the <strong>camera light off</strong> and show a distinct menu-bar state. Trusted-Wi-Fi gating <strong>fails toward enforcing</strong>: if the SSID can't be read (e.g. Location not granted), it is treated as untrusted and protection stays on (ND-036, EC-20, <a href="../adr/0011-enforcement-gating/">ADR-0011</a>).</li>
+<li><strong>Embedder:</strong> <code>FaceEmbedding</code> protocol → <code>VisionFeaturePrintEmbedder</code>, which runs <code>VNDetectFaceRectanglesRequest</code>, crops to the largest face, and runs <code>VNGenerateImageFeaturePrintRequest</code>, extracting the <code>VNFeaturePrintObservation</code> into a <code>[Float]</code> vector. All on-device, no bundled model, no network.</li>
+<li><strong>Matching:</strong> cosine similarity against the enrolled reference vectors; <code>max &gt;= Config.matchThreshold</code> → enrolled user present, else <code>strangerOnly</code> (EC-03). Threshold defaults <strong>lenient</strong> (bias toward not locking the real user) and is tunable (ND-024/ND-040).</li>
+<li><strong>Not enrolled → presence-only fallback:</strong> until the user enrolls, any detected face counts as present (today's behavior, non-breaking). Identity engages automatically once enrolled.</li>
+<li><strong>Enrollment store (ND-023):</strong> the enrolled <code>[[Float]]</code> vectors are stored in the <strong>macOS Keychain</strong> (generic-password item, <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code> — device-only, never iCloud-synced). Embeddings only; <strong>no raw images</strong>; never transmitted.</li>
+<li><strong>Enrollment capture (ND-022):</strong> quick auto-capture of ~10 frames over ~2–3s via the existing <code>CameraController</code>, keeping the reference embeddings with a face; enforcement is gated off during capture so it can't lock mid-enroll.</li>
 </ul>
-<h2 id="permissions-entitlements">Permissions &amp; entitlements<a class="headerlink" href="#permissions-entitlements" title="Permanent link">&para;</a></h2>
+<p>This <strong>amends</strong> ADR-0002: identity is a Vision feature print for v1.1, not (yet) a Core ML face model. The <code>FaceEmbedding</code> seam means adopting a Core ML model later is a drop-in — that swap is the real remaining scope of ND-021.</p>
+<h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Camera is the primary permission.</strong> <code>NSCameraUsageDescription</code> — honest, specific copy. Camera access entitlement; avoid anything broader than required.</li>
-<li><strong>Location (when-in-use) is optional and only for the trusted-Wi-Fi feature</strong> (ND-036, <a href="../adr/0011-enforcement-gating/">ADR-0011</a>). On modern macOS, reading the current Wi-Fi network name (SSID) via CoreWLAN requires Location authorization. No Donuts requests it <strong>lazily</strong> — only when you first mark a network as trusted, never at launch — with an honest <code>NSLocationWhenInUseUsageDescription</code>. It uses Location <strong>solely to read the SSID</strong>; it does not read, store, or transmit your coordinates. <strong>The SSID never leaves your device</strong> (it's only compared against your local trusted list in <code>UserDefaults</code>). If Location is denied, the trusted-Wi-Fi feature is simply unavailable (the menu item is disabled) and normal enforcement continues — declining Location never weakens protection.</li>
-<li><strong>The screen lock requires no Accessibility permission</strong> (<a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>): the mechanism does not use synthetic keystrokes, so there is no Accessibility permission to request, prompt for, or recover from.</li>
-<li><strong>The camera permission is requested at first launch.</strong> On the very first run — and only while the session is active — the app shows a one-time, plain-language explainer that it uses the <strong>Camera</strong> to check you're at your Mac and locks the screen when you step away, all on-device with nothing recorded. It then triggers the macOS Camera prompt.</li>
-<li><strong>Pause state is in-memory only</strong> (not persisted); the <strong>trusted-Wi-Fi list is stored locally</strong> in <code>UserDefaults</code> and never transmitted.</li>
+<li>Identity ships with zero external dependencies and stays 100% on-device — satisfies the privacy requirement directly.</li>
+<li><strong>Accuracy is lower than a dedicated face model.</strong> <code>VNGenerateImageFeaturePrint</code> is a <em>general</em> image feature print, not face-optimized, so separation between people is weaker and sensitive to lighting/angle/crop. Mitigated by: multiple reference embeddings, a lenient threshold, and the existing 5-tick consensus + grace debounce (a blip won't lock you). Threshold <strong>must be tuned on-device</strong> (can't tune headless).</li>
+<li>A future Core ML model can raise accuracy behind the same protocol without touching enrollment, matching, storage, or policy.</li>
+<li>Keychain gives encrypted-at-rest storage for free; behavior under ad-hoc-signed local builds needs on-device verification.</li>
+<li>Orientation/crop of the front-camera buffer affects match quality — tracked with the existing recognition-orientation follow-up.</li>
 </ul>
-<h2 id="open-items">Open items<a class="headerlink" href="#open-items" title="Permanent link">&para;</a></h2>
+<h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Confirm storage mechanism + key management for embeddings (cooper).</li>
-<li>Decide anti-spoofing scope and which liveness signals are realistic on-device (wiggum/cooper).</li>
-<li>Document enterprise/MDM permission pre-grant story (gordon).</li>
+<li><strong>Bundle a Core ML face model now (FaceNet/ArcFace):</strong> best accuracy, but blocked on sourcing/licensing/size and untestable here. Deferred to the ND-021 swap behind the <code>FaceEmbedding</code> seam.</li>
+<li><strong>Landmark-geometry matching (Vision landmarks → distances/ratios):</strong> no model, but brittle and easy to spoof; weaker than a learned feature print. Rejected.</li>
+<li><strong>Encrypted file + separate key</strong> instead of the Keychain: more moving parts than a Keychain item that is already encrypted and access-controlled. Rejected for the MVP.</li>
 </ul>
 
 
@@ -1214,10 +1101,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

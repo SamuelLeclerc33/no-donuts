@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0011-enforcement-gating/">
+        <link rel="prev" href="../adr/0012-local-identity-featureprint/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -745,6 +745,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0012-local-identity-featureprint/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0012 — Local identity (feature print)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -852,10 +880,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#m2-local-face-recognition-identity-post-mvp-v11" class="md-nav__link">
+  <a href="#m2-local-face-recognition-identity-v11-feature-print-embedder-core-ml-swap-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
-        M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
+        M2 — Local face recognition (identity) — ✅ v1.1 (feature-print embedder; Core ML swap optional)
       
     </span>
   </a>
@@ -1012,10 +1040,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#m2-local-face-recognition-identity-post-mvp-v11" class="md-nav__link">
+  <a href="#m2-local-face-recognition-identity-v11-feature-print-embedder-core-ml-swap-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
-        M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)
+        M2 — Local face recognition (identity) — ✅ v1.1 (feature-print embedder; Core ML swap optional)
       
     </span>
   </a>
@@ -1160,20 +1188,21 @@
 - <strong>First-tick latency</strong> (blart): <code>waitForFirstFrame</code> can add ~1.5s to the first tick after permission; pre-warm at launch / shorten — ND-042.
 - <strong>Duty-cycle</strong> (blart/homer): even at ~1fps the persistent session runs continuously; consider stop-between-ticks for real power savings — ND-042.</p>
 </blockquote>
-<h2 id="m2-local-face-recognition-identity-post-mvp-v11">M2 — Local face recognition (identity) — ⏳ post-MVP (v1.1)<a class="headerlink" href="#m2-local-face-recognition-identity-post-mvp-v11" title="Permanent link">&para;</a></h2>
+<h2 id="m2-local-face-recognition-identity-v11-feature-print-embedder-core-ml-swap-optional">M2 — Local face recognition (identity) — ✅ v1.1 (feature-print embedder; Core ML swap optional)<a class="headerlink" href="#m2-local-face-recognition-identity-v11-feature-print-embedder-core-ml-swap-optional" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[x] ND-020 Vision face detection in the capture path — cooper (presence-only <code>FaceDetectionRecognizer</code>; any face = present)</li>
-<li>[ ] ND-021 Select + bundle a Core ML face-embedding model — cooper</li>
-<li>[ ] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty</li>
-<li>[ ] ND-023 Encrypted-at-rest embedding store (Keychain/encrypted file) — cooper</li>
-<li>[ ] ND-024 Cosine matching + threshold; tune defaults on real data — cooper</li>
-<li>[x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted)</li>
+<li>[~] ND-021 Upgrade embedder to a Core ML face model (optional accuracy improvement) — cooper. <strong>Reframed:</strong> identity ships in v1.1 using Apple <code>VNGenerateImageFeaturePrint</code> behind the <code>FaceEmbedding</code> protocol (<a href="../adr/0012-local-identity-featureprint/">ADR-0012</a>); this item is now the OPTIONAL drop-in of a FaceNet/ArcFace-class Core ML model for better accuracy (needs sourcing/licensing/bundling — blocked on a model file).</li>
+<li>[x] ND-022 Enrollment flow: capture reference frames → embeddings — cooper + krusty (<code>EnrollmentCoordinator</code>: menu "Enroll my face…" → ~10 frames over ~2–3s via <code>CameraController</code>, embed, store; enforcement gated off during capture; "Reset enrollment")</li>
+<li>[x] ND-023 Encrypted-at-rest embedding store (Keychain) — cooper (<code>EnrollmentStore</code>: Keychain generic-password, device-only, embeddings-only; <code>InMemoryEnrollmentStore</code> for tests)</li>
+<li>[x] ND-024 Cosine matching + threshold — cooper (<code>cosineSimilarity</code> + <code>IdentityRecognizer</code>; <code>.enrolledUserPresent(confidence:)</code> now the real max score; lenient default, <strong>needs on-device tuning</strong>)</li>
+<li>[x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted) — see ND-034 (M3) for the strict stranger policy that identity enables</li>
 </ul>
 <blockquote>
-<p><strong>Recognition follow-ups (from the ND-020/025 code review):</strong>
-- <strong>Camera orientation</strong> (cooper): <code>FaceDetectionRecognizer</code> hardcodes Vision orientation <code>.up</code>; front-camera buffers may not be upright → could miss a present face → false lock. Verify on-device; thread the real orientation through <code>CapturedFrame</code> if needed.
-- <strong>Confidence semantics</strong> (cooper): presence-only <code>.enrolledUserPresent(confidence:)</code> carries <em>detection</em> confidence, not identity-match score — replace with the cosine score at ND-024 (engine currently ignores the value).
-- <strong>Two recognizer classes</strong> (cooper): <code>FaceDetectionRecognizer</code> (presence-only) vs the <code>VisionCoreMLRecognizer</code> stub (identity) overlap on detection; merge or layer when identity lands (ND-021/024).</p>
+<p><strong>Identity follow-ups (from M2 / ND-021–024):</strong>
+- <strong>On-device threshold tuning</strong> (cooper): <code>Config.matchThreshold</code> default is lenient and UNVERIFIED — tune against real captures (false-accept vs false-reject); expose in settings (ND-040). The v1.1 feature print is not face-optimized, so expect to tune.
+- <strong>Camera orientation</strong> (cooper): the embedder + <code>FaceDetectionRecognizer</code> use Vision orientation <code>.up</code>; front-camera buffers may not be upright → worse matching / missed face → false lock. Verify on-device; thread real orientation through <code>CapturedFrame</code>.
+- <strong>Multi-face (EC-06)</strong> (cooper): the embedder matches only the LARGEST face; if a colleague's face is larger than the enrolled user's, the user could be missed → false lock. Scan all detected faces and match against any.
+- <strong>Two recognizer classes</strong> (cooper): <code>FaceDetectionRecognizer</code> (presence-only) and <code>IdentityRecognizer</code> (identity, with its own presence-only fallback) overlap on detection — the standalone <code>FaceDetectionRecognizer</code> is now unused in the app; consider removing or merging.</p>
 <p><strong>Suspend follow-ups (from the ND-013 code review):</strong>
 - <strong>resume()-before-configured</strong> (blart): on first unlock after a launch-while-locked start the session isn't configured yet, so <code>resume()</code> is a no-op and the camera comes up only on the next <code>capture()</code>'s <code>ensureConfigured()</code> (brief <code>cameraUnavailable</code> flash). Minor; tie to ND-042 pre-warm.
 - <strong><code>.suspended</code> enum overload</strong> (homer): <code>PresenceState.suspended</code> means both "we auto-locked" (attemptLock) and "OS session suspended" (ND-013). They converge to the same "locked" status today (no current bug), but consider splitting for clearer status/logic when polishing the indicator (ND-017).</p>
@@ -1184,7 +1213,7 @@
 <li>[x] ND-031 Camera-in-use detection (another app holds the device) — blart</li>
 <li>[ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.</li>
 <li>[x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by <code>maxCallAssumedPresentSeconds</code> (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer</li>
-<li>[ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum</li>
+<li>[x] ND-034 Stranger-present-but-user-absent policy (EC-03) — cooper/homer (once enrolled, a non-matching face → <code>.strangerOnly</code> → absence → lock after grace; presence-only until enrolled). <a href="../adr/0012-local-identity-featureprint/">ADR-0012</a></li>
 <li>[x] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer (Pause 15 min / 1 hr / until-resume; pausing stops the loop + turns the camera off; manual "Lock now" already existed. Enforced purely by the App gate — no engine pause latch, so it can't get stuck "paused" and silently stop locking. <a href="../adr/0011-enforcement-gating/">ADR-0011</a>, EC-15)</li>
 <li>[x] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — krusty + homer (checkable "Trust this Wi-Fi network" menu item for the current SSID; list in UserDefaults; reading SSID uses CoreWLAN + Location (when-in-use), requested lazily on first trust. Fail-safe: unknown/unreadable SSID → never trusted → enforcement stays ON. <a href="../adr/0011-enforcement-gating/">ADR-0011</a>, EC-20). Follow-up: full trusted-list settings UI stays with ND-040.</li>
 </ul>

@@ -22,6 +22,22 @@ final class StubRecognizer: FaceRecognizing, @unchecked Sendable {
     func recognize(_ frame: CapturedFrame) async -> RecognitionResult { result }
 }
 
+/// Fake embedder for identity-recognizer checks: returns a fixed `FaceEmbeddingOutcome`
+/// you set per test. No Vision, no camera. Convenience init from `[Float]?` (nil = noFace).
+final class FakeEmbedder: FaceEmbedding, @unchecked Sendable {
+    var outcome: FaceEmbeddingOutcome
+    init(_ outcome: FaceEmbeddingOutcome) { self.outcome = outcome }
+    /// nil vector → `.noFace`; a vector → `.embedding(vector)`.
+    convenience init(_ vector: [Float]?) {
+        self.init(vector.map(FaceEmbeddingOutcome.embedding) ?? .noFace)
+    }
+    func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome { outcome }
+}
+
+// EnrollmentState isn't Equatable (associated value), so tiny matchers for the checks.
+func isNotEnrolled(_ s: EnrollmentState) -> Bool { if case .notEnrolled = s { return true }; return false }
+func isEnrolledState(_ s: EnrollmentState) -> Bool { if case .enrolled = s { return true }; return false }
+
 final class SpyLocker: ScreenLocking, @unchecked Sendable {
     var shouldSucceed: Bool
     private(set) var lockCallCount = 0
@@ -375,6 +391,47 @@ func runAll() async -> Bool {
                  "overlapping lockNow() → guard skips the second, no concurrent lock (code review 2)")
     }
 
+    // Cooperative cancellation guard ("nothing locks mid-capture / mid-pause"). When
+    // the App cancels the presence loop Task (pause / trusted-network / enrollment /
+    // session-suspend), an already-in-flight tick must NOT lock — Swift doesn't abort
+    // a suspended `await`, so markAbsent guards on Task.isCancelled before locking.
+    // We reproduce that by driving the engine to the EXACT grace-expiry tick from
+    // inside a Task we've cancelled: the auto-lock must not fire. (Task.isCancelled
+    // reflects the surrounding Task, so we run the final tick inside a cancelled one.)
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker, config)
+        // Accumulate the full absence consensus WITHOUT crossing grace yet (no lock).
+        for i in 0..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        let noLockBeforeGrace = locker.lockCallCount == 0
+        // The grace-expiry tick would normally lock. Run it inside a CANCELLED task.
+        // The Task inherits @MainActor isolation (the engine is main-actor), and
+        // Task.isCancelled inside it is true → markAbsent bails before attemptLock.
+        let cancelledTick = Task { @MainActor in
+            await e.tick(now: t0.addingTimeInterval(Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1))
+        }
+        cancelledTick.cancel()
+        await cancelledTick.value
+        c.expect(noLockBeforeGrace && locker.lockCallCount == 0,
+                 "cancelled loop task at grace-expiry → auto-lock suppressed (cooperative cancellation)")
+    }
+
+    // Manual lockNow() must STILL lock even when its Task is cancelled — the guard
+    // is in the AUTO path (markAbsent), not in attemptLock(). Prove a cancelled
+    // Task around lockNow() locks anyway (manual "Lock now" is never gated).
+    do {
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.enrolledUserPresent(confidence: 1)), locker)
+        let cancelledManual = Task { @MainActor in await e.lockNow() }
+        cancelledManual.cancel()
+        await cancelledManual.value
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended,
+                 "lockNow() locks even inside a cancelled task (manual path never gated)")
+    }
+
     // pause() — the PRODUCTION pause entry point (ND-035). There is NO engine-held
     // pause latch: it was removed to kill the fail-OPEN where a stuck latch made
     // every tick short-circuit to .paused and the Mac never locked again (ADR-0011).
@@ -530,6 +587,112 @@ func runAll() async -> Bool {
                  "TrustedNetworksStore: nil/empty never trusted; add/remove round-trips (ND-036)")
         // Clean up the throwaway suite so nothing persists on disk.
         if usedSuite != nil { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+    }
+
+    // MARK: - Recognition core (cooper): cosine, identity recognizer, store (ND-021/024)
+
+    print("\nRecognition checks:")
+
+    // cosineSimilarity — pure math.
+    do {
+        let a: [Float] = [1, 2, 3, 4]
+        c.expect(abs(cosineSimilarity(a, a) - 1.0) < 1e-6, "cosine: identical vectors → ~1.0")
+        c.expect(cosineSimilarity([1, 0], [0, 1]) == 0, "cosine: orthogonal [1,0]/[0,1] → 0")
+        c.expect(cosineSimilarity([1, 2, 3], [1, 2]) == 0, "cosine: mismatched lengths → 0")
+        c.expect(cosineSimilarity([], []) == 0, "cosine: empty → 0")
+        c.expect(cosineSimilarity([0, 0], [1, 1]) == 0, "cosine: zero-norm vector → 0")
+        c.expect(cosineSimilarity([Float.nan, 1], [1, 1]) == 0, "cosine: NaN component → 0 (corrupt blob, no match)")
+        c.expect(cosineSimilarity([Float.infinity, 1], [1, 1]) == 0, "cosine: Inf component → 0")
+    }
+
+    // IdentityRecognizer with fake embedder + in-memory store.
+    let matchV: [Float] = [1, 0, 0, 0]
+    let differentV: [Float] = [0, 1, 0, 0]  // orthogonal to matchV → cos 0 < threshold
+    let threshold = Config().matchThreshold
+
+    // (a) not enrolled + embedder returns a vector → present (presence-only fallback).
+    do {
+        let store = InMemoryEnrollmentStore()
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .enrolledUserPresent(confidence: 1.0),
+                 "identity: not enrolled + face → present (presence-only fallback)")
+    }
+
+    // (b) not enrolled + embedder nil → noFace.
+    do {
+        let store = InMemoryEnrollmentStore()
+        let r = IdentityRecognizer(embedder: FakeEmbedder(nil), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .noFace, "identity: not enrolled + no face → .noFace")
+    }
+
+    // (c) enrolled with V, embedder returns V → present, confidence >= threshold.
+    do {
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        if case let .enrolledUserPresent(confidence) = result {
+            c.expect(confidence >= threshold, "identity: enrolled + matching → present, confidence >= threshold")
+        } else {
+            c.expect(false, "identity: enrolled + matching → present, confidence >= threshold")
+        }
+    }
+
+    // (d) enrolled, embedder returns a very different vector (cos < threshold) → strangerOnly (EC-03).
+    do {
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        let r = IdentityRecognizer(embedder: FakeEmbedder(differentV), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .strangerOnly, "identity: enrolled + non-matching face → .strangerOnly (EC-03)")
+    }
+
+    // (e) enrolled + embedder nil → noFace.
+    do {
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        let r = IdentityRecognizer(embedder: FakeEmbedder(nil), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .noFace, "identity: enrolled + no face → .noFace")
+    }
+
+    // (f) FAIL-SAFE: embedder .failure → .error (EC-10 hold), NOT .noFace/absence —
+    // both when enrolled and when not enrolled. A transient Vision glitch must not
+    // count toward the absence consensus and lock a present user.
+    do {
+        let notEnrolled = InMemoryEnrollmentStore()
+        let r1 = IdentityRecognizer(embedder: FakeEmbedder(.failure), store: notEnrolled, matchThreshold: threshold)
+        let res1 = await r1.recognize(CapturedFrame())
+        let enrolled = InMemoryEnrollmentStore()
+        try? enrolled.enroll(embeddings: [matchV])
+        let r2 = IdentityRecognizer(embedder: FakeEmbedder(.failure), store: enrolled, matchThreshold: threshold)
+        let res2 = await r2.recognize(CapturedFrame())
+        c.expect(res1 == .error("face embedding failed") && res2 == .error("face embedding failed"),
+                 "identity: embedder .failure → .error (EC-10 hold), never absence")
+    }
+
+    // (g) FAIL-SAFE (S1): store .unavailable (Keychain read failed) → .error even with a
+    // face present — MUST NOT drop to presence-only (which would let any stranger pass).
+    do {
+        let store = InMemoryEnrollmentStore(embeddings: [matchV], simulateUnavailable: true)
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .error("enrollment store unavailable"),
+                 "identity: store .unavailable + face → .error (fail-safe, never presence-only) [S1]")
+    }
+
+    // InMemoryEnrollmentStore round-trip + enrollmentState transitions.
+    do {
+        let store = InMemoryEnrollmentStore()
+        let notEnrolledInitially = !store.isEnrolled && isNotEnrolled(store.enrollmentState())
+        try? store.enroll(embeddings: [matchV])
+        let enrolledAfter = store.isEnrolled && store.enrolledEmbeddings() == [matchV] && isEnrolledState(store.enrollmentState())
+        try? store.reset()
+        let notEnrolledAfterReset = !store.isEnrolled && isNotEnrolled(store.enrollmentState())
+        c.expect(notEnrolledInitially && enrolledAfter && notEnrolledAfterReset,
+                 "InMemoryEnrollmentStore: enrollmentState notEnrolled → enrolled → reset round-trip")
     }
 
     print("\n\(c.passed) passed, \(c.failed) failed")

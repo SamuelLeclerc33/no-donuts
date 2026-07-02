@@ -19,9 +19,21 @@ public final class MenuBarController: NSObject {
     /// Injected trust-toggle action (ND-036): trust/untrust the *current* SSID.
     /// The UI never owns the store or the SSID read — it forwards intent.
     private let onToggleTrustCurrentNetwork: @MainActor () -> Void
+    /// Injected enrollment actions (ND-022). The UI never owns the store or the
+    /// enrollment coordinator — it just forwards intent. `onEnroll` starts an
+    /// enroll/re-enroll capture; `onResetEnrollment` clears it (back to presence-only).
+    private let onEnroll: @MainActor () -> Void
+    private let onResetEnrollment: @MainActor () -> Void
     /// Last state we actually rendered. The presence loop calls render(state:) every
     /// tick (1s); skip the NSImage rebuild + redraw when nothing changed (perf).
     private var lastRenderedState: PresenceState?
+    /// Whether the user has enrolled a face (identity mode) vs presence-only. Drives
+    /// the header wording and the visibility of "Reset enrollment". Set by the
+    /// AppDelegate via setEnrolled(_:) at launch and after enroll/reset.
+    private var isEnrolled = false
+    /// While true, the header shows an honest "enrolling…" line regardless of the
+    /// presence state (which is frozen at .paused by the gate during capture).
+    private var isEnrolling = false
 
     // Pause items shown when NOT paused; hidden and replaced by `resumeItem` when paused.
     private let pause15Item = NSMenuItem(title: "Pause for 15 minutes", action: #selector(pause15Clicked), keyEquivalent: "")
@@ -30,15 +42,23 @@ public final class MenuBarController: NSObject {
     private let resumeItem = NSMenuItem(title: "Resume", action: #selector(resumeClicked), keyEquivalent: "")
     /// Checkable "Trust this Wi-Fi network" item (ND-036).
     private let trustItem = NSMenuItem(title: "Trust this Wi-Fi network", action: #selector(trustClicked), keyEquivalent: "")
+    /// "Enroll my face…" — always visible; re-enrolls/overwrites when already enrolled (ND-022).
+    private let enrollItem = NSMenuItem(title: "Enroll my face…", action: #selector(enrollClicked), keyEquivalent: "")
+    /// "Reset enrollment" — shown only when enrolled; clears back to presence-only.
+    private let resetEnrollmentItem = NSMenuItem(title: "Reset enrollment", action: #selector(resetEnrollmentClicked), keyEquivalent: "")
 
     public init(onLockNow: @escaping @MainActor () -> Void,
                 onPause: @escaping @MainActor (TimeInterval?) -> Void,
                 onResume: @escaping @MainActor () -> Void,
-                onToggleTrustCurrentNetwork: @escaping @MainActor () -> Void) {
+                onToggleTrustCurrentNetwork: @escaping @MainActor () -> Void,
+                onEnroll: @escaping @MainActor () -> Void,
+                onResetEnrollment: @escaping @MainActor () -> Void) {
         self.onLockNow = onLockNow
         self.onPause = onPause
         self.onResume = onResume
         self.onToggleTrustCurrentNetwork = onToggleTrustCurrentNetwork
+        self.onEnroll = onEnroll
+        self.onResetEnrollment = onResetEnrollment
         super.init()
         configureMenu()
         render(state: .unknown)
@@ -64,6 +84,14 @@ public final class MenuBarController: NSObject {
         trustItem.target = self
         menu.addItem(trustItem)
 
+        // Enrollment (ND-022): [sep] Enroll my face… [Reset enrollment (if enrolled)].
+        menu.addItem(.separator())
+        enrollItem.target = self
+        menu.addItem(enrollItem)
+        resetEnrollmentItem.target = self
+        resetEnrollmentItem.isHidden = true   // shown only when enrolled (setEnrolled(_:))
+        menu.addItem(resetEnrollmentItem)
+
         menu.addItem(.separator())
         let lockNowItem = NSMenuItem(title: "Lock now", action: #selector(lockNowClicked), keyEquivalent: "l")
         lockNowItem.target = self
@@ -82,6 +110,36 @@ public final class MenuBarController: NSObject {
     @objc private func pauseIndefiniteClicked() { onPause(nil) }
     @objc private func resumeClicked() { onResume() }
     @objc private func trustClicked() { onToggleTrustCurrentNetwork() }
+    @objc private func enrollClicked() { onEnroll() }
+    @objc private func resetEnrollmentClicked() { onResetEnrollment() }
+
+    /// Reflect whether the user has enrolled a face (identity mode) vs presence-only.
+    /// Shows/hides "Reset enrollment", updates the header wording, and — because the
+    /// enrolled-vs-not distinction changes the header — re-renders the current state.
+    /// Called by the AppDelegate at launch and after every enroll/reset.
+    public func setEnrolled(_ enrolled: Bool) {
+        isEnrolled = enrolled
+        resetEnrollmentItem.isHidden = !enrolled
+        // Header text depends on isEnrolled; refresh it without a state change by
+        // re-deriving from the last rendered state.
+        if let state = lastRenderedState {
+            statusItemHeader.title = headerTitle(for: state)
+        }
+    }
+
+    /// Freeze the header on an honest "enrolling your face…" line during capture, and
+    /// disable the enroll items so a second enrollment can't be started mid-capture.
+    /// The AppDelegate calls this with `true` before enroll and `false` after. The
+    /// enforcement gate separately holds the glyph at .paused while enrolling (no Core
+    /// change needed — see the AppDelegate). Re-renders so the header takes effect now.
+    public func setEnrolling(_ enrolling: Bool) {
+        isEnrolling = enrolling
+        enrollItem.isEnabled = !enrolling
+        resetEnrollmentItem.isEnabled = !enrolling
+        if let state = lastRenderedState {
+            statusItemHeader.title = headerTitle(for: state)
+        }
+    }
 
     /// Refresh the Pause/Resume items after the enforcement gate re-evaluates.
     /// When paused, show a single "Resume (<remaining>)" and hide the pause options;
@@ -189,11 +247,19 @@ public final class MenuBarController: NSObject {
     }
 
     /// Map a PresenceState to a short, honest human-readable header string.
+    ///
+    /// Two overlays sit on top of the raw state:
+    /// - While `isEnrolling`, the gate freezes the glyph at .paused; the header must
+    ///   say what's actually happening — capturing the user's face — not "paused".
+    /// - When `isEnrolled` (identity mode), "present"/"away" become "watching for
+    ///   you"/"you're away" so the header honestly reflects that we're matching the
+    ///   enrolled user specifically, not merely detecting any face.
     private func headerTitle(for state: PresenceState) -> String {
+        if isEnrolling { return "No Donuts — enrolling your face…" }
         switch state {
         case .unknown:            return "No Donuts — starting…"
-        case .present:            return "No Donuts — present"
-        case .absent:             return "No Donuts — away"
+        case .present:            return isEnrolled ? "No Donuts — watching for you" : "No Donuts — present"
+        case .absent:             return isEnrolled ? "No Donuts — you're away" : "No Donuts — away"
         case .paused:             return "No Donuts — paused"
         case .trustedNetwork:     return "No Donuts — paused (trusted Wi-Fi)"
         case .callAssumedPresent: return "No Donuts — on a call"
