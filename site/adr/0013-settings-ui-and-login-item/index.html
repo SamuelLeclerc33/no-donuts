@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../">
+        <link rel="prev" href="../0012-local-identity-featureprint/">
       
       
-        <link rel="next" href="../0002-face-recognition-engine/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0001 — Form factor - No Donuts</title>
+        <title>ADR-0013 — Settings UI + login item - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0001-form-factor-menu-bar-app-launchagent" class="md-skip">
+        <a href="#adr-0013-settingsonboarding-in-swiftui-login-item-via-smappservice" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0001 — Form factor
+              ADR-0013 — Settings UI + login item
             
           </span>
         </div>
@@ -415,37 +415,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0001 — Form factor
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0001-form-factor/" class="md-nav__link">
         
   
   
@@ -461,70 +434,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -870,10 +779,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0013-settings-ui-and-login-item/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0013 — Settings UI + login item
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -889,6 +825,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1042,27 +1042,32 @@
 
 
 
-<h1 id="adr-0001-form-factor-menu-bar-app-launchagent">ADR-0001 — Form factor: menu-bar app + LaunchAgent<a class="headerlink" href="#adr-0001-form-factor-menu-bar-app-launchagent" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0013-settingsonboarding-in-swiftui-login-item-via-smappservice">ADR-0013 — Settings/onboarding in SwiftUI + login-item via SMAppService<a class="headerlink" href="#adr-0013-settingsonboarding-in-swiftui-login-item-via-smappservice" title="Permanent link">&para;</a></h1>
 <ul>
 <li>Status: Accepted</li>
-<li>Date: 2026-06-30</li>
-<li>Owner: gordon / krusty</li>
+<li>Date: 2026-07-02</li>
+<li>Owner: krusty (+ gordon for the login item)</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>The app must run continuously in the background, be controllable by the user (pause, enroll, settings), surface its current state, and start automatically at login. Options ranged from a fully headless daemon to a full windowed app.</p>
+<p>Through M3 the app was AppKit-only (a menu-bar <code>NSStatusItem</code>, no windows), and all tuning was via <code>defaults write</code> or menu items. M4 needs real windowed UI — a <strong>Settings</strong> form and a first-run <strong>onboarding</strong> flow — plus a user-facing <strong>"Start at login"</strong> toggle. Two decisions fall out: which UI toolkit to use for the windows, and how the settings toggle should register the app as a login item given ND-016 already ships a LaunchAgent.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>Build a native Swift <strong>menu-bar app</strong> (<code>NSStatusItem</code>, <code>LSUIElement</code> — no Dock icon) that runs in the background and exposes status + controls from the menu bar. Auto-start at login via a <strong>LaunchAgent</strong> (<code>RunAtLoad</code>).</p>
+<ul>
+<li><strong>Windowed UI is SwiftUI, hosted in AppKit.</strong> <code>SettingsView</code> / <code>OnboardingView</code> are SwiftUI, presented in a plain <code>NSWindow</code> via <code>NSHostingController</code> (<code>AppWindows</code>). The app stays an <code>LSUIElement</code> accessory (no Dock icon); windows are shown by <code>NSApp.activate(ignoringOtherApps:)</code> + <code>makeKeyAndOrderFront</code> — we do <strong>not</strong> switch to <code>.regular</code> activation. One window is retained per kind and reused. SwiftUI is confined to these windows; the menu bar, presence loop, camera, lock, and gate remain AppKit/Core.</li>
+<li><strong>Live-apply settings.</strong> A <code>SettingsStore</code> (<code>ObservableObject</code>, UserDefaults-backed) is the single source of truth for the tunables. Changes apply immediately: engine tunables via <code>PresenceEngine.updateConfig(_:)</code> + the loop reading <code>tickIntervalSeconds</code> each iteration; <code>matchThreshold</code> / <code>antiSpoofEnabled</code> / <code>spoofTextureFloor</code> are read <strong>live</strong> by the recognizer from UserDefaults (the <code>resolved*</code> helpers), so the same keys the UI writes are the keys the recognizer reads. No relaunch.</li>
+<li><strong>"Start at login" uses <code>SMAppService.mainApp</code></strong> (ServiceManagement) — register/unregister the app itself as a login item, live, no sudo, no plist juggling. This is the <strong>user-facing</strong> autostart control.</li>
+</ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Users get a visible status indicator and easy control (pause, enroll, quit) — important for trust in a camera app.</li>
-<li>A bundled <code>.app</code> gives us a proper <code>Info.plist</code> for <code>NSCameraUsageDescription</code> and a clean permission prompt.</li>
-<li>Requires <strong>full Xcode</strong> to build/sign the app bundle (Command Line Tools alone are insufficient). Captured in the backlog and build-run skill.</li>
-<li>LaunchAgent install/uninstall scripting needed (ND-016, ND-052).</li>
+<li>Native, maintainable forms with far less boilerplate than hand-built AppKit; SwiftUI stays isolated so the testable AppKit-free Core (ADR-0007) is unaffected.</li>
+<li><strong>Two autostart mechanisms coexist:</strong> the ND-016 <strong>LaunchAgent</strong> (installed by <code>scripts/install-launchagent.sh</code>, the CLI/scripted path) and the Settings <strong>SMAppService</strong> login item (the in-app toggle). Both achieve "start at login"; the app is a singleton menu-bar accessory so there is no real double-launch concern, but installers/users should prefer one. Documented here and in <code>LoginItem.swift</code>. (Future cleanup: converge on one — likely SMAppService for the app + retire the LaunchAgent, or vice-versa.)</li>
+<li>On <strong>ad-hoc-signed local builds</strong>, <code>SMAppService.register()</code> may throw or land in <code>.requiresApproval</code> (System Settings › General › Login Items) — the toggle surfaces the error and reflects the real status; it works cleanly on a Developer-ID-signed, notarized build (ND-050).</li>
+<li>Showing Settings/onboarding does <strong>not</strong> pause enforcement — the presence loop keeps running while a window is open.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Headless daemon (no UI):</strong> lighter, but no easy enrollment/settings/status, and a silent camera process erodes trust. Rejected for v1.</li>
-<li><strong>Full windowed app:</strong> unnecessary footprint for a background presence tool.</li>
+<li><strong>Pure AppKit windows:</strong> consistent with the existing code but much more boilerplate for a settings form; rejected.</li>
+<li><strong>A <code>defaults</code>-only "settings" story (no window):</strong> already what we had — insufficient for a shippable app; rejected.</li>
+<li><strong>Reuse the ND-016 LaunchAgent for the toggle</strong> (shell <code>launchctl</code> from the app / bundle-embedded agent plist): more moving parts and path juggling than <code>SMAppService.mainApp</code>; rejected for the in-app toggle (the LaunchAgent remains the scripted install path).</li>
 </ul>
 
 

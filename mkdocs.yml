@@ -47,5 +47,6 @@ nav:
       - "ADR-0010 — Screen lock (no Accessibility)": adr/0010-screen-lock-no-accessibility.md
       - "ADR-0011 — Enforcement gating": adr/0011-enforcement-gating.md
       - "ADR-0012 — Local identity (feature print)": adr/0012-local-identity-featureprint.md
+      - "ADR-0013 — Settings UI + login item": adr/0013-settings-ui-and-login-item.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

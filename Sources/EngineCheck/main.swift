@@ -23,16 +23,32 @@ final class StubRecognizer: FaceRecognizing, @unchecked Sendable {
     func recognize(_ frame: CapturedFrame) async -> RecognitionResult { result }
 }
 
-/// Fake embedder for identity-recognizer checks: returns a fixed `FaceEmbeddingOutcome`
-/// you set per test. No Vision, no camera. Convenience init from `[Float]?` (nil = noFace).
+/// Fake embedder for identity-recognizer checks: returns a fixed `FaceEmbeddingResult`
+/// you set per test. No Vision, no camera. The liveness texture score defaults HIGH
+/// (well above the spoof floor) so existing tests stay "live" unless they opt into a
+/// low score. Convenience inits from `[Float]?` (nil = noFace), from the legacy
+/// `FaceEmbeddingOutcome` (e.g. `.failure`), and from a vector + explicit texture score.
 final class FakeEmbedder: FaceEmbedding, @unchecked Sendable {
-    var outcome: FaceEmbeddingOutcome
-    init(_ outcome: FaceEmbeddingOutcome) { self.outcome = outcome }
-    /// nil vector → `.noFace`; a vector → `.embedding(vector)`.
+    var result: FaceEmbeddingResult
+    init(result: FaceEmbeddingResult) { self.result = result }
+    /// nil vector → `.noFace`; a vector → `.embedding(vector, high live score)`.
     convenience init(_ vector: [Float]?) {
-        self.init(vector.map(FaceEmbeddingOutcome.embedding) ?? .noFace)
+        self.init(result: vector.map { .embedding($0, textureScore: 10_000) } ?? .noFace)
     }
-    func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome { outcome }
+    /// Map the legacy `FaceEmbeddingOutcome` to the richer result so existing call
+    /// sites (`FakeEmbedder(.failure)`) keep compiling.
+    convenience init(_ outcome: FaceEmbeddingOutcome) {
+        switch outcome {
+        case let .embedding(v): self.init(result: .embedding(v, textureScore: 10_000))
+        case .noFace: self.init(result: .noFace)
+        case .failure: self.init(result: .failure)
+        }
+    }
+    /// Vector + explicit texture score (anti-spoof gating tests).
+    convenience init(_ vector: [Float], textureScore: Double) {
+        self.init(result: .embedding(vector, textureScore: textureScore))
+    }
+    func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult { result }
 }
 
 // EnrollmentState isn't Equatable (associated value), so tiny matchers for the checks.
@@ -564,6 +580,40 @@ func runAll() async -> Bool {
                  "sessionSuspended() resets absence → resume needs full consensus, no false lock (EC-02/EC-13)")
     }
 
+    // updateConfig() live-applies new tunables without a relaunch (ND-040). Start
+    // STRICT (huge graceSeconds + consensus) so a short absence run can NEVER reach
+    // the lock; confirm no lock. Then updateConfig() to SMALL grace/consensus and
+    // drive a fresh absence run: the loosened thresholds must now take effect on the
+    // NEXT ticks and lock exactly once. Proves the engine reads config live (not a
+    // copy captured at init) and that swapping config mid-run applies immediately.
+    do {
+        var strict = Config()
+        strict.graceSeconds = 100_000
+        strict.consecutiveAbsentTicksToLock = 100_000
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker, strict)
+        // A short absence run under the strict config: nowhere near consensus/grace.
+        for i in 0..<10 {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        let noLockWhileStrict = locker.lockCallCount == 0 && e.state == .absent
+        // Loosen live. Absence accounting is intentionally NOT reset, but the strict
+        // run never crossed even the small consensus quickly enough with fresh timing,
+        // so drive a clean run against the new (small) thresholds.
+        var loose = Config()
+        loose.graceSeconds = 2
+        loose.consecutiveAbsentTicksToLock = 3
+        e.updateConfig(loose)
+        // Continue the same no-face episode. Consensus is already exceeded (>10 absent
+        // ticks), so the next tick starts the (small) grace clock (absentSince was
+        // never set under the strict consensus gate); a further tick past grace locks.
+        await e.tick(now: t0.addingTimeInterval(20))   // consensus met → grace clock starts
+        let notYetLocked = locker.lockCallCount == 0
+        await e.tick(now: t0.addingTimeInterval(25))   // past the 2s grace → locks
+        c.expect(noLockWhileStrict && notYetLocked && e.state == .suspended && locker.lockCallCount == 1,
+                 "updateConfig() live-applies: strict never locks, loosened config locks next tick (ND-040)")
+    }
+
     // TrustedNetworksStore fail-safe (ND-036). Backed by a throwaway UserDefaults
     // suite (unique name) so it never touches real prefs; if the suite init fails,
     // fall back to .standard with a unique key. Fail-safe: nil/empty SSID is NEVER
@@ -684,6 +734,178 @@ func runAll() async -> Bool {
                  "identity: store .unavailable + face → .error (fail-safe, never presence-only) [S1]")
     }
 
+    // MARK: Anti-spoofing (ND-041, EC-12) + live threshold (ND-040) — cooper/wiggum
+
+    // isLikelySpoof pure-function boundaries: strictly below floor → true; at/above → live.
+    do {
+        let floor = defaultSpoofTextureFloor
+        let belowFlagged = isLikelySpoof(textureScore: floor - 0.01, floor: floor) == true
+        let atFloorLive = isLikelySpoof(textureScore: floor, floor: floor) == false           // exactly-at → live
+        let aboveLive = isLikelySpoof(textureScore: floor + 0.01, floor: floor) == false
+        let zeroFlagged = isLikelySpoof(textureScore: 0, floor: floor) == true
+        let hugeLive = isLikelySpoof(textureScore: 10_000, floor: floor) == false
+        // .infinity sentinel (embedder returns it when anti-spoof is off / luminance
+        // extraction failed) → treated as LIVE, never flagged (FIX #7 / EC-12).
+        let infinityLive = isLikelySpoof(textureScore: .infinity, floor: floor) == false
+        c.expect(belowFlagged && atFloorLive && aboveLive && zeroFlagged && hugeLive && infinityLive,
+                 "isLikelySpoof: < floor → true (spoof); >= floor → false (live); .infinity → live (ND-041)")
+    }
+
+    // isLikelySpoof with a RESOLVED floor (FIX #6): a score below the resolved floor →
+    // spoof; at/above → live; .infinity → live regardless. Uses a throwaway suite to
+    // resolve a custom floor, proving the resolver + isLikelySpoof compose correctly.
+    do {
+        let suiteName = "com.nodonuts.enginecheck.floorpair.\(UUID().uuidString)"
+        if let suite = UserDefaults(suiteName: suiteName) {
+            let key = "spoofTextureFloor"
+            suite.set(50.0, forKey: key)
+            let floor = resolvedSpoofTextureFloor(defaults: suite, key: key)   // 50.0
+            let belowFlagged = isLikelySpoof(textureScore: 49.9, floor: floor) == true
+            let atLive = isLikelySpoof(textureScore: 50.0, floor: floor) == false
+            let aboveLive = isLikelySpoof(textureScore: 50.1, floor: floor) == false
+            let infLive = isLikelySpoof(textureScore: .infinity, floor: floor) == false
+            c.expect(floor == 50.0 && belowFlagged && atLive && aboveLive && infLive,
+                     "isLikelySpoof + resolved floor (50): below → spoof, at/above → live, .infinity → live (ND-041/FIX#6)")
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        } else {
+            c.expect(true, "isLikelySpoof + resolved floor: throwaway suite unavailable, skipped")
+        }
+    }
+
+    // faceTextureScore pure metric: a flat (uniform) crop scores 0; a high-contrast
+    // checkerboard scores well above the floor — the metric actually separates them.
+    do {
+        let w = 8, h = 8
+        let flat = [Double](repeating: 128, count: w * h)  // no texture at all
+        var checker = [Double](repeating: 0, count: w * h)
+        for y in 0..<h { for x in 0..<w { checker[y * w + x] = ((x + y) % 2 == 0) ? 0 : 255 } }
+        let flatScore = faceTextureScore(luminance: flat, width: w, height: h)
+        let checkerScore = faceTextureScore(luminance: checker, width: w, height: h)
+        c.expect(flatScore == 0 && checkerScore > defaultSpoofTextureFloor && isLikelySpoof(textureScore: flatScore) && !isLikelySpoof(textureScore: checkerScore),
+                 "faceTextureScore: flat crop → 0 (spoof); checkerboard → high (live) (ND-041)")
+    }
+
+    // (h) enrolled + matching + LIVE (score above floor) + anti-spoof ON → present.
+    do {
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        // High texture score → clearly live.
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 10_000), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        var present = false
+        if case .enrolledUserPresent = result { present = true }
+        c.expect(present, "anti-spoof: enrolled + matching + live → present (ND-041)")
+    }
+
+    // (i) enrolled + matching + FLAGGED (score below floor) + anti-spoof ON → strangerOnly.
+    // Uses a throwaway UserDefaults suite as the SOURCE OF TRUTH by pointing the
+    // process default at it — but the recognizer reads `.standard`, so we set the key
+    // on `.standard` and restore it, keeping the check hermetic.
+    do {
+        let key = "antiSpoofEnabled"
+        let floorKey = "spoofTextureFloor"
+        let hadValue = UserDefaults.standard.object(forKey: key) != nil
+        let prior = UserDefaults.standard.object(forKey: key)
+        let hadFloor = UserDefaults.standard.object(forKey: floorKey) != nil
+        let priorFloor = UserDefaults.standard.object(forKey: floorKey)
+        UserDefaults.standard.set(true, forKey: key)          // explicitly ON
+        UserDefaults.standard.set(100.0, forKey: floorKey)    // FIX #6: floor via defaults, resolved per call
+        defer {
+            if hadValue { UserDefaults.standard.set(prior, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+            if hadFloor { UserDefaults.standard.set(priorFloor, forKey: floorKey) }
+            else { UserDefaults.standard.removeObject(forKey: floorKey) }
+        }
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        // Texture score BELOW the resolved floor (10 < 100) → flagged as spoof. Proves
+        // the recognizer uses the LIVE resolved floor, not the hardcoded default.
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 10), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .strangerOnly,
+                 "anti-spoof: enrolled + matching + flat + enabled (resolved floor 100) → .strangerOnly (ND-041/EC-12/FIX#6)")
+    }
+
+    // (j) enrolled + matching + FLAGGED + anti-spoof OFF → present (toggle off ignores).
+    do {
+        let key = "antiSpoofEnabled"
+        let hadValue = UserDefaults.standard.object(forKey: key) != nil
+        let prior = UserDefaults.standard.object(forKey: key)
+        UserDefaults.standard.set(false, forKey: key)   // toggle OFF
+        defer {
+            if hadValue { UserDefaults.standard.set(prior, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 0), store: store, matchThreshold: threshold)
+        let result = await r.recognize(CapturedFrame())
+        var present = false
+        if case .enrolledUserPresent = result { present = true }
+        c.expect(present, "anti-spoof: flagged but toggle OFF → present (ignores anti-spoof) (ND-041)")
+    }
+
+    // (k) resolvedAntiSpoofEnabled default: absent key → true (ON by default); explicit
+    // false → false. Throwaway suite, cleaned up.
+    do {
+        let suiteName = "com.nodonuts.enginecheck.antispoof.\(UUID().uuidString)"
+        if let suite = UserDefaults(suiteName: suiteName) {
+            let key = "antiSpoofEnabled"
+            let absentOn = resolvedAntiSpoofEnabled(defaults: suite, key: key) == true
+            suite.set(false, forKey: key)
+            let explicitOff = resolvedAntiSpoofEnabled(defaults: suite, key: key) == false
+            suite.set(true, forKey: key)
+            let explicitOn = resolvedAntiSpoofEnabled(defaults: suite, key: key) == true
+            c.expect(absentOn && explicitOff && explicitOn,
+                     "resolvedAntiSpoofEnabled: absent → ON; false → off; true → on (ND-041)")
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        } else {
+            c.expect(true, "resolvedAntiSpoofEnabled: throwaway suite unavailable, skipped")
+        }
+    }
+
+    // (l) LIVE threshold (ND-040): with `matchThreshold` set on defaults, the recognizer
+    // resolves it PER CALL. Set a HIGH threshold that even a perfect match can't clear
+    // → the enrolled user reads as stranger; then set it back low → present. Proves the
+    // init param is only a BASE and the live UserDefaults value wins. Hermetic on
+    // `.standard` (recognizer reads `.standard`), save/restore.
+    do {
+        let key = "matchThreshold"
+        let hadValue = UserDefaults.standard.object(forKey: key) != nil
+        let prior = UserDefaults.standard.object(forKey: key)
+        defer {
+            if hadValue { UserDefaults.standard.set(prior, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        let store = InMemoryEnrollmentStore()
+        try? store.enroll(embeddings: [matchV])
+        // Base default passed at init is lenient (0.6); a perfect self-match = 1.0.
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 10_000), store: store, matchThreshold: threshold)
+        // Live: set a strict 0.99 → matching vector (cos 1.0) still clears? cos of
+        // identical is ~1.0 >= 0.99 → present. Use 0.999999 is > cos rounding; instead
+        // prove the LIVE value is consulted by setting a value the base wouldn't give:
+        // set threshold ABOVE the actual score by using a different (non-identical) ref.
+        UserDefaults.standard.set(0.5, forKey: key)
+        let atLow = await r.recognize(CapturedFrame())
+        var presentAtLow = false
+        if case .enrolledUserPresent = atLow { presentAtLow = true }
+        // Now raise to a value the (orthogonal) score can't meet using a different embed.
+        let store2 = InMemoryEnrollmentStore()
+        try? store2.enroll(embeddings: [matchV])
+        // Embed a vector at cosine ~0.7 vs matchV so the threshold is the deciding factor.
+        let partialV: [Float] = [1, 1, 0, 0]  // cos(matchV=[1,0,0,0]) = 1/sqrt(2) ≈ 0.707
+        let r2 = IdentityRecognizer(embedder: FakeEmbedder(partialV, textureScore: 10_000), store: store2, matchThreshold: threshold)
+        UserDefaults.standard.set(0.5, forKey: key)   // 0.707 >= 0.5 → present
+        let below = await r2.recognize(CapturedFrame())
+        var presentBelow = false
+        if case .enrolledUserPresent = below { presentBelow = true }
+        UserDefaults.standard.set(0.9, forKey: key)   // 0.707 < 0.9 → stranger (live change applied)
+        let above = await r2.recognize(CapturedFrame())
+        let strangerAbove = above == .strangerOnly
+        c.expect(presentAtLow && presentBelow && strangerAbove,
+                 "live threshold: recognizer resolves matchThreshold per call — 0.5 → present, 0.9 → stranger (ND-040)")
+    }
+
     // InMemoryEnrollmentStore round-trip + enrollmentState transitions.
     do {
         let store = InMemoryEnrollmentStore()
@@ -755,6 +977,47 @@ func runAll() async -> Bool {
         } else {
             // Couldn't make a throwaway suite — don't touch .standard; skip cleanly.
             c.expect(true, "resolvedMatchThreshold: throwaway suite unavailable, skipped")
+        }
+    }
+
+    // resolvedSpoofTextureFloor validation (cooper, FIX #6). Throwaway UserDefaults
+    // suite so it never touches real prefs. Absent / 0 / negative / NaN / non-numeric
+    // → default; only a finite strictly-positive number is accepted. Mirrors the other
+    // resolvers; lets the floor be tuned live via `defaults write ... spoofTextureFloor`.
+    do {
+        let suiteName = "com.nodonuts.enginecheck.spooffloor.\(UUID().uuidString)"
+        if let suite = UserDefaults(suiteName: suiteName) {
+            let key = "spoofTextureFloor"
+            let def = defaultSpoofTextureFloor   // 12.0
+            // Absent → default
+            let absentDefault = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == def
+            // 0.0 → default (a zero floor can never flag; treat as junk)
+            suite.set(0.0, forKey: key)
+            let zeroDefault = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == def
+            // Negative → default
+            suite.set(-5.0, forKey: key)
+            let negativeDefault = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == def
+            // NaN → default
+            suite.set(Double.nan, forKey: key)
+            let nanDefault = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == def
+            // Infinity → default
+            suite.set(Double.infinity, forKey: key)
+            let infDefault = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == def
+            // Non-numeric (a stored String) → default
+            suite.set("nope", forKey: key)
+            let stringDefault = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == def
+            // Valid positive → that value
+            suite.set(25.0, forKey: key)
+            let validAccepted = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == 25.0
+            // Tiny positive (the "effectively disable" escape hatch) → accepted
+            suite.set(0.0001, forKey: key)
+            let tinyAccepted = resolvedSpoofTextureFloor(default: def, defaults: suite, key: key) == 0.0001
+            c.expect(absentDefault && zeroDefault && negativeDefault && nanDefault && infDefault
+                     && stringDefault && validAccepted && tinyAccepted,
+                     "resolvedSpoofTextureFloor: absent/0/negative/NaN/inf/non-numeric → default; positive → that (ND-041/FIX#6)")
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        } else {
+            c.expect(true, "resolvedSpoofTextureFloor: throwaway suite unavailable, skipped")
         }
     }
 

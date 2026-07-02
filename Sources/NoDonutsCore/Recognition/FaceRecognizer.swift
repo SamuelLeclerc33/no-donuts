@@ -61,16 +61,23 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
             return .error("enrollment store unavailable")
         }
 
-        switch await embedder.embedding(for: frame) {
+        // ND-040: resolve the match threshold LIVE per call from UserDefaults, using
+        // the init `matchThreshold` as the safe BASE default. A Settings change to the
+        // `matchThreshold` key thus takes effect on the very next tick, no relaunch.
+        let threshold = resolvedMatchThreshold(default: matchThreshold)
+
+        switch await embedder.embeddingWithLiveness(for: frame) {
         case .failure:
             // Transient detection/embedding failure → conservative HOLD (EC-10), not absence.
             return .error("face embedding failed")
         case .noFace:
             return .noFace
-        case .embedding(let vector):
+        case let .embedding(vector, textureScore):
             switch state {
             case .notEnrolled:
                 // Presence-only fallback — only when GENUINELY not enrolled (non-breaking).
+                // Anti-spoof is intentionally NOT applied here: before identity is set up
+                // we don't want surprising flat-image locks (ND-041 decision).
                 return .enrolledUserPresent(confidence: 1.0)
             case .enrolled(let references):
                 // Defensive: enrolled-but-empty shouldn't happen; presence-only rather
@@ -80,14 +87,33 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                     max(best, cosineSimilarity(vector, ref))
                 }
                 // EC-03: a detected face that doesn't clear the threshold is NEVER present.
-                let present = maxSim >= matchThreshold
+                let present = maxSim >= threshold
                 // ND-024 tuning: log the score/threshold/decision (numbers only — no
                 // embedding, no image — privacy). Enrolled branch only; the presence-only
                 // (not-enrolled) path is not logged.
-                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(self.matchThreshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public)")
-                return present
-                    ? .enrolledUserPresent(confidence: maxSim)
-                    : .strangerOnly
+                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public)")
+                guard present else { return .strangerOnly }
+
+                // ND-041 anti-spoof (EC-12): only when the face MATCHES do we apply the
+                // conservative liveness check. If enabled AND the crop is unambiguously
+                // flat (below the floor) → treat as a spoof → .strangerOnly (locks). The
+                // bias is heavily toward LIVE: a normal live face never falls below the
+                // floor, and the whole check is toggleable via `antiSpoofEnabled`.
+                //
+                // ND-041 / FIX #6: resolve the floor LIVE per call (like matchThreshold),
+                // so it is tunable via `defaults write com.nodonuts.app spoofTextureFloor
+                // <n>` with no relaunch — and effectively disable-able by a very low
+                // positive value. When anti-spoof is off the embedder already returned the
+                // `.infinity` sentinel (never flagged), so this branch is a cheap no-op.
+                if resolvedAntiSpoofEnabled() {
+                    let floor = resolvedSpoofTextureFloor()
+                    if isLikelySpoof(textureScore: textureScore, floor: floor) {
+                        // Log the numeric score only — never an image or embedding (privacy).
+                        log.notice("anti-spoof: flagged likely spoof — texture \(textureScore, privacy: .public) < floor \(floor, privacy: .public) → stranger")
+                        return .strangerOnly
+                    }
+                }
+                return .enrolledUserPresent(confidence: maxSim)
             case .unavailable:
                 return .error("enrollment store unavailable")   // already handled above; exhaustive
             }

@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0012-local-identity-featureprint/">
+        <link rel="prev" href="../adr/0013-settings-ui-and-login-item/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -773,6 +773,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0013-settings-ui-and-login-item/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0013 — Settings UI + login item
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1226,11 +1254,14 @@
 </blockquote>
 <h2 id="m4-settings-polish-anti-spoofing">M4 — Settings, polish, anti-spoofing<a class="headerlink" href="#m4-settings-polish-anti-spoofing" title="Permanent link">&para;</a></h2>
 <ul>
-<li>[ ] ND-040 Settings UI: tick interval, grace, sensitivity, autostart — krusty</li>
-<li>[ ] ND-041 Basic anti-spoofing (e.g. reject obvious photo; liveness signals) — wiggum + cooper</li>
-<li>[ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer</li>
-<li>[ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty</li>
-<li>[ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon</li>
+<li>[x] ND-040 Settings UI: tick interval, grace, sensitivity, anti-spoof, autostart, trusted-network list — krusty (<a href="../adr/0013-settings-ui-and-login-item/">ADR-0013</a>). SwiftUI <code>SettingsView</code> hosted via <code>AppWindows</code>/NSHostingController in the LSUIElement app; <code>SettingsStore</code> (UserDefaults-backed) with clamped ranges (threshold 0.05–0.95, grace 2–60, tick 0.5–10). <strong>Live-apply:</strong> engine via <code>updateConfig</code>; matchThreshold/antiSpoofEnabled/spoofTextureFloor read LIVE by the recognizer; tick read live by the loop. "Start at login" via <code>SMAppService</code> (<code>LoginItem</code>). Refresh-on-show fixes stale state; grace floor ≥ 2s. "Copy diagnostics" wired to ND-044.</li>
+<li>[x] ND-041 Basic anti-spoofing (reject obvious flat photo/screen) — wiggum + cooper (<a href="../EDGE_CASES/">EC-12</a>). Variance-of-Laplacian texture/liveness score computed on the INNER face region (<code>FaceLiveness.swift</code>), carried via <code>FaceEmbeddingResult</code> (App enum unchanged). ON by default (<code>antiSpoofEnabled</code>); only flags on the ENROLLED+matched path when the score is below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12) → <code>.strangerOnly</code>. Conservative (errs LIVE on ambiguity/failure); texture compute skipped when the toggle is off. <strong>NOT hardened</strong> (a sharp high-res photo/high-DPI screen can pass); floor needs on-device tuning; motion/blink liveness = future (wiggum).</li>
+<li>[ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer (deferred this round — edits <code>CameraController.swift</code> (concurrent external-camera work) + needs on-device profiling)</li>
+<li>[x] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty<blockquote>
+<p>Guided first-run window (<code>App/OnboardingView.swift</code>, SwiftUI, hosted via <code>AppWindows</code> <code>.onboarding</code>), 4-step stepper: Welcome (on-device/camera-only/nothing recorded) → Enable camera (button → <code>camera.requestAccessIfNeeded()</code> + <code>notProtectingNotifier.requestAuthorizationIfNeeded()</code>, reflects granted/denied) → Enroll my face (reuses <code>startEnrollment()</code>) or Skip → Done (points to the menu-bar icon). Replaces the old one-time camera-explainer NSAlert in <code>primeIfActive()</code>; shown at most once (gated by <code>Permissions.hasPrimedPermissions</code>, set before presenting), preserving the launch-while-locked deferral. View owns no singletons — everything injected via <code>OnboardingActions</code> closures, mirroring <code>SettingsActions</code>. Subsequent launches unchanged (idempotent <code>requestAccessIfNeeded()</code>). Keychain explainer in <code>startEnrollment()</code> untouched.</p>
+</blockquote>
+</li>
+<li>[x] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon (<code>DiagnosticsReporter</code>: app/OS versions, permission statuses, enrolled y/n, <strong>effective (live-resolved)</strong> Config/threshold/anti-spoof/floor, trusted-network COUNT only, recent <code>OSLogStore</code> tail scoped to our subsystem+process → "Copy diagnostics" in Settings. No embeddings/images/SSID values. Shared <code>Support/Log.swift</code> subsystem/category constants for new code — existing loggers' migration is a tracked follow-up.)</li>
 <li>[x] ND-045 "Not protecting" notification when camera unavailable (on entry + repeats ~5 min, clears on recovery) — krusty (<code>NotProtectingNotifier</code>, local UserNotifications; permission requested at first launch; no entitlement needed). EC-07/08/09 IMPLEMENTED.</li>
 <li>[x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty</li>
 </ul>

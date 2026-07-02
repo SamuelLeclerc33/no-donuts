@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let trustedNetworks = TrustedNetworksStore()
     private var pauseController: PauseController?
     private var wifiMonitor: WiFiMonitor?
+    /// Settings (ND-040): the UserDefaults-backed model the SwiftUI form binds to, and
+    /// the window host. Both held so the store keeps observing and the window is reused.
+    private var settingsStore: SettingsStore?
+    private let appWindows = AppWindows()
     // Identity (M2, ND-022): the enrollment store + embedder are shared between the
     // recognizer (reads the enrolled vectors every tick) and the enrollment
     // coordinator (writes them). Held so they aren't deallocated and so enrollment
@@ -73,7 +77,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.applyEnforcement()
             },
             onEnroll: { [weak self] in self?.startEnrollment() },
-            onResetEnrollment: { [weak self] in self?.resetEnrollment() }
+            onResetEnrollment: { [weak self] in self?.resetEnrollment() },
+            onOpenSettings: { [weak self] in self?.openSettings() }
         )
         self.menuBar = menuBar
 
@@ -85,12 +90,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let camera = CameraController()
         self.camera = camera
 
-        // ND-024: no-rebuild matchThreshold tuning. Read an optional override from
-        // UserDefaults (`defaults write com.nodonuts.app matchThreshold 0.7`) and
-        // apply it only when it's a sane cosine threshold in (0.0, 1.0]; otherwise
-        // keep the tuned default. Log the EFFECTIVE value once so it pairs with
-        // cooper's per-tick score logging for tuning via `log stream`.
-        applyMatchThresholdOverride()
+        // Settings (ND-040): create the store (loads persisted values from UserDefaults,
+        // falling back to Config defaults). Seed `config` from it so the engine and the
+        // recognizer start with the user's saved tunables. matchThreshold flows through
+        // here (still validated by the store's clamp AND the recognizer's live resolver);
+        // this replaces the old ND-024 applyMatchThresholdOverride() launch read.
+        let settingsStore = SettingsStore()
+        self.settingsStore = settingsStore
+        applyStoreToConfig(settingsStore)
+        // onChange: rebuild Config from the store + live-apply to the engine. Threshold /
+        // anti-spoof are already persisted to their UserDefaults keys by the store and are
+        // consumed live by the recognizer on the next tick — no engine round-trip needed
+        // for those. The tick interval is picked up by the loop each iteration.
+        settingsStore.onChange = { [weak self] in
+            guard let self, let engine = self.engine, let store = self.settingsStore else { return }
+            self.applyStoreToConfig(store)
+            engine.updateConfig(self.config)
+        }
+        // Log the effective matchThreshold once at launch (pairs with cooper's per-tick
+        // score logging for tuning via `log stream`).
+        logEffectiveMatchThreshold()
         let recognizer = IdentityRecognizer(
             embedder: embedder,
             store: enrollmentStore,
@@ -337,24 +356,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
-    /// Show the one-time camera explainer (if not yet shown) and then trigger the
-    /// OS camera-permission prompt — explainer first, always. Self-guards on
-    /// `isActive` so nothing prompts while locked/asleep. Idempotent: safe to call
-    /// on every active transition — the explainer shows at most once (gated by
-    /// `hasPrimedPermissions`) and `requestAccessIfNeeded()` only prompts when the
-    /// camera authorization is still not-determined.
+    /// First-run priming. On the very first active launch this shows the guided
+    /// onboarding window (ND-043) — which now OWNS the camera + notification prompts
+    /// (the user taps "Enable camera" inside it) — replacing the old bare explainer
+    /// NSAlert. On every subsequent active transition it just re-fires
+    /// `requestAccessIfNeeded()` (idempotent; only prompts when camera auth is still
+    /// not-determined) so a first launch that dismissed onboarding without granting
+    /// still lands the prompt. Self-guards on `isActive` so nothing prompts while
+    /// locked/asleep, preserving the launch-while-locked deferral (priming waits for
+    /// the first active transition via applyEnforcement's primeIfActive() call).
     private func primeIfActive() {
         guard let monitor = sessionMonitor, monitor.isActive, let camera = self.camera else { return }
         if !Permissions.hasPrimedPermissions {
+            // Record first-run *now* (before the window is presented) so onboarding
+            // shows at most once — matching the old explainer's gating semantics.
+            // The window drives the actual camera/notification prompts on demand.
             Permissions.hasPrimedPermissions = true
-            // One-time camera-only explainer, shown *before* the OS camera prompt.
-            let alert = NSAlert()
-            alert.alertStyle = .informational
-            alert.messageText = "Enable No Donuts"
-            alert.informativeText = "No Donuts uses your camera to check you're at your Mac and locks the screen when you step away — all on-device, nothing is recorded."
-            alert.addButton(withTitle: "Continue")
-            alert.runModal()
+            openOnboarding()
+            return
         }
+        // Subsequent launches: keep the prompts idempotently wired (unchanged).
         Task { await camera.requestAccessIfNeeded() }   // idempotent; only prompts if not-yet-determined
         // ND-045: request notification authorization at first launch, alongside the
         // camera prompt (the decision). requestAuthorization is idempotent, so it's
@@ -362,30 +383,123 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notProtectingNotifier.requestAuthorizationIfNeeded()
     }
 
-    /// ND-024: apply a no-rebuild `matchThreshold` override from UserDefaults, if
-    /// present and valid, and log the effective value once at launch. A missing or
-    /// out-of-range value keeps the tuned default. The App layer owns this override;
-    /// Core `Config` stays a plain struct (no UserDefaults coupling).
-    private func applyMatchThresholdOverride() {
+    /// Present the first-run onboarding window (ND-043) in the accessory app. Injects
+    /// the actions the SwiftUI view can't own: camera + notification authorization
+    /// (the same calls the old explainer path made — camera prompt + ND-045
+    /// notification auth), the existing enrollment flow, and closing the window.
+    private func openOnboarding() {
+        let actions = OnboardingActions(
+            onRequestCamera: { [weak self] in
+                // Camera + notification prompts (both idempotent). Same call the exit
+                // paths use, so the request happens exactly once regardless (code-review #1).
+                self?.requestOnboardingPermissionsIfNeeded()
+            },
+            onEnroll: { [weak self] in self?.startEnrollment() },
+            onFinish: { [weak self] in self?.closeOnboarding() }
+        )
+        // onClose: if the user dismisses onboarding via the window's red close button
+        // (bypassing "Finish"), still guarantee the camera/notification prompt this
+        // session (code-review #1). Idempotent, so double-firing with closeOnboarding()
+        // — which also runs on Finish — never double-prompts.
+        appWindows.show(.onboarding, title: "Welcome to No Donuts",
+                        onClose: { [weak self] in self?.requestOnboardingPermissionsIfNeeded() }) {
+            OnboardingView(actions: actions)
+        }
+    }
+
+    /// Close the onboarding window ("Finish") — or handle its dismissal via the window's
+    /// close button (routed here by AppWindows' onboarding-close hook). AppWindows retains
+    /// the window, so this just orders it out; first-run was already recorded when shown.
+    ///
+    /// CRITICAL (code-review #1, silent-unprotected): however the user LEAVES onboarding —
+    /// tapping Finish OR clicking the window's close button, WITHOUT ever tapping "Enable
+    /// camera" — we must still trigger the camera prompt this session. Otherwise camera
+    /// auth stays `.notDetermined` and the app silently doesn't protect until some later
+    /// active transition re-primes. That guarantee lives in the window's `onClose` hook
+    /// (see `openOnboarding`), which fires on EVERY dismissal — Finish OR the red close
+    /// button. So this only needs to order the window out; `close(_:)` triggers
+    /// `windowWillClose` → the hook → the (idempotent) camera/notification request.
+    private func closeOnboarding() {
+        appWindows.close(.onboarding)
+    }
+
+    /// Trigger the camera + notification prompts if they haven't happened yet. Both calls
+    /// are idempotent (the OS prompts at most once), so this is safe to call from the
+    /// "Enable camera" button AND every onboarding-exit path (code-review #1).
+    private func requestOnboardingPermissionsIfNeeded() {
+        guard let camera = self.camera else { return }
+        Task { await camera.requestAccessIfNeeded() }   // idempotent; only prompts if not-determined
+        notProtectingNotifier.requestAuthorizationIfNeeded()
+    }
+
+    /// Copy the Settings store's tunables into `config` (ND-040). These three fields are
+    /// consumed via Config: `graceSeconds` + `tickIntervalSeconds` by the engine/loop,
+    /// and `matchThreshold` as the recognizer's BASE default (the recognizer still
+    /// resolves the live `matchThreshold` UserDefaults key per tick, so a Settings change
+    /// applies immediately even before the next engine.updateConfig). The store has
+    /// already clamped these to sane ranges; the Core resolvers remain the final guard.
+    private func applyStoreToConfig(_ store: SettingsStore) {
+        config.tickIntervalSeconds = store.tickIntervalSeconds
+        config.graceSeconds = store.graceSeconds
+        config.matchThreshold = store.matchThreshold
+    }
+
+    /// Log the effective identity matchThreshold once (pairs with cooper's per-tick score
+    /// logging for tuning via `log stream`). Reads through the shared Core resolver so the
+    /// logged value matches what the recognizer will actually use.
+    private func logEffectiveMatchThreshold() {
         let log = OSLog(subsystem: "com.nodonuts.app", category: "recognition")
-        // Delegate validation to cooper's shared Core resolver (FaceEmbedding.swift):
-        // it accepts an override ONLY in the open interval (0.0, 1.0), rejecting the
-        // fail-open (<= 0) and permanent-lockout (>= 1, incl. 1.0) extremes and any
-        // absent / non-numeric value — the previous inline `<= 1.0` here let 1.0
-        // through and locked the user out forever.
         let resolved = resolvedMatchThreshold(default: config.matchThreshold)
-        let overridden = resolved != config.matchThreshold
-        config.matchThreshold = resolved
-        os_log("identity matchThreshold = %.2f (%{public}@)",
-               log: log, type: .default,
-               config.matchThreshold, overridden ? "override" : "default")
+        os_log("identity matchThreshold = %.2f", log: log, type: .default, resolved)
+    }
+
+    /// Open (or re-front) the SwiftUI Settings window (ND-040). Injects the SettingsStore
+    /// and the actions the view can't own: trusted-network removal (→ store.remove +
+    /// applyEnforcement so the gate re-evaluates immediately), and diagnostics copy (→
+    /// DiagnosticsReporter with the live engine state / config / enrollment / location /
+    /// trusted count). Autostart is handled inside the view via LoginItem directly.
+    private func openSettings() {
+        guard let settingsStore else { return }
+        let actions = SettingsActions(
+            removeTrustedNetwork: { [weak self] ssid in
+                guard let self else { return [] }
+                self.trustedNetworks.remove(ssid)
+                // A removed trusted network may re-enable enforcement right now.
+                self.applyEnforcement()
+                return self.trustedNetworks.all()
+            },
+            copyDiagnostics: { [weak self] in self?.copyDiagnostics() }
+        )
+        // Refresh externally-sourced state (login-item registration + trusted list) BEFORE
+        // presenting, EVERY time — a re-fronted retained window won't re-fire SwiftUI's
+        // `.onAppear`, so without this the reused Settings window shows stale "Start at
+        // login" / trusted-network values after they changed elsewhere (code-review #2).
+        settingsStore.trustedNetworksProvider = { [weak self] in self?.trustedNetworks.all() ?? [] }
+        settingsStore.refresh()
+        appWindows.show(.settings, title: "No Donuts Settings") {
+            SettingsView(store: settingsStore, actions: actions)
+        }
+    }
+
+    /// Gather the live inputs and copy a privacy-safe diagnostics summary to the
+    /// pasteboard (ND-044). Notification status isn't exposed by the notifier, so it's
+    /// omitted (the reporter treats a nil description as absent).
+    private func copyDiagnostics() {
+        guard let engine, let wifiMonitor else { return }
+        DiagnosticsReporter().copyToPasteboard(
+            state: engine.state,
+            config: config,
+            store: enrollmentStore,
+            locationStatus: wifiMonitor.authorizationStatus(),
+            trustedNetworkCount: trustedNetworks.all().count,
+            notificationStatusDescription: nil
+        )
     }
 
     /// Start the presence loop if it isn't already running. A single cancellable
     /// main-actor Task (ADR-0005); idempotent so resume events can't stack loops.
     private func startLoop() {
         guard loopTask == nil, let engine, let menuBar else { return }
-        let config = self.config
         loopTask = Task { @MainActor in
             while !Task.isCancelled {
                 await engine.tick(now: Date())
@@ -396,7 +510,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // ND-045: honest "not protecting" notification. Only fires on the
                 // active loop, so paused/suspended/enrolling states never trigger it.
                 notProtectingNotifier.update(state: engine.state)
-                try? await Task.sleep(for: .seconds(config.tickIntervalSeconds))
+                // Read the interval fresh each iteration so a Settings change to the
+                // check interval (ND-040) live-applies without restarting the loop.
+                try? await Task.sleep(for: .seconds(self.config.tickIntervalSeconds))
             }
         }
     }

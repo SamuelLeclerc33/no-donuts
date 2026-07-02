@@ -85,6 +85,11 @@ defaults write com.nodonuts.app matchThreshold 0.7
 # Only needed if an atypical/external camera isn't detecting your face.
 defaults write com.nodonuts.app visionOrientation 6
 
+# Anti-spoofing texture floor (default 12). Higher = stricter (more likely to flag a
+# photo, but risks false-locking a live face); lower = more lenient. Toggle the whole
+# feature in Settings. Most tuning is now in the Settings window (menu-bar → Settings…).
+defaults write com.nodonuts.app spoofTextureFloor 8
+
 # Undo an override:
 defaults delete com.nodonuts.app matchThreshold
 ```

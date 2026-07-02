@@ -24,6 +24,34 @@ public enum FaceEmbeddingOutcome: Sendable {
     case failure
 }
 
+/// Richer outcome that ALSO carries a liveness/texture score for the chosen face
+/// (ND-041, EC-12). Same tri-state semantics as `FaceEmbeddingOutcome`, but the
+/// `.embedding` case additionally reports `textureScore` (variance-of-Laplacian on
+/// the face crop — see `faceTextureScore`). Used by `IdentityRecognizer` for the
+/// conservative anti-spoof check.
+///
+/// This is a SEPARATE type on purpose: `FaceEmbeddingOutcome` (and the App's switch
+/// on `.embedding([Float])`) stays source-compatible. The App keeps calling
+/// `embedding(for:)`; only the recognizer opts into `embeddingWithLiveness(for:)`.
+public enum FaceEmbeddingResult: Sendable {
+    /// A face was found + embedded, with its crop's texture score for liveness.
+    case embedding([Float], textureScore: Double)
+    /// Vision ran and found no face in the frame. → absence.
+    case noFace
+    /// Detection / crop / feature-print / pixel-buffer error (EC-10 conservative hold).
+    case failure
+
+    /// Project to the score-free `FaceEmbeddingOutcome` so the existing protocol
+    /// method and App call sites keep working unchanged.
+    public var outcome: FaceEmbeddingOutcome {
+        switch self {
+        case let .embedding(vector, _): return .embedding(vector)
+        case .noFace: return .noFace
+        case .failure: return .failure
+        }
+    }
+}
+
 /// Turns a captured frame into a face-identity embedding vector.
 ///
 /// This is the **seam** that lets a future Core ML face-optimized model replace the
@@ -36,9 +64,20 @@ public enum FaceEmbeddingOutcome: Sendable {
 /// `.failure` → `.error` (EC-10 conservative hold) and `.noFace` → absence — failures
 /// are **never** conflated with "no face".
 public protocol FaceEmbedding: Sendable {
-    /// Detect the (largest) face in `frame` and return its embedding outcome. Runs off
-    /// the main actor.
-    func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome
+    /// Detect the (largest) face in `frame` and return its embedding + liveness
+    /// outcome (ND-041). Runs off the main actor. This is the sole requirement;
+    /// `embedding(for:)` is derived from it by default.
+    func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult
+}
+
+public extension FaceEmbedding {
+    /// Score-free convenience that projects `embeddingWithLiveness(for:)` down to the
+    /// original `FaceEmbeddingOutcome`. Keeps the App's `switch` on `.embedding([Float])`
+    /// (Enrollment.swift) source-compatible — callers that don't need the liveness
+    /// signal (enrollment) use this unchanged.
+    func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome {
+        await embeddingWithLiveness(for: frame).outcome
+    }
 }
 
 /// Resolve the Vision source orientation to apply to the **RAW camera pixel buffer**
@@ -143,11 +182,13 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         self.paddingFraction = paddingFraction
     }
 
-    public func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome {
+    public func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {
         // Hop off the (main) actor onto our serial queue and suspend until done.
         // We capture the `@unchecked Sendable` `CapturedFrame` (not its non-Sendable
-        // `CVPixelBuffer`) into the `@Sendable` closure and unwrap inside.
-        await withCheckedContinuation { (continuation: CheckedContinuation<FaceEmbeddingOutcome, Never>) in
+        // `CVPixelBuffer`) into the `@Sendable` closure and unwrap inside. All the
+        // heavy image work (detect, crop, feature print, AND the liveness texture
+        // score) happens here on the off-main queue.
+        await withCheckedContinuation { (continuation: CheckedContinuation<FaceEmbeddingResult, Never>) in
             queue.async { [self] in
                 continuation.resume(returning: computeEmbedding(frame))
             }
@@ -159,7 +200,7 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
     /// `.failure` for any error (no pixel buffer, thrown error, unexpected element
     /// type, crop failure); `.embedding` on success. Never crashes, never blocks the
     /// main actor.
-    private func computeEmbedding(_ frame: CapturedFrame) -> FaceEmbeddingOutcome {
+    private func computeEmbedding(_ frame: CapturedFrame) -> FaceEmbeddingResult {
         // No pixel buffer is a capture/pipeline error, NOT "no face" (EC-10).
         guard let pixelBuffer = frame.pixelBuffer else { return .failure }
 
@@ -245,6 +286,37 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         // Render failure → error, not "no face" (EC-10).
         guard let cgCrop = ciContext.createCGImage(cropped, from: cropRect) else { return .failure }
 
+        // ND-041 liveness: compute the crop's texture score (variance-of-Laplacian)
+        // on this same off-main queue. A flat photo / screen reproduction scores low;
+        // a live face scores high.
+        //
+        // FIX #7 (compute-gating): the texture score costs a 128px grayscale render +
+        // Laplacian pass on EVERY embed. It is only ever CONSUMED by the recognizer
+        // when anti-spoof is enabled AND the face is enrolled AND it matches. The
+        // embedder can't know "enrolled"/"matched", but it CAN cheaply check the
+        // anti-spoof toggle — the common case (anti-spoof off, or the not-enrolled
+        // presence-only path with the toggle off) then pays nothing. When disabled we
+        // return the `.infinity` sentinel = "live/unknown", which `isLikelySpoof`
+        // treats as LIVE (never flags). When enabled we compute for real, since a
+        // match still needs it.
+        //
+        // FIX #5 (tighter region): the texture score must be computed on the INNER
+        // face region, NOT the 0.25-padded embedding crop. Padding pulls in hair, jaw
+        // edges, and background — high-frequency detail that varies wildly and can
+        // DILUTE a live face's per-pixel skin detail below the floor (a plain
+        // background under modest light collapses the average), risking a false
+        // spoof-lock of the real user. The EMBEDDING keeps the padded crop (context
+        // helps the feature print's separation); only the LIVENESS score uses the
+        // face-only central region. We recover that region by cropping the central
+        // portion of the already-rendered crop back to (approximately) the un-padded
+        // Vision face box before scoring.
+        let textureScore: Double
+        if resolvedAntiSpoofEnabled() {
+            textureScore = luminanceTextureScore(faceCoreRegion(of: cgCrop)) ?? .infinity
+        } else {
+            textureScore = .infinity   // anti-spoof off → skip the render+Laplacian entirely
+        }
+
         // 3) Feature print on the cropped face. The crop is already upright pixels,
         // so use .up here regardless of the source orientation.
         let printRequest = VNGenerateImageFeaturePrintRequest()
@@ -276,6 +348,79 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
             guard let base = raw.bindMemory(to: Float.self).baseAddress else { return }
             for i in 0..<count { vector[i] = base[i] }
         }
-        return .embedding(vector)
+        return .embedding(vector, textureScore: textureScore)
+    }
+
+    /// Crop the central "face core" out of the padded embedding crop for the LIVENESS
+    /// texture score (FIX #5). The embedding crop was built by expanding the Vision
+    /// face box by `paddingFraction` on each side, so the un-padded face box occupies
+    /// the central `1 / (1 + 2·paddingFraction)` fraction of the crop, centered. We cut
+    /// that central window back out so the texture score sees face-only detail (skin,
+    /// eyes, pores) rather than hair / jaw edges / background — which are high-frequency
+    /// but identity-irrelevant and can dilute a live face's score below the floor.
+    ///
+    /// Note: the crop may have been clamped at the buffer edge (padding can't push off
+    /// the image), so the real padded fraction is sometimes less than `paddingFraction`.
+    /// Cutting the theoretical central window is still a strictly TIGHTER-or-equal region
+    /// than the full crop, which is exactly the conservative direction we want here (it
+    /// never enlarges the scored area, only shrinks toward the face). Returns the
+    /// original image if the geometry degenerates (tiny crops) so we never lose the
+    /// signal entirely.
+    private func faceCoreRegion(of cgImage: CGImage) -> CGImage {
+        let w = cgImage.width
+        let h = cgImage.height
+        // Fraction of the crop occupied by the un-padded face box on each axis.
+        let coreFraction = 1.0 / (1.0 + 2.0 * Double(paddingFraction))
+        // Guard against a nonsensical (non-positive) padding making this a no-op or worse.
+        guard coreFraction > 0, coreFraction < 1 else { return cgImage }
+        let coreW = Int((Double(w) * coreFraction).rounded())
+        let coreH = Int((Double(h) * coreFraction).rounded())
+        // Need at least a 3x3 for the Laplacian; if the core is too small, keep the
+        // full crop rather than return something un-scoreable (→ .infinity = live).
+        guard coreW >= 3, coreH >= 3 else { return cgImage }
+        let originX = (w - coreW) / 2
+        let originY = (h - coreH) / 2
+        let rect = CGRect(x: originX, y: originY, width: coreW, height: coreH)
+        return cgImage.cropping(to: rect) ?? cgImage
+    }
+
+    /// Render `cgImage` to an 8-bit grayscale luminance buffer and return its
+    /// variance-of-Laplacian texture score (see `faceTextureScore`). Returns `nil`
+    /// if the grayscale draw fails — the caller then treats the frame as LIVE
+    /// (conservative, never a spoof flag on our own failure). Runs on `queue`.
+    private func luminanceTextureScore(_ cgImage: CGImage) -> Double? {
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width >= 3, height >= 3 else { return nil }
+
+        // Downsize huge crops so the metric is cheap and roughly scale-stable; a
+        // ~128px working size keeps enough high-frequency detail to separate flat
+        // reproductions from live faces without per-pixel cost exploding.
+        let maxDim = 128
+        let scale = min(1.0, Double(maxDim) / Double(max(width, height)))
+        let w = max(3, Int((Double(width) * scale).rounded()))
+        let h = max(3, Int((Double(height) * scale).rounded()))
+
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        var pixels = [UInt8](repeating: 0, count: w * h)
+        let ok: Bool = pixels.withUnsafeMutableBytes { raw -> Bool in
+            guard let base = raw.baseAddress,
+                  let ctx = CGContext(
+                    data: base,
+                    width: w,
+                    height: h,
+                    bitsPerComponent: 8,
+                    bytesPerRow: w,
+                    space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.none.rawValue
+                  ) else { return false }
+            ctx.interpolationQuality = .high
+            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard ok else { return nil }
+
+        let luminance = pixels.map(Double.init)
+        return faceTextureScore(luminance: luminance, width: w, height: h)
     }
 }

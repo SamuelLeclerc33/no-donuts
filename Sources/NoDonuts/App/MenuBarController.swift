@@ -24,6 +24,9 @@ public final class MenuBarController: NSObject {
     /// enroll/re-enroll capture; `onResetEnrollment` clears it (back to presence-only).
     private let onEnroll: @MainActor () -> Void
     private let onResetEnrollment: @MainActor () -> Void
+    /// Injected "open Settings…" action (ND-040). The UI never owns the window or the
+    /// SettingsStore — it forwards intent; the AppDelegate hosts the SwiftUI window.
+    private let onOpenSettings: @MainActor () -> Void
     /// Last state we actually rendered. The presence loop calls render(state:) every
     /// tick (1s); skip the NSImage rebuild + redraw when nothing changed (perf).
     private var lastRenderedState: PresenceState?
@@ -46,19 +49,23 @@ public final class MenuBarController: NSObject {
     private let enrollItem = NSMenuItem(title: "Enroll my face…", action: #selector(enrollClicked), keyEquivalent: "")
     /// "Reset enrollment" — shown only when enrolled; clears back to presence-only.
     private let resetEnrollmentItem = NSMenuItem(title: "Reset enrollment", action: #selector(resetEnrollmentClicked), keyEquivalent: "")
+    /// "Settings…" — opens the SwiftUI settings window (ND-040). ⌘, per macOS convention.
+    private let settingsItem = NSMenuItem(title: "Settings…", action: #selector(settingsClicked), keyEquivalent: ",")
 
     public init(onLockNow: @escaping @MainActor () -> Void,
                 onPause: @escaping @MainActor (TimeInterval?) -> Void,
                 onResume: @escaping @MainActor () -> Void,
                 onToggleTrustCurrentNetwork: @escaping @MainActor () -> Void,
                 onEnroll: @escaping @MainActor () -> Void,
-                onResetEnrollment: @escaping @MainActor () -> Void) {
+                onResetEnrollment: @escaping @MainActor () -> Void,
+                onOpenSettings: @escaping @MainActor () -> Void) {
         self.onLockNow = onLockNow
         self.onPause = onPause
         self.onResume = onResume
         self.onToggleTrustCurrentNetwork = onToggleTrustCurrentNetwork
         self.onEnroll = onEnroll
         self.onResetEnrollment = onResetEnrollment
+        self.onOpenSettings = onOpenSettings
         super.init()
         configureMenu()
         render(state: .unknown)
@@ -92,6 +99,11 @@ public final class MenuBarController: NSObject {
         resetEnrollmentItem.isHidden = true   // shown only when enrolled (setEnrolled(_:))
         menu.addItem(resetEnrollmentItem)
 
+        // Settings… (ND-040): opens the SwiftUI settings window.
+        menu.addItem(.separator())
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         menu.addItem(.separator())
         let lockNowItem = NSMenuItem(title: "Lock now", action: #selector(lockNowClicked), keyEquivalent: "l")
         lockNowItem.target = self
@@ -112,6 +124,7 @@ public final class MenuBarController: NSObject {
     @objc private func trustClicked() { onToggleTrustCurrentNetwork() }
     @objc private func enrollClicked() { onEnroll() }
     @objc private func resetEnrollmentClicked() { onResetEnrollment() }
+    @objc private func settingsClicked() { onOpenSettings() }
 
     /// Reflect whether the user has enrolled a face (identity mode) vs presence-only.
     /// Shows/hides "Reset enrollment", updates the header wording, and — because the

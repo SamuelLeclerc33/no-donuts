@@ -771,6 +771,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0013-settings-ui-and-login-item/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0013 — Settings UI + login item
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1038,8 +1066,8 @@
 <tr>
 <td>EC-12</td>
 <td><strong>Photo / phone screen held up to spoof</strong></td>
-<td>Basic anti-spoofing in M4; v1 is not hardened against determined attackers.</td>
-<td>OPEN</td>
+<td>Basic anti-spoofing shipped (ND-041): a variance-of-Laplacian texture/liveness score on the face crop (<code>FaceLiveness.swift</code>) flags clearly flat reproductions. CONSERVATIVE by design — only checked on the ENROLLED path AFTER a threshold match, only flags when the score is strictly below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12.0) → <code>.strangerOnly</code> (locks). The score is measured on the INNER face region (not the padded embedding crop), so a live user against a plain background isn't diluted below the floor; it errs toward LIVE on any ambiguity/extraction failure and never false-locks the real user. ON by default (toggle <code>antiSpoofEnabled</code>); texture compute is skipped entirely when the toggle is off. <strong>v1 is NOT hardened:</strong> a sharp high-resolution print or a high-DPI screen at the right size can still pass; the floor needs on-device tuning; motion/blink liveness is future work.</td>
+<td>PARTIAL</td>
 <td>wiggum/cooper</td>
 </tr>
 <tr>

@@ -221,4 +221,21 @@ public final class PresenceEngine {
 
     /// Manual lock trigger (menu "Lock now"). Updates state honestly via attemptLock().
     public func lockNow() async { await attemptLock() }
+
+    /// Live-apply new tunables (ND-040). The App calls this when Settings change so
+    /// the engine reflects them WITHOUT a relaunch. The new grace/consensus/error/
+    /// call-cap values take effect on the NEXT tick — the engine reads them live from
+    /// `config` during `tick()` / `markAbsent()` / `handleCameraBusy()`, so simply
+    /// swapping the stored value is enough.
+    ///
+    /// We deliberately do NOT reset absence accounting here: a settings tweak should
+    /// not throw away an in-progress absence episode (that would let someone dodge a
+    /// pending lock by nudging a slider). The next tick evaluates the running episode
+    /// against the new thresholds.
+    ///
+    /// `tickIntervalSeconds` is consumed by the App's loop, not the engine, so
+    /// changing the cadence is the App's responsibility (out of scope here).
+    public func updateConfig(_ config: Config) {
+        self.config = config
+    }
 }
