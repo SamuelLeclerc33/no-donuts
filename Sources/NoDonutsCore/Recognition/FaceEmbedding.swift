@@ -41,6 +41,72 @@ public protocol FaceEmbedding: Sendable {
     func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome
 }
 
+/// Resolve the Vision source orientation to apply to the **RAW camera pixel buffer**
+/// fed to `VNDetectFaceRectanglesRequest`.
+///
+/// Default is `CGImagePropertyOrientation.up`. It can be overridden **without a rebuild**
+/// via `UserDefaults.standard` key `"visionOrientation"`, read as an `Int` rawValue:
+///
+/// - Valid values are `1...8` (`CGImagePropertyOrientation` rawValues), e.g.
+///   `1` = `.up` (default), `6` = `.right` (90° CW), `8` = `.left`, `3` = `.down`.
+/// - If the key is **absent**, or the value is **not** a valid rawValue (outside `1...8`,
+///   e.g. `0` or `99`), we fall back to `.up`.
+///
+/// Tune on-device with, e.g. `defaults write com.nodonuts.app visionOrientation 6`.
+///
+/// This is a shared resolver so BOTH the identity embedder's detection pass and the
+/// presence-only `FaceDetectionRecognizer` use the SAME orientation. Within one embed
+/// call, detection + crop must use one resolved value so enrollment and matching stay
+/// consistent. The already-upright cropped image feature print stays `.up` regardless.
+///
+/// Cheap (a single `UserDefaults` read); safe to call per detection pass.
+public func resolvedVisionOrientation(
+    defaults: UserDefaults = .standard,
+    key: String = "visionOrientation"
+) -> CGImagePropertyOrientation {
+    // `object(forKey:)` distinguishes "absent" from a stored 0; `integer(forKey:)`
+    // would map absent → 0 (an invalid rawValue), which also falls back to .up.
+    guard defaults.object(forKey: key) != nil else { return .up }
+    let raw = defaults.integer(forKey: key)
+    guard raw >= 1, raw <= 8, let orientation = CGImagePropertyOrientation(rawValue: UInt32(raw)) else {
+        return .up
+    }
+    return orientation
+}
+
+/// Resolve the cosine-similarity **match threshold** for identity recognition,
+/// validating any user override before trusting it.
+///
+/// Mirrors `resolvedVisionOrientation`: a pure, testable resolver that reads a single
+/// `UserDefaults` value and falls back to a safe `def` when the stored value is absent
+/// or nonsensical. The App calls this instead of reading `matchThreshold` raw.
+///
+/// Validation — an override is accepted ONLY if it is a number strictly in `(0.0, 1.0)`:
+/// - A threshold of `0.0` (or negative) is effectively **fail-open for identity**: any
+///   face — including a stranger's — clears it, so identity checks stop meaning anything.
+/// - A threshold of `1.0` (or above) demands a *perfect* cosine match, which live camera
+///   frames never produce → the enrolled user never matches → **permanent lockout**.
+///
+/// Both extremes defeat the whole point, so either is rejected in favor of the safe
+/// default `def` (typically `Config().matchThreshold`). Absent / non-numeric values also
+/// fall back to `def`.
+///
+/// Cheap (a single `UserDefaults` read); safe to call per recognition pass.
+public func resolvedMatchThreshold(
+    default def: Double,
+    defaults: UserDefaults = .standard,
+    key: String = "matchThreshold"
+) -> Double {
+    // `object(forKey:)` distinguishes "absent" from a stored 0, and lets us reject
+    // non-numeric junk (a stored String, etc.) rather than coercing it to 0.
+    guard let value = defaults.object(forKey: key) as? NSNumber else { return def }
+    let threshold = value.doubleValue
+    // Reject the fail-open (<= 0) and permanent-lockout (>= 1) extremes; accept only
+    // the safe open interval.
+    guard threshold > 0.0, threshold < 1.0 else { return def }
+    return threshold
+}
+
 /// `FaceEmbedding` backed by Apple Vision's `VNGenerateImageFeaturePrint` (ADR-0012).
 ///
 /// Pipeline (all on-device, in memory):
@@ -97,11 +163,12 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         // No pixel buffer is a capture/pipeline error, NOT "no face" (EC-10).
         guard let pixelBuffer = frame.pixelBuffer else { return .failure }
 
-        // 1) Detect faces. TODO(recognition-orientation follow-up): front-camera
-        // buffer orientation may need tuning; `.up` is a reasonable default and
-        // matches FaceDetectionRecognizer. Detection + crop + feature print all use
-        // the SAME orientation so the crop stays consistent.
-        let orientation: CGImagePropertyOrientation = .up
+        // 1) Detect faces. Resolve the RAW-buffer source orientation ONCE per call
+        // (default `.up`, overridable via the `visionOrientation` UserDefaults key —
+        // see `resolvedVisionOrientation`). Shared with FaceDetectionRecognizer so
+        // presence + identity agree. Detection + crop use the SAME resolved value so
+        // enrollment and matching stay consistent.
+        let orientation = resolvedVisionOrientation()
 
         let detect = VNDetectFaceRectanglesRequest()
         let detectHandler = VNImageRequestHandler(
@@ -126,12 +193,30 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
             return .noFace  // detection ran, genuinely zero faces
         }
 
-        // 2) Crop the pixel buffer to the padded face box.
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
+        // 2) Crop to the padded face box.
+        //
+        // CRITICAL (false-lock fix): detection ran in the ORIENTED coordinate space
+        // (we passed `orientation` to the detect handler), so `largest.boundingBox`
+        // is normalized against the ORIENTED image, not the raw pixel buffer. The
+        // crop must therefore be taken from an image in that SAME oriented space, or
+        // (for any non-.up override) the box maps onto the wrong region/rotation, the
+        // feature print is garbage, and the enrolled user scores as a stranger → the
+        // Mac false-locks on them.
+        //
+        // So: build the crop base by applying the SAME resolved `orientation` to the
+        // buffer via `.oriented(_:)`. The oriented CIImage's coordinate space now
+        // matches detection's, so the normalized bbox maps correctly. With the default
+        // `.up`, `.oriented(.up)` is a no-op → behavior is byte-for-byte identical to
+        // before (regression-safe); with e.g. `.right` the crop tracks the rotated
+        // detection.
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
+        // Extent of the ORIENTED image — the space the bbox and mapping live in.
+        let orientedExtent = ciImage.extent
+        let width = Int(orientedExtent.width)
+        let height = Int(orientedExtent.height)
 
         // Vision bounding boxes are normalized with origin bottom-left. Convert to
-        // pixel coordinates for the .up-oriented buffer.
+        // pixel coordinates in the oriented image's space.
         let bb = largest.boundingBox
         let padX = bb.width * paddingFraction
         let padY = bb.height * paddingFraction
@@ -146,12 +231,12 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         // Crop geometry failure → error, not "no face" (EC-10).
         guard !normRect.isNull, normRect.width > 0, normRect.height > 0 else { return .failure }
 
-        // VNImageRectForNormalizedRect maps a normalized rect (bottom-left origin)
-        // to pixel coordinates (also bottom-left origin) — which matches CIImage's
-        // coordinate space, so we can crop the CIImage directly.
+        // VNImageRectForNormalizedRect maps a normalized rect (bottom-left origin) to
+        // pixel coordinates (also bottom-left origin) using the ORIENTED image's
+        // dimensions — which matches the oriented CIImage's coordinate space, so we can
+        // crop the oriented image directly.
         let pixelRect = VNImageRectForNormalizedRect(normRect, width, height)
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let cropRect = pixelRect.integral.intersection(ciImage.extent)
+        let cropRect = pixelRect.integral.intersection(orientedExtent)
         guard !cropRect.isNull, cropRect.width >= 1, cropRect.height >= 1 else { return .failure }
 
         let cropped = ciImage.cropped(to: cropRect)

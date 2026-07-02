@@ -44,12 +44,13 @@ public final class FaceDetectionRecognizer: FaceRecognizing, Sendable {
                 // TODO(ND-042): per-tick VNRequest alloc is cheap; revisit if profiling shows cost
                 let request = VNDetectFaceRectanglesRequest()
 
-                // TODO(cooper): front-camera orientation may need tuning; `.up`
-                // is a reasonable default for presence-only and is out of scope
-                // for ND-020.
+                // Resolve the RAW-buffer source orientation (default `.up`,
+                // overridable via the `visionOrientation` UserDefaults key — see
+                // `resolvedVisionOrientation`). Shared with VisionFeaturePrintEmbedder
+                // so presence-only and identity detection agree.
                 let handler = VNImageRequestHandler(
                     cvPixelBuffer: pixelBuffer,
-                    orientation: .up,
+                    orientation: resolvedVisionOrientation(),
                     options: [:]
                 )
 

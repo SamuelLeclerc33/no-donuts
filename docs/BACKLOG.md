@@ -85,8 +85,8 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-025 Wire recognizer into presence engine (replace fake) — homer (presence-only; fakes deleted) — see ND-034 (M3) for the strict stranger policy that identity enables
 
 > **Identity follow-ups (from M2 / ND-021–024):**
-> - **On-device threshold tuning** (cooper): `Config.matchThreshold` default is lenient and UNVERIFIED — tune against real captures (false-accept vs false-reject); expose in settings (ND-040). The v1.1 feature print is not face-optimized, so expect to tune.
-> - **Camera orientation** (cooper): the embedder + `FaceDetectionRecognizer` use Vision orientation `.up`; front-camera buffers may not be upright → worse matching / missed face → false lock. Verify on-device; thread real orientation through `CapturedFrame`.
+> - **On-device threshold tuning** (cooper): observability + no-rebuild override now shipped — `IdentityRecognizer` logs the per-tick cosine score (`log stream`), and `matchThreshold` is overridable via `defaults write com.nodonuts.app matchThreshold <0–1>`. STILL TODO: pick a data-driven default from real captures (false-accept vs false-reject) and expose a slider in settings (ND-040).
+> - ✅ **Camera orientation** — resolved: the Vision source orientation is `.up` by default but overridable via `defaults write com.nodonuts.app visionOrientation <1–8>`, applied consistently to detection + crop (cooper); the capture connection is forced non-mirrored for deterministic embeddings (blart). Remaining nicety: auto-derive orientation per device instead of the manual override.
 > - **Multi-face (EC-06)** (cooper): the embedder matches only the LARGEST face; if a colleague's face is larger than the enrolled user's, the user could be missed → false lock. Scan all detected faces and match against any.
 > - **Two recognizer classes** (cooper): `FaceDetectionRecognizer` (presence-only) and `IdentityRecognizer` (identity, with its own presence-only fallback) overlap on detection — the standalone `FaceDetectionRecognizer` is now unused in the app; consider removing or merging.
 
@@ -117,7 +117,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer
 - [ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty
 - [ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon
-- [ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty
+- [x] ND-045 "Not protecting" notification when camera unavailable (on entry + repeats ~5 min, clears on recovery) — krusty (`NotProtectingNotifier`, local UserNotifications; permission requested at first launch; no entitlement needed). EC-07/08/09 IMPLEMENTED.
 - [x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty
 
 ## M5 — Distribution

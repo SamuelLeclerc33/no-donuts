@@ -1,5 +1,6 @@
 import AppKit
 import NoDonutsCore
+import os.log
 
 // Owner: krusty (app shell) + homer (loop wiring). Entry point.
 // Backlog: ND-010, ND-015, ND-035 (pause), ND-036 (trusted Wi-Fi). Runs as an
@@ -14,7 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var camera: CameraController?
     private var loopTask: Task<Void, Never>?
     private let locker = ScreenLocker()
-    private let config = Config()
+    private var config = Config()
+    /// ND-045 (EC-07/08/09): posts a local notification when we stop protecting
+    /// (camera unavailable) and clears it on recovery. Held so its repeat timer
+    /// survives between ticks.
+    private let notProtectingNotifier = NotProtectingNotifier()
     // All held in stored properties so they aren't deallocated while observing.
     private var sessionMonitor: SessionStateMonitor?
     private let trustedNetworks = TrustedNetworksStore()
@@ -79,6 +84,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // user counts (EC-03). The store + embedder are shared with enrollment below.
         let camera = CameraController()
         self.camera = camera
+
+        // ND-024: no-rebuild matchThreshold tuning. Read an optional override from
+        // UserDefaults (`defaults write com.nodonuts.app matchThreshold 0.7`) and
+        // apply it only when it's a sane cosine threshold in (0.0, 1.0]; otherwise
+        // keep the tuned default. Log the EFFECTIVE value once so it pairs with
+        // cooper's per-tick score logging for tuning via `log stream`.
+        applyMatchThresholdOverride()
         let recognizer = IdentityRecognizer(
             embedder: embedder,
             store: enrollmentStore,
@@ -208,6 +220,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Always re-render + refresh menu item state so the UI stays in sync.
         menuBar.render(state: engine.state)
         refreshMenuItems()
+
+        // ND-045: feed the gate's display state to the notifier in BOTH paths. The
+        // loop's per-tick update() only runs while enforcement is enabled, so when the
+        // gate DISABLES the loop (pause / session-suspend / trusted-network / enrolling)
+        // while state was .cameraUnavailable, the notifier would otherwise never see the
+        // transition OUT — its 5-min repeat timer would fire forever and the delivered
+        // alert would never clear. Because update() is transition-gated on lastState,
+        // calling it here and from the loop is idempotent (safe on unchanged state).
+        notProtectingNotifier.update(state: engine.state)
     }
 
     /// Push current pause + trusted-Wi-Fi state into the menu items so labels,
@@ -335,6 +356,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.runModal()
         }
         Task { await camera.requestAccessIfNeeded() }   // idempotent; only prompts if not-yet-determined
+        // ND-045: request notification authorization at first launch, alongside the
+        // camera prompt (the decision). requestAuthorization is idempotent, so it's
+        // safe to call on every active transition; the OS only prompts once.
+        notProtectingNotifier.requestAuthorizationIfNeeded()
+    }
+
+    /// ND-024: apply a no-rebuild `matchThreshold` override from UserDefaults, if
+    /// present and valid, and log the effective value once at launch. A missing or
+    /// out-of-range value keeps the tuned default. The App layer owns this override;
+    /// Core `Config` stays a plain struct (no UserDefaults coupling).
+    private func applyMatchThresholdOverride() {
+        let log = OSLog(subsystem: "com.nodonuts.app", category: "recognition")
+        // Delegate validation to cooper's shared Core resolver (FaceEmbedding.swift):
+        // it accepts an override ONLY in the open interval (0.0, 1.0), rejecting the
+        // fail-open (<= 0) and permanent-lockout (>= 1, incl. 1.0) extremes and any
+        // absent / non-numeric value — the previous inline `<= 1.0` here let 1.0
+        // through and locked the user out forever.
+        let resolved = resolvedMatchThreshold(default: config.matchThreshold)
+        let overridden = resolved != config.matchThreshold
+        config.matchThreshold = resolved
+        os_log("identity matchThreshold = %.2f (%{public}@)",
+               log: log, type: .default,
+               config.matchThreshold, overridden ? "override" : "default")
     }
 
     /// Start the presence loop if it isn't already running. A single cancellable
@@ -349,6 +393,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // render stale state on top of a freshly-resumed loop.
                 if Task.isCancelled { break }
                 menuBar.render(state: engine.state)
+                // ND-045: honest "not protecting" notification. Only fires on the
+                // active loop, so paused/suspended/enrolling states never trigger it.
+                notProtectingNotifier.update(state: engine.state)
                 try? await Task.sleep(for: .seconds(config.tickIntervalSeconds))
             }
         }

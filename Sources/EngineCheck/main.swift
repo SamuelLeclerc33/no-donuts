@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import NoDonutsCore
 
 // Owner: homer — framework-free verification of the presence engine's decision
@@ -693,6 +694,68 @@ func runAll() async -> Bool {
         let notEnrolledAfterReset = !store.isEnrolled && isNotEnrolled(store.enrollmentState())
         c.expect(notEnrolledInitially && enrolledAfter && notEnrolledAfterReset,
                  "InMemoryEnrollmentStore: enrollmentState notEnrolled → enrolled → reset round-trip")
+    }
+
+    // resolvedVisionOrientation fallback (cooper). Uses a throwaway UserDefaults
+    // suite (like the TrustedNetworksStore check) so it never touches real prefs.
+    // Default (key absent) → .up; out-of-range (99) → .up; valid 6 → .right.
+    do {
+        let suiteName = "com.nodonuts.enginecheck.orientation.\(UUID().uuidString)"
+        if let suite = UserDefaults(suiteName: suiteName) {
+            let key = "visionOrientation"
+            // Absent → .up
+            let absentUp = resolvedVisionOrientation(defaults: suite, key: key) == .up
+            // Out-of-range rawValue → .up
+            suite.set(99, forKey: key)
+            let outOfRangeUp = resolvedVisionOrientation(defaults: suite, key: key) == .up
+            // Zero (invalid rawValue) → .up
+            suite.set(0, forKey: key)
+            let zeroUp = resolvedVisionOrientation(defaults: suite, key: key) == .up
+            // Valid 6 → .right
+            suite.set(6, forKey: key)
+            let sixRight = resolvedVisionOrientation(defaults: suite, key: key) == .right
+            c.expect(absentUp && outOfRangeUp && zeroUp && sixRight,
+                     "resolvedVisionOrientation: absent/out-of-range/0 → .up; 6 → .right")
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        } else {
+            // Couldn't make a throwaway suite — don't touch .standard; skip cleanly.
+            c.expect(true, "resolvedVisionOrientation: throwaway suite unavailable, skipped")
+        }
+    }
+
+    // resolvedMatchThreshold validation (cooper). Throwaway UserDefaults suite so it
+    // never touches real prefs. Absent / <= 0 / >= 1 / non-open values → default;
+    // only a number strictly in (0,1) is accepted. Guards against fail-open (0) and
+    // permanent-lockout (1.0) overrides.
+    do {
+        let suiteName = "com.nodonuts.enginecheck.threshold.\(UUID().uuidString)"
+        if let suite = UserDefaults(suiteName: suiteName) {
+            let key = "matchThreshold"
+            let def = 0.6
+            // Absent → default
+            let absentDefault = resolvedMatchThreshold(default: def, defaults: suite, key: key) == def
+            // 0.0 (fail-open) → default
+            suite.set(0.0, forKey: key)
+            let zeroDefault = resolvedMatchThreshold(default: def, defaults: suite, key: key) == def
+            // Negative → default
+            suite.set(-0.5, forKey: key)
+            let negativeDefault = resolvedMatchThreshold(default: def, defaults: suite, key: key) == def
+            // 1.0 (permanent lockout) → default
+            suite.set(1.0, forKey: key)
+            let oneDefault = resolvedMatchThreshold(default: def, defaults: suite, key: key) == def
+            // 1.5 (above range) → default
+            suite.set(1.5, forKey: key)
+            let aboveDefault = resolvedMatchThreshold(default: def, defaults: suite, key: key) == def
+            // 0.75 (valid, in open interval) → 0.75
+            suite.set(0.75, forKey: key)
+            let validAccepted = resolvedMatchThreshold(default: def, defaults: suite, key: key) == 0.75
+            c.expect(absentDefault && zeroDefault && negativeDefault && oneDefault && aboveDefault && validAccepted,
+                     "resolvedMatchThreshold: absent/0/negative/1.0/1.5 → default; 0.75 → 0.75")
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        } else {
+            // Couldn't make a throwaway suite — don't touch .standard; skip cleanly.
+            c.expect(true, "resolvedMatchThreshold: throwaway suite unavailable, skipped")
+        }
     }
 
     print("\n\(c.passed) passed, \(c.failed) failed")

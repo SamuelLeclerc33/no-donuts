@@ -67,6 +67,30 @@ scripts/uninstall-launchagent.sh   # stop auto-starting
 
 Distribution (Developer-ID signing + notarization) needs more — see ND-050. Details in the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
+### Tuning & diagnostics (on-device, no rebuild)
+
+All local; nothing leaves the device.
+
+```sh
+# Watch what the app is doing (presence decisions, identity scores, session state):
+log stream --predicate 'subsystem == "com.nodonuts.app"'
+
+# Identity strictness — cosine match threshold, strictly between 0 and 1
+# (0 and 1.0 are rejected: 0 would let any face pass, 1.0 is never reachable from
+# live frames = permanent lockout). Higher = stricter; lower = more lenient.
+# Default 0.6. Re-launch after changing.
+defaults write com.nodonuts.app matchThreshold 0.7
+
+# Camera orientation fed to Vision (CGImagePropertyOrientation 1–8; default 1 = up).
+# Only needed if an atypical/external camera isn't detecting your face.
+defaults write com.nodonuts.app visionOrientation 6
+
+# Undo an override:
+defaults delete com.nodonuts.app matchThreshold
+```
+
+When enrolled, the app logs the live identity match score each tick, so you can watch your-face vs someone-else scores and pick a threshold between them.
+
 ## Documentation website
 
 The docs in [`docs/`](docs/) are also published as a **local, fully offline** [MkDocs](https://www.mkdocs.org/) site (Material theme). It's self-contained — no remote fonts, no analytics, no network calls — and the generated `site/` is committed, so you can read it without building anything: just open `site/index.html`.

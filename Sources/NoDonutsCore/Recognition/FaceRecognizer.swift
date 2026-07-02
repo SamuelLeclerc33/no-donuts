@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // Owner: cooper — Vision detection + Core ML embeddings + matching.
 // Backlog: ND-020, ND-021, ND-024. ADR-0002. Privacy: all on-device, no network.
@@ -42,6 +43,10 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     private let store: EnrollmentStoring
     private let matchThreshold: Double
 
+    /// Match-score logging for threshold tuning (ND-024). Logs ONLY the numeric cosine
+    /// score, the threshold, and the decision — never an embedding or image (privacy).
+    private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+
     public init(embedder: FaceEmbedding, store: EnrollmentStoring, matchThreshold: Double) {
         self.embedder = embedder
         self.store = store
@@ -75,7 +80,12 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                     max(best, cosineSimilarity(vector, ref))
                 }
                 // EC-03: a detected face that doesn't clear the threshold is NEVER present.
-                return maxSim >= matchThreshold
+                let present = maxSim >= matchThreshold
+                // ND-024 tuning: log the score/threshold/decision (numbers only — no
+                // embedding, no image — privacy). Enrolled branch only; the presence-only
+                // (not-enrolled) path is not logged.
+                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(self.matchThreshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public)")
+                return present
                     ? .enrolledUserPresent(confidence: maxSim)
                     : .strangerOnly
             case .unavailable:

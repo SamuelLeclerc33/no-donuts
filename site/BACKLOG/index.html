@@ -1199,8 +1199,8 @@
 </ul>
 <blockquote>
 <p><strong>Identity follow-ups (from M2 / ND-021–024):</strong>
-- <strong>On-device threshold tuning</strong> (cooper): <code>Config.matchThreshold</code> default is lenient and UNVERIFIED — tune against real captures (false-accept vs false-reject); expose in settings (ND-040). The v1.1 feature print is not face-optimized, so expect to tune.
-- <strong>Camera orientation</strong> (cooper): the embedder + <code>FaceDetectionRecognizer</code> use Vision orientation <code>.up</code>; front-camera buffers may not be upright → worse matching / missed face → false lock. Verify on-device; thread real orientation through <code>CapturedFrame</code>.
+- <strong>On-device threshold tuning</strong> (cooper): observability + no-rebuild override now shipped — <code>IdentityRecognizer</code> logs the per-tick cosine score (<code>log stream</code>), and <code>matchThreshold</code> is overridable via <code>defaults write com.nodonuts.app matchThreshold &lt;0–1&gt;</code>. STILL TODO: pick a data-driven default from real captures (false-accept vs false-reject) and expose a slider in settings (ND-040).
+- ✅ <strong>Camera orientation</strong> — resolved: the Vision source orientation is <code>.up</code> by default but overridable via <code>defaults write com.nodonuts.app visionOrientation &lt;1–8&gt;</code>, applied consistently to detection + crop (cooper); the capture connection is forced non-mirrored for deterministic embeddings (blart). Remaining nicety: auto-derive orientation per device instead of the manual override.
 - <strong>Multi-face (EC-06)</strong> (cooper): the embedder matches only the LARGEST face; if a colleague's face is larger than the enrolled user's, the user could be missed → false lock. Scan all detected faces and match against any.
 - <strong>Two recognizer classes</strong> (cooper): <code>FaceDetectionRecognizer</code> (presence-only) and <code>IdentityRecognizer</code> (identity, with its own presence-only fallback) overlap on detection — the standalone <code>FaceDetectionRecognizer</code> is now unused in the app; consider removing or merging.</p>
 <p><strong>Suspend follow-ups (from the ND-013 code review):</strong>
@@ -1231,7 +1231,7 @@
 <li>[ ] ND-042 Power/CPU profiling + duty-cycle tuning — blart + homer</li>
 <li>[ ] ND-043 Onboarding: first-run enrollment + permission walkthrough — krusty</li>
 <li>[ ] ND-044 Logging/diagnostics (local only, privacy-safe) — gordon</li>
-<li>[ ] ND-045 "Not protecting" notification when camera unavailable (on start + throttled every few min) — needs UserNotifications permission + entitlement — krusty</li>
+<li>[x] ND-045 "Not protecting" notification when camera unavailable (on entry + repeats ~5 min, clears on recovery) — krusty (<code>NotProtectingNotifier</code>, local UserNotifications; permission requested at first launch; no entitlement needed). EC-07/08/09 IMPLEMENTED.</li>
 <li>[x] ND-048 Request all required permissions at first launch (camera + Accessibility for the lock) so the Accessibility need isn't discovered only on the first failed lock — krusty</li>
 </ul>
 <h2 id="m5-distribution">M5 — Distribution<a class="headerlink" href="#m5-distribution" title="Permanent link">&para;</a></h2>

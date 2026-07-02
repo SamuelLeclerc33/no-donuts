@@ -172,6 +172,29 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
                 }
                 self.session.addOutput(self.output)
 
+                // Make the frames deterministic for recognition. A mirror flip
+                // changes the pixels -> a different Vision feature-print embedding
+                // -> identity mismatch, so mirroring must be OFF and fixed. The
+                // connection exists once the output is added to the session; guard
+                // every set with its `is…Supported` check so we never crash on a
+                // connection that doesn't support mirroring. Never force-unwrap: if
+                // the connection is nil at this point, skip silently and log.
+                //
+                // We deliberately do NOT rotate/repipeline (no videoRotationAngle /
+                // videoOrientation): the built-in Mac camera delivers landscape-
+                // upright, non-mirrored frames after this, so Vision `.up` is the
+                // correct default and rotating would add CPU cost + risk. cooper's
+                // overridable Vision orientation (recognition-orientation follow-up)
+                // covers atypical external cameras.
+                if let connection = self.output.connection(with: .video) {
+                    if connection.isVideoMirroringSupported {
+                        connection.automaticallyAdjustsVideoMirroring = false
+                        connection.isVideoMirrored = false
+                    }
+                } else {
+                    cameraLog.info("No video connection on the data output; skipping deterministic mirroring config")
+                }
+
                 self.session.commitConfiguration()
 
                 // Low frame rate where supported — we only need ~1 frame per tick.

@@ -45,6 +45,8 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 - **The screen lock requires no Accessibility permission** ([ADR-0010](adr/0010-screen-lock-no-accessibility.md)): the mechanism does not use synthetic keystrokes, so there is no Accessibility permission to request, prompt for, or recover from.
 - **The camera permission is requested at first launch.** On the very first run — and only while the session is active — the app shows a one-time, plain-language explainer that it uses the **Camera** to check you're at your Mac and locks the screen when you step away, all on-device with nothing recorded. It then triggers the macOS Camera prompt.
 - **Pause state is in-memory only** (not persisted); the **trusted-Wi-Fi list is stored locally** in `UserDefaults` and never transmitted.
+- **Notifications are local only** (ND-045). No Donuts requests UserNotifications authorization (at first launch) solely to post a **local** "not protecting — camera unavailable" alert; these are `UNUserNotificationCenter` local notifications with **no push service, no server, no network**, and no entitlement. The notification text is static and contains no personal data.
+- **Tuning knobs are local `UserDefaults`** (no network): `matchThreshold` (identity strictness) and `visionOrientation` (camera orientation) can be set with `defaults write` for on-device tuning. The identity **match score is logged locally** (`os_log`) as a bare number to help tuning — never an image or embedding.
 
 ## Open items
 

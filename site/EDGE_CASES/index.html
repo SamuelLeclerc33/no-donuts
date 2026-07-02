@@ -988,8 +988,8 @@
 </tr>
 <tr>
 <td>EC-05</td>
-<td><strong>Poor lighting / backlight / glasses / hat / mask</strong></td>
-<td>Affects detection + match. Need robust model + threshold; surface "can't see you" status.</td>
+<td><strong>Poor lighting / backlight / glasses / hat / mask / camera orientation</strong></td>
+<td>Affects detection + match. Need robust model + threshold; surface "can't see you" status. <strong>Orientation:</strong> the Vision source orientation defaults to <code>.up</code> (correct for the built-in landscape-upright, now-non-mirrored camera) but is overridable via <code>defaults write com.nodonuts.app visionOrientation &lt;1–8&gt;</code> for atypical/external cameras, applied consistently to detection AND the crop so matching stays valid. <strong>Threshold:</strong> <code>matchThreshold</code> is tunable via <code>defaults write com.nodonuts.app matchThreshold &lt;0&lt;t&lt;1&gt;</code> (0 and 1.0 are rejected — 0 ≈ fail-open, 1.0 unreachable → lockout); the live match score is logged to help pick a value (ND-024).</td>
 <td>OPEN</td>
 <td>cooper</td>
 </tr>
@@ -1003,22 +1003,22 @@
 <tr>
 <td>EC-07</td>
 <td><strong>External monitor, lid closed (clamshell)</strong></td>
-<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A periodic "can't see you" notification is tracked as ND-045.</td>
-<td>DECIDED</td>
-<td>blart/homer</td>
+<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A "not protecting" local notification now fires on entry + repeats ~5 min while unavailable, clearing on recovery (ND-045, <code>NotProtectingNotifier</code>).</td>
+<td>IMPLEMENTED</td>
+<td>blart/homer/krusty</td>
 </tr>
 <tr>
 <td>EC-08</td>
 <td><strong>Camera permission denied / restricted (MDM)</strong></td>
-<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX; periodic "can't see you" notification tracked as ND-045.</td>
-<td>DECIDED</td>
+<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX; a "not protecting" local notification fires on entry + repeats ~5 min while unavailable (ND-045).</td>
+<td>IMPLEMENTED</td>
 <td>blart/homer/krusty</td>
 </tr>
 <tr>
 <td>EC-09</td>
 <td><strong>No camera at all / camera hardware error</strong></td>
-<td>Same policy as EC-07/EC-08: <code>.unavailable</code> → <code>cameraUnavailable</code>, do NOT lock (never hard-lock the user out when we can't see). Honest visible status; periodic "can't see you" notification tracked as ND-045.</td>
-<td>DECIDED</td>
+<td>Same policy as EC-07/EC-08: <code>.unavailable</code> → <code>cameraUnavailable</code>, do NOT lock (never hard-lock the user out when we can't see). Honest visible status + the ND-045 "not protecting" notification.</td>
+<td>IMPLEMENTED</td>
 <td>blart/homer</td>
 </tr>
 <tr>
