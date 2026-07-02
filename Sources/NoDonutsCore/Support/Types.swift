@@ -9,6 +9,7 @@ public enum PresenceState: Equatable {
     case present                // enrolled user matched
     case absent                 // no enrolled user (no face, or stranger only)
     case paused                 // user paused the app
+    case trustedNetwork         // on a user-trusted Wi-Fi network -> enforcement paused (ND-036)
     case callAssumedPresent     // camera busy, no frames -> assume present (ADR-0003)
     case suspended              // screen locked / display asleep / session inactive
     case cameraUnavailable      // camera permission denied/restricted or no device — honest status, do not lock (EC-08)

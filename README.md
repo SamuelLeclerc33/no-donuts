@@ -58,6 +58,13 @@ scripts/make-app.sh        # add --debug for a faster compile
 open build/NoDonuts.app
 ```
 
+**Install to start at login:** `scripts/install-launchagent.sh` builds the app, copies it to `/Applications/NoDonuts.app`, and loads a `RunAtLoad` LaunchAgent so No Donuts starts automatically at login (idempotent, no sudo). Undo with `scripts/uninstall-launchagent.sh` (removes the agent; leaves the app and data — ND-052):
+
+```sh
+scripts/install-launchagent.sh     # install + auto-start at login
+scripts/uninstall-launchagent.sh   # stop auto-starting
+```
+
 Distribution (Developer-ID signing + notarization) needs more — see ND-050. Details in the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
 ## Documentation website

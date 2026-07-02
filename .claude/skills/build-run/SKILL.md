@@ -44,14 +44,19 @@ First run triggers the macOS camera prompt (uses `NSCameraUsageDescription`). To
 tccutil reset Camera <bundle-id>
 ```
 
-## LaunchAgent (auto-start at login)
+## Install to start at login (LaunchAgent)
 
-Install the plist (template/script under `scripts/`, owner: gordon):
+One script builds the app, installs it to `/Applications/NoDonuts.app`, and loads
+the LaunchAgent so No Donuts starts at login (`RunAtLoad`):
 ```bash
-cp scripts/com.nodonuts.agent.plist ~/Library/LaunchAgents/
-launchctl load   ~/Library/LaunchAgents/com.nodonuts.agent.plist   # start + RunAtLoad
-launchctl unload ~/Library/LaunchAgents/com.nodonuts.agent.plist   # stop
+scripts/install-launchagent.sh     # make-app.sh + copy to /Applications + load agent
+scripts/uninstall-launchagent.sh   # unload + remove the agent (leaves the app + data, ND-052)
 ```
+Both are idempotent (no sudo). The plist (`scripts/com.nodonuts.agent.plist`) uses
+`KeepAlive` with `SuccessfulExit=false`, so launchd relaunches the app on a
+crash/kill (it's a security enforcer) but honors the menu **Quit** (clean exit 0),
+which stays quit until the next login/reload.
+First launch prompts for Camera (and Location, if you use trusted Wi-Fi).
 
 ## Verifying a change works
 

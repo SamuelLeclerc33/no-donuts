@@ -2,7 +2,8 @@ import AppKit
 import NoDonutsCore
 
 // Owner: krusty (app shell) + homer (loop wiring). Entry point.
-// Backlog: ND-010, ND-015. Runs as an accessory (menu-bar only, no Dock icon).
+// Backlog: ND-010, ND-015, ND-035 (pause), ND-036 (trusted Wi-Fi). Runs as an
+// accessory (menu-bar only, no Dock icon).
 // NOTE: For the real camera prompt + LSUIElement behavior, this must run as a
 // signed .app bundle built with Xcode (see ADR-0001, build-run skill).
 
@@ -14,17 +15,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var loopTask: Task<Void, Never>?
     private let locker = ScreenLocker()
     private let config = Config()
-    // Held in a stored property so it isn't deallocated while observing (ND-013).
+    // All held in stored properties so they aren't deallocated while observing.
     private var sessionMonitor: SessionStateMonitor?
+    private let trustedNetworks = TrustedNetworksStore()
+    private var pauseController: PauseController?
+    private var wifiMonitor: WiFiMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let menuBar = MenuBarController(onLockNow: { [weak self] in
-            Task { @MainActor in
-                guard let self, let engine = self.engine, let menuBar = self.menuBar else { return }
-                await engine.lockNow()
-                menuBar.render(state: engine.state)
+        // Pause (ND-035) + trusted Wi-Fi (ND-036) inputs to the enforcement gate.
+        let pauseController = PauseController()
+        self.pauseController = pauseController
+        let wifiMonitor = WiFiMonitor(store: trustedNetworks)
+        self.wifiMonitor = wifiMonitor
+
+        let menuBar = MenuBarController(
+            onLockNow: { [weak self] in
+                Task { @MainActor in
+                    guard let self, let engine = self.engine, let menuBar = self.menuBar else { return }
+                    await engine.lockNow()
+                    menuBar.render(state: engine.state)
+                }
+            },
+            onPause: { [weak self] seconds in
+                self?.pauseController?.pause(for: seconds)
+            },
+            onResume: { [weak self] in
+                self?.pauseController?.resume()
+            },
+            onToggleTrustCurrentNetwork: { [weak self] in
+                guard let self, let wifiMonitor = self.wifiMonitor else { return }
+                // Toggle the current SSID. WiFiMonitor owns the lazy Location
+                // request AND the first-run pending-trust flow (so the very first
+                // click isn't a no-op while Location is still not-determined).
+                // Its onChange fires applyEnforcement() when the trust actually
+                // lands — synchronously now, or after auth is granted.
+                wifiMonitor.requestTrustCurrentNetwork(using: self.trustedNetworks)
+                self.applyEnforcement()
             }
-        })
+        )
         self.menuBar = menuBar
 
         // Wiring: real camera (ND-012) + presence-only Vision detector (ND-020).
@@ -43,39 +71,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // ND-013: pause the loop + stop the camera while the Mac is
         // locked/asleep/not-on-console; resume cleanly on unlock/wake (ADR-0009).
+        // All three inputs (session, pause, trusted Wi-Fi) funnel through the
+        // single enforcement gate — applyEnforcement() — so there's one place
+        // that decides whether the loop/camera run and what the honest state is.
         let monitor = SessionStateMonitor()
         self.sessionMonitor = monitor
-        monitor.onChange = { [weak self] active in
-            guard let self else { return }
-            if active {
-                self.camera?.resume()
-                self.startLoop()
-                // Defer priming to the first active transition when launched
-                // while locked, so the explainer precedes the camera prompt.
-                self.primeIfActive()
-            } else {
-                self.stopLoop()
-                self.camera?.suspend()
-                self.engine?.sessionSuspended()   // reset absence accounting in production (EC-02/EC-13)
-                self.menuBar?.render(state: self.engine?.state ?? .suspended)
-            }
-        }
+        monitor.onChange = { [weak self] _ in self?.applyEnforcement() }
         monitor.start()
 
-        if monitor.isActive {
-            startLoop()
+        pauseController.onChange = { [weak self] in self?.applyEnforcement() }
+        wifiMonitor.onChange = { [weak self] in self?.applyEnforcement() }
+        wifiMonitor.start()
+
+        // Initial gate evaluation. Preserves launch-while-locked semantics: if the
+        // session isn't active, applyEnforcement() suspends the loop/camera and
+        // sets .suspended; priming defers to the first active transition.
+        applyEnforcement()
+    }
+
+    /// THE single enforcement gate. Enforcement is ON only when the session is
+    /// active AND the user hasn't paused AND we're not on a trusted Wi-Fi network.
+    /// Idempotent via loopTask==nil. Every input's change callback funnels here so
+    /// there's exactly one place that starts/stops the loop + camera and sets the
+    /// engine's honest display state (by priority when disabled). Always re-renders
+    /// and refreshes the menu items so the UI never lies about what's happening.
+    private func applyEnforcement() {
+        guard let engine, let menuBar,
+              let monitor = sessionMonitor,
+              let pauseController, let wifiMonitor, let camera else { return }
+
+        let sessionActive = monitor.isActive
+        let paused = pauseController.isPaused
+        let onTrustedNetwork = wifiMonitor.isOnTrustedNetwork
+        let enabled = sessionActive && !paused && !onTrustedNetwork
+        let loopRunning = loopTask != nil
+
+        if enabled {
+            if !loopRunning {
+                camera.resume()
+                startLoop()
+                // Defer priming to the first active transition when launched while
+                // locked, so the explainer precedes the camera prompt. Self-guards.
+                primeIfActive()
+            }
         } else {
-            // Launched while locked/asleep: stay suspended until we wake.
-            camera.suspend()
-            engine.sessionSuspended()   // reset absence accounting in production (EC-02/EC-13)
-            menuBar.render(state: engine.state)
+            if loopRunning {
+                stopLoop()
+                camera.suspend()
+            }
+            // Set the honest DISPLAY state by PRIORITY (session > pause > wifi).
+            // Reset absence accounting so the next episode rebuilds full consensus.
+            if !sessionActive {
+                engine.sessionSuspended()          // .suspended
+            } else if paused {
+                engine.pause()                     // .paused
+            } else {
+                engine.disabledOnTrustedNetwork()  // .trustedNetwork
+            }
         }
 
-        // Prime permissions once we're active. Self-guards on isActive, so a
-        // launch-while-locked start defers priming to the first unlock/active
-        // transition — guaranteeing the explainer always precedes the OS camera
-        // prompt (never a bare dialog). See monitor.onChange active branch.
-        primeIfActive()
+        // Always re-render + refresh menu item state so the UI stays in sync.
+        menuBar.render(state: engine.state)
+        refreshMenuItems()
+    }
+
+    /// Push current pause + trusted-Wi-Fi state into the menu items so labels,
+    /// remaining-time, checkmarks, and enablement stay honest after every gate pass.
+    private func refreshMenuItems() {
+        guard let menuBar, let pauseController, let wifiMonitor else { return }
+        menuBar.refreshPauseItem(isPaused: pauseController.isPaused,
+                                 remaining: pauseController.remainingDescription())
+        let ssid = wifiMonitor.currentSSID()
+        menuBar.refreshTrustItem(ssid: ssid,
+                                 isTrusted: trustedNetworks.isTrusted(ssid),
+                                 locationGranted: wifiMonitor.isLocationGranted)
     }
 
     /// Show the one-time camera explainer (if not yet shown) and then trigger the

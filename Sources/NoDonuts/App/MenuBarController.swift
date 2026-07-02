@@ -12,12 +12,33 @@ public final class MenuBarController: NSObject {
     private let statusItemHeader = NSMenuItem(title: "No Donuts", action: nil, keyEquivalent: "")
     /// Injected lock action — the UI never owns lock policy (decision lives with homer/wiggum).
     private let onLockNow: @MainActor () -> Void
+    /// Injected pause actions (ND-035). The UI never owns PauseController; it just
+    /// forwards intent. `onPause(nil)` = pause indefinitely; a value = pause for N s.
+    private let onPause: @MainActor (TimeInterval?) -> Void
+    private let onResume: @MainActor () -> Void
+    /// Injected trust-toggle action (ND-036): trust/untrust the *current* SSID.
+    /// The UI never owns the store or the SSID read — it forwards intent.
+    private let onToggleTrustCurrentNetwork: @MainActor () -> Void
     /// Last state we actually rendered. The presence loop calls render(state:) every
     /// tick (1s); skip the NSImage rebuild + redraw when nothing changed (perf).
     private var lastRenderedState: PresenceState?
 
-    public init(onLockNow: @escaping @MainActor () -> Void) {
+    // Pause items shown when NOT paused; hidden and replaced by `resumeItem` when paused.
+    private let pause15Item = NSMenuItem(title: "Pause for 15 minutes", action: #selector(pause15Clicked), keyEquivalent: "")
+    private let pause1hItem = NSMenuItem(title: "Pause for 1 hour", action: #selector(pause1hClicked), keyEquivalent: "")
+    private let pauseIndefiniteItem = NSMenuItem(title: "Pause until I resume", action: #selector(pauseIndefiniteClicked), keyEquivalent: "")
+    private let resumeItem = NSMenuItem(title: "Resume", action: #selector(resumeClicked), keyEquivalent: "")
+    /// Checkable "Trust this Wi-Fi network" item (ND-036).
+    private let trustItem = NSMenuItem(title: "Trust this Wi-Fi network", action: #selector(trustClicked), keyEquivalent: "")
+
+    public init(onLockNow: @escaping @MainActor () -> Void,
+                onPause: @escaping @MainActor (TimeInterval?) -> Void,
+                onResume: @escaping @MainActor () -> Void,
+                onToggleTrustCurrentNetwork: @escaping @MainActor () -> Void) {
         self.onLockNow = onLockNow
+        self.onPause = onPause
+        self.onResume = onResume
+        self.onToggleTrustCurrentNetwork = onToggleTrustCurrentNetwork
         super.init()
         configureMenu()
         render(state: .unknown)
@@ -25,10 +46,24 @@ public final class MenuBarController: NSObject {
 
     private func configureMenu() {
         let menu = NSMenu()
-        // Minimal walking-skeleton menu (ND-010/ND-015): live status header + Lock now + Quit.
-        // TODO(krusty): Pause (ND-035), Enroll my face… (ND-022), Settings… (ND-040).
+        // Menu order (ND-010/015/035/036): [status header] [sep]
+        //   [Pause items / Resume] [Trust this Wi-Fi network] [sep] [Lock now] [Quit].
         statusItemHeader.isEnabled = false
         menu.addItem(statusItemHeader)
+        menu.addItem(.separator())
+
+        // Pause (ND-035). All four items live in the menu; visibility is toggled in
+        // refreshPauseItem(): the three "Pause for…" items OR the single "Resume".
+        for item in [pause15Item, pause1hItem, pauseIndefiniteItem, resumeItem] {
+            item.target = self
+            menu.addItem(item)
+        }
+        resumeItem.isHidden = true
+
+        // Trust this Wi-Fi network (ND-036). State/title refreshed via refreshTrustItem().
+        trustItem.target = self
+        menu.addItem(trustItem)
+
         menu.addItem(.separator())
         let lockNowItem = NSMenuItem(title: "Lock now", action: #selector(lockNowClicked), keyEquivalent: "l")
         lockNowItem.target = self
@@ -40,6 +75,46 @@ public final class MenuBarController: NSObject {
     /// Target/action shim for the "Lock now" menu item — forwards to the injected closure (ND-014).
     @objc private func lockNowClicked() {
         onLockNow()
+    }
+
+    @objc private func pause15Clicked() { onPause(15 * 60) }
+    @objc private func pause1hClicked() { onPause(60 * 60) }
+    @objc private func pauseIndefiniteClicked() { onPause(nil) }
+    @objc private func resumeClicked() { onResume() }
+    @objc private func trustClicked() { onToggleTrustCurrentNetwork() }
+
+    /// Refresh the Pause/Resume items after the enforcement gate re-evaluates.
+    /// When paused, show a single "Resume (<remaining>)" and hide the pause options;
+    /// otherwise show the three pause options and hide Resume.
+    public func refreshPauseItem(isPaused: Bool, remaining: String?) {
+        pause15Item.isHidden = isPaused
+        pause1hItem.isHidden = isPaused
+        pauseIndefiniteItem.isHidden = isPaused
+        resumeItem.isHidden = !isPaused
+        if let remaining, isPaused {
+            resumeItem.title = "Resume (\(remaining))"
+        } else {
+            resumeItem.title = "Resume"
+        }
+    }
+
+    /// Refresh the "Trust this Wi-Fi network" item after the enforcement gate
+    /// re-evaluates. When the SSID is known, show it in the title and reflect
+    /// whether it's already trusted with a checkmark. When unknown (Location not
+    /// granted or no Wi-Fi), disable the item with an explanatory title so the
+    /// status stays honest — we never imply we can trust a network we can't name.
+    public func refreshTrustItem(ssid: String?, isTrusted: Bool, locationGranted: Bool) {
+        if let ssid, !ssid.isEmpty {
+            trustItem.isEnabled = true
+            trustItem.title = "Trust this Wi-Fi network (\"\(ssid)\")"
+            trustItem.state = isTrusted ? .on : .off
+        } else {
+            trustItem.isEnabled = false
+            trustItem.state = .off
+            trustItem.title = locationGranted
+                ? "Wi-Fi network unknown"
+                : "Wi-Fi network unknown (grant Location)"
+        }
     }
 
     /// Update the status icon/title to reflect the current presence state.
@@ -107,6 +182,9 @@ public final class MenuBarController: NSObject {
         case .paused:
             return Glyph(symbolName: "pause.circle.fill", tint: .systemGray,
                          label: "paused", fallbackText: "||")
+        case .trustedNetwork:
+            return Glyph(symbolName: "wifi", tint: .systemGray,
+                         label: "paused on trusted Wi-Fi", fallbackText: "wifi")
         }
     }
 
@@ -117,6 +195,7 @@ public final class MenuBarController: NSObject {
         case .present:            return "No Donuts — present"
         case .absent:             return "No Donuts — away"
         case .paused:             return "No Donuts — paused"
+        case .trustedNetwork:     return "No Donuts — paused (trusted Wi-Fi)"
         case .callAssumedPresent: return "No Donuts — on a call"
         case .suspended:          return "No Donuts — locked/asleep"
         case .lockFailed:         return "No Donuts — ⚠️ couldn't lock the screen"

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Owner: gordon. LaunchAgent template (ADR-0001, ND-016). Install to
-     ~/Library/LaunchAgents/ and `launchctl load` it. Update the program path
-     to the installed .app's executable before use. -->
+<!-- Owner: gordon. LaunchAgent for No Donuts (ADR-0001, ND-016). Installed by
+     scripts/install-launchagent.sh into ~/Library/LaunchAgents/ and loaded via
+     `launchctl bootstrap`. No need to edit the program path by hand — the
+     installer expects the app at /Applications/NoDonuts.app (see make-app.sh). -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -9,11 +10,22 @@
     <string>com.nodonuts.agent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Applications/No Donuts.app/Contents/MacOS/NoDonuts</string>
+        <string>/Applications/NoDonuts.app/Contents/MacOS/NoDonuts</string>
     </array>
+    <!-- Start automatically at login. -->
     <key>RunAtLoad</key>
     <true/>
+    <!-- KeepAlive dictionary: crash recovery that still honors a clean Quit.
+         SuccessfulExit=false tells launchd to relaunch the app UNLESS it exited
+         successfully (exit 0). Rationale: this is a security-critical enforcer, so
+         a crash, kill, or non-zero exit MUST bring it back (a plain KeepAlive=false
+         would leave the Mac unprotected until next login). The menu "Quit"
+         (NSApplication.terminate -> exit 0) is treated as a clean exit and is NOT
+         relaunched, so a user-initiated Quit stays quit until next login/reload. -->
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
 </dict>
 </plist>

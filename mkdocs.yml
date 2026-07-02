@@ -44,5 +44,7 @@ nav:
       - "ADR-0007 — Package layout (testable core)": adr/0007-package-layout-testable-core.md
       - "ADR-0008 — App packaging": adr/0008-app-packaging.md
       - "ADR-0009 — Session suspend": adr/0009-session-suspend.md
+      - "ADR-0010 — Screen lock (no Accessibility)": adr/0010-screen-lock-no-accessibility.md
+      - "ADR-0011 — Enforcement gating": adr/0011-enforcement-gating.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

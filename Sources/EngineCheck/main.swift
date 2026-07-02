@@ -375,13 +375,74 @@ func runAll() async -> Bool {
                  "overlapping lockNow() → guard skips the second, no concurrent lock (code review 2)")
     }
 
-    // Pause
+    // pause() — the PRODUCTION pause entry point (ND-035). There is NO engine-held
+    // pause latch: it was removed to kill the fail-OPEN where a stuck latch made
+    // every tick short-circuit to .paused and the Mac never locked again (ADR-0011).
+    // Pause is App-gate-driven — the App stops the loop AND suspends the camera;
+    // pause() only sets honest display state + clears accounting. First: pause()
+    // drives .paused and never locks.
     do {
         let locker = SpyLocker(succeed: true)
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker)
-        e.isPaused = true
+        e.pause()
+        c.expect(e.state == .paused && locker.lockCallCount == 0, "pause() → paused display, no lock (ND-035)")
+    }
+
+    // pause() resets absence accounting (mirrors the sessionSuspended() reset
+    // test): drive partway toward absence, call pause(), then a later no-face
+    // episode must need the FULL consensus + grace before it can lock — proving
+    // the partial absence was cleared (ND-035).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.noFace)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        // 1-2 absent ticks, below the consensus threshold.
+        let partial = max(1, config.consecutiveAbsentTicksToLock - 1)
+        for i in 0..<partial {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        // Production pause entry point: must mark paused + reset accounting.
+        e.pause()
+        let pausedAndReset = e.state == .paused && locker.lockCallCount == 0
+        // Resume (App restarts the loop): a single no-face tick right after pause
+        // must NOT lock — the partial absence was cleared, so full consensus +
+        // grace is required.
+        await e.tick(now: t0.addingTimeInterval(Double(partial) + 1))
+        let noInstantLock = locker.lockCallCount == 0
+        // And the full episode (consensus + grace) still locks exactly once.
+        let base = Double(partial) + 1
+        for i in 1..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(base + Double(i)))
+        }
+        await e.tick(now: t0.addingTimeInterval(base + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1))
+        c.expect(pausedAndReset && noInstantLock && e.state == .suspended && locker.lockCallCount == 1,
+                 "pause() resets absence → resume needs full consensus, no false lock (ND-035)")
+    }
+
+    // disabledOnTrustedNetwork() — on a trusted Wi-Fi network (ND-036), the App
+    // layer stops the loop + camera; the engine sets .trustedNetwork and, like
+    // the suspend reset, clears absence accounting so leaving the network rebuilds
+    // the FULL consensus + grace before it can lock (EC-20).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker, config)
+        // 1 absent tick (below consensus).
         await e.tick(now: t0)
-        c.expect(e.state == .paused && locker.lockCallCount == 0, "paused → never locks")
+        // Trusted network detected → .trustedNetwork + accounting reset.
+        e.disabledOnTrustedNetwork()
+        let trustedAndReset = e.state == .trustedNetwork && locker.lockCallCount == 0
+        // Leave the network: a single no-face tick right after must NOT lock —
+        // partial absence was cleared, so full consensus + grace is required.
+        await e.tick(now: t0.addingTimeInterval(2))
+        let noInstantLock = locker.lockCallCount == 0
+        for i in 1..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(Double(i) + 2))
+        }
+        await e.tick(now: t0.addingTimeInterval(Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 3))
+        c.expect(trustedAndReset && noInstantLock && e.state == .suspended && locker.lockCallCount == 1,
+                 "disabledOnTrustedNetwork() → .trustedNetwork, resets absence so leaving needs full consensus (ND-036/EC-20)")
     }
 
     // Suspend (locked/asleep/inactive) resets absence → no grace-less false lock
@@ -443,6 +504,32 @@ func runAll() async -> Bool {
         await e.tick(now: t0.addingTimeInterval(base + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1))
         c.expect(suspendedAndReset && noInstantLock && e.state == .suspended && locker.lockCallCount == 1,
                  "sessionSuspended() resets absence → resume needs full consensus, no false lock (EC-02/EC-13)")
+    }
+
+    // TrustedNetworksStore fail-safe (ND-036). Backed by a throwaway UserDefaults
+    // suite (unique name) so it never touches real prefs; if the suite init fails,
+    // fall back to .standard with a unique key. Fail-safe: nil/empty SSID is NEVER
+    // trusted → enforcement stays ON when the SSID can't be read.
+    do {
+        let suiteName = "com.nodonuts.enginecheck.\(UUID().uuidString)"
+        let usedSuite = UserDefaults(suiteName: suiteName)
+        let store: TrustedNetworksStore
+        if let suite = usedSuite {
+            store = TrustedNetworksStore(defaults: suite)
+        } else {
+            store = TrustedNetworksStore(key: "trustedWiFiSSIDs.\(UUID().uuidString)")
+        }
+        let nilNotTrusted = store.isTrusted(nil) == false
+        let emptyNotTrusted = store.isTrusted("") == false
+        store.add("Home")
+        let homeTrusted = store.isTrusted("Home") == true
+        let homeContained = store.contains("Home") == true
+        store.remove("Home")
+        let removedNotTrusted = store.isTrusted("Home") == false
+        c.expect(nilNotTrusted && emptyNotTrusted && homeTrusted && homeContained && removedNotTrusted,
+                 "TrustedNetworksStore: nil/empty never trusted; add/remove round-trips (ND-036)")
+        // Clean up the throwaway suite so nothing persists on disk.
+        if usedSuite != nil { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
     }
 
     print("\n\(c.passed) passed, \(c.failed) failed")

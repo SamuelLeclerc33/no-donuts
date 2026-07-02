@@ -24,6 +24,10 @@
     <!-- Shown in the camera permission prompt. Keep honest + specific. -->
     <key>NSCameraUsageDescription</key>
     <string>No Donuts checks the camera on-device to confirm you're at your Mac and locks it when you step away. Images never leave your device.</string>
+    <!-- Location is used only to read the current Wi-Fi network name (SSID) so
+         "trusted" networks can skip locking. Stays on-device. -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>No Donuts checks your current Wi-Fi network name to skip locking on networks you've marked as trusted (like home). This never leaves your device.</string>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
 </dict>

@@ -27,7 +27,6 @@ public final class PresenceEngine {
     /// First tick of an unbroken busy-no-frames run; nil when not in such a run.
     /// Bounds the ADR-0003 assume-present fail-open (see handleCameraBusy).
     private var callAssumedSince: Date?
-    public var isPaused = false
 
     public init(camera: CameraCapturing,
                 recognizer: FaceRecognizing,
@@ -42,8 +41,6 @@ public final class PresenceEngine {
     /// One iteration of the loop. Call every `config.tickIntervalSeconds`.
     /// `now` is injected so the policy is deterministic + unit-testable.
     public func tick(now: Date) async {
-        if isPaused { state = .paused; return }
-
         switch await camera.capture() {
         case .suspended:
             // EC-02/EC-13: locked/asleep/inactive (ND-013). Mirror `.unavailable`
@@ -142,6 +139,30 @@ public final class PresenceEngine {
     /// `.suspended` capture path is a backstop; this is the production reset path.
     public func sessionSuspended() {
         state = .suspended
+        resetAbsenceAccounting()
+    }
+
+    /// Entry point the app calls when the user pauses enforcement (ND-035).
+    /// Pause is ENFORCED by the App layer: it stops the tick loop AND suspends
+    /// the camera (ADR-0011). The engine holds no pause latch of its own — a
+    /// stray tick while "paused" would hit `capture() == .suspended` (camera
+    /// off) → `.suspended`, which can't lock. This method therefore only sets
+    /// the honest display state and clears absence accounting so re-enabling
+    /// rebuilds the FULL consensus + grace (a mid-absence pause can't cause a
+    /// grace-less false lock when the loop restarts). Same shape as
+    /// `sessionSuspended()` / `disabledOnTrustedNetwork()`.
+    public func pause() {
+        state = .paused
+        resetAbsenceAccounting()
+    }
+
+    /// Entry point the app calls when it detects a user-trusted Wi-Fi network
+    /// (ND-036). Analogous to `sessionSuspended()`: the App layer stops the loop
+    /// and camera; this just sets the honest display state and clears absence
+    /// accounting so leaving the trusted network rebuilds the full consensus —
+    /// no grace-less false lock when enforcement resumes.
+    public func disabledOnTrustedNetwork() {
+        state = .trustedNetwork
         resetAbsenceAccounting()
     }
 

@@ -813,6 +813,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0010-screen-lock-no-accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0010 — Screen lock (no Accessibility)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0011-enforcement-gating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0011 — Enforcement gating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1035,12 +1091,17 @@
 <tr>
 <td>Fail-open</td>
 <td>Bug/permission issue makes it silently never lock</td>
-<td>Explicit fail policy + visible status; uncertain states lean conservative. <strong>Caveat (MVP):</strong> lock confirmation is best-effort — <code>lock()</code> confirms keystroke dispatch, not a verified lock, so a remapped/disabled Ctrl-Cmd-Q shortcut can fail open undetectably (EC-19, ND-014).</td>
+<td>Explicit fail policy + visible status; uncertain states lean conservative. <code>lock()</code> is <strong>CGSession-verified</strong> — it returns <code>true</code> only once the session actually reports locked, else it surfaces honest <code>.lockFailed</code> (no silent fail-open, EC-19, <a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>).</td>
 </tr>
 <tr>
 <td>Stranger present</td>
 <td>Someone else sits down while user is gone</td>
 <td>Non-matching face never counts as PRESENT (EC-03)</td>
+</tr>
+<tr>
+<td>Enforcement disabled without user intent</td>
+<td>A bug in pause / trusted-Wi-Fi gating silently stops protecting</td>
+<td>Gating <strong>fails toward enforcing</strong>: an unknown/unreadable SSID is never "trusted" (ND-036, EC-20); disabled states are shown honestly in the menu bar and turn the camera light off, so "not watching" is always visible.</td>
 </tr>
 </tbody>
 </table>
@@ -1053,15 +1114,16 @@
 <ul>
 <li>Default leans <strong>secure</strong> (lock) under sustained uncertainty, balanced against not annoying the user via grace periods and call-awareness.</li>
 <li>Camera permission denied/restricted: do <strong>not</strong> silently pretend to protect. Surface clear status; pick a documented safe default (EC-08).</li>
-<li>A <strong>detectably failed lock</strong> (e.g. Accessibility outright denied, so <code>osascript</code> errors / exits non-zero) is <strong>detected</strong> via the <code>lock() -&gt; Bool</code> return value and <strong>surfaced</strong> to the user — it is never silently treated as "locked" (EC-19, <a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>).</li>
-<li><strong>Lock confirmation is currently best-effort, not verified.</strong> A <code>true</code> from <code>lock()</code> means the Ctrl-Cmd-Q keystroke was <strong>dispatched</strong> (<code>osascript</code> exited 0), <strong>not</strong> that the screen is confirmed locked. If the Lock-Screen shortcut is <strong>remapped/disabled</strong>, the lock can fail open without detection. This is an accepted MVP limitation; <strong>verified lock-state detection</strong> (CGSession <code>CGSSessionScreenIsLocked</code>) plus an async/non-blocking <code>lock()</code> is a <strong>planned hardening</strong> (ND-014, <a href="../adr/0006-screen-lock-mechanism/">ADR-0006</a>).</li>
+<li>A <strong>failed lock is detected and surfaced</strong>, never silently treated as "locked". <code>lock()</code> is <strong>CGSession-verified</strong>: it returns <code>true</code> only once the session actually reports locked (<code>CGSSessionScreenIsLocked</code>, or off-console as <code>CGSession -suspend</code> presents), otherwise the engine shows honest <code>.lockFailed</code> (EC-19, <a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>, supersedes ADR-0006).</li>
+<li><strong>Enforcement is disabled only on explicit signals, and always visibly.</strong> The app stops locking only when (a) the session is already locked/asleep, (b) the user paused it, or (c) the current Wi-Fi is on the user's trusted list. All three turn the <strong>camera light off</strong> and show a distinct menu-bar state. Trusted-Wi-Fi gating <strong>fails toward enforcing</strong>: if the SSID can't be read (e.g. Location not granted), it is treated as untrusted and protection stays on (ND-036, EC-20, <a href="../adr/0011-enforcement-gating/">ADR-0011</a>).</li>
 </ul>
 <h2 id="permissions-entitlements">Permissions &amp; entitlements<a class="headerlink" href="#permissions-entitlements" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Camera is the only permission the app needs.</strong> <code>NSCameraUsageDescription</code> — honest, specific copy. Camera access entitlement; avoid anything broader than required.</li>
-<li><strong>The screen lock no longer requires Accessibility</strong> (<a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>). The lock mechanism is being moved off the synthetic-keystroke approach that needed Accessibility trust, so there is no Accessibility permission to request, prompt for, or recover from.</li>
-<li>Programmatic screen-lock mechanism validated against sandbox/entitlement constraints (ND-014, owner: wiggum).</li>
+<li><strong>Camera is the primary permission.</strong> <code>NSCameraUsageDescription</code> — honest, specific copy. Camera access entitlement; avoid anything broader than required.</li>
+<li><strong>Location (when-in-use) is optional and only for the trusted-Wi-Fi feature</strong> (ND-036, <a href="../adr/0011-enforcement-gating/">ADR-0011</a>). On modern macOS, reading the current Wi-Fi network name (SSID) via CoreWLAN requires Location authorization. No Donuts requests it <strong>lazily</strong> — only when you first mark a network as trusted, never at launch — with an honest <code>NSLocationWhenInUseUsageDescription</code>. It uses Location <strong>solely to read the SSID</strong>; it does not read, store, or transmit your coordinates. <strong>The SSID never leaves your device</strong> (it's only compared against your local trusted list in <code>UserDefaults</code>). If Location is denied, the trusted-Wi-Fi feature is simply unavailable (the menu item is disabled) and normal enforcement continues — declining Location never weakens protection.</li>
+<li><strong>The screen lock requires no Accessibility permission</strong> (<a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>): the mechanism does not use synthetic keystrokes, so there is no Accessibility permission to request, prompt for, or recover from.</li>
 <li><strong>The camera permission is requested at first launch.</strong> On the very first run — and only while the session is active — the app shows a one-time, plain-language explainer that it uses the <strong>Camera</strong> to check you're at your Mac and locks the screen when you step away, all on-device with nothing recorded. It then triggers the macOS Camera prompt.</li>
+<li><strong>Pause state is in-memory only</strong> (not persisted); the <strong>trusted-Wi-Fi list is stored locally</strong> in <code>UserDefaults</code> and never transmitted.</li>
 </ul>
 <h2 id="open-items">Open items<a class="headerlink" href="#open-items" title="Permanent link">&para;</a></h2>
 <ul>

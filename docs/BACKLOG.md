@@ -49,7 +49,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [x] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart/homer (event-driven `SessionStateMonitor` in App target pauses loop + stops camera while locked/asleep/not-on-console, resumes on unlock/wake; app calls `engine.sessionSuspended()` on suspend to reset absence for false-lock-free resume (the in-tick `.suspended` path is a backstop); ADR-0009, EC-02/EC-13)
 - [x] ND-014 Verify a reliable programmatic **screen lock** under entitlements — wiggum
 - [x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer
-- [ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon
+- [x] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon (fixed plist path + `KeepAlive` dict `SuccessfulExit=false` = crash-recovery that honors a clean Quit; `scripts/install-launchagent.sh` installs to `/Applications` + bootstraps, `scripts/uninstall-launchagent.sh` undoes; ADR-0001)
 - [x] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty/homer (per-state SF Symbol glyph + tint; `.absent` shown from the FIRST no-face tick (responsive); render cached to skip no-op redraws. Timing sped up for office-donut threat: tick 4→1s, consensus 3→5, grace 25→5 → walk-away→lock ≈ 10s. Fixed: a failed `lockNow()`'s "can't lock" warning was being clobbered to "away" by the next tick.)
 - [x] ND-018 Runnable `.app` bundle with camera entitlement — `scripts/make-app.sh` (SPM build + bundle + ad-hoc codesign; CLT-only, no Xcode), ADR-0008 — gordon
 - [ ] ND-019 Fix duplicate ADR number: `0005-docs-site.md` and `0005-presence-loop-concurrency.md` both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon
@@ -100,8 +100,14 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 - [ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.
 - [x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by `maxCallAssumedPresentSeconds` (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer
 - [ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum
-- [ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer
-- [ ] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — user-configurable allowlist of SSIDs where No Donuts does NOT lock — krusty (settings) + homer (gating). Note: reading the current SSID needs Location permission on modern macOS (CoreWLAN). — krusty + homer
+- [x] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer (Pause 15 min / 1 hr / until-resume; pausing stops the loop + turns the camera off; manual "Lock now" already existed. Enforced purely by the App gate — no engine pause latch, so it can't get stuck "paused" and silently stop locking. [ADR-0011](adr/0011-enforcement-gating.md), EC-15)
+- [x] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — krusty + homer (checkable "Trust this Wi-Fi network" menu item for the current SSID; list in UserDefaults; reading SSID uses CoreWLAN + Location (when-in-use), requested lazily on first trust. Fail-safe: unknown/unreadable SSID → never trusted → enforcement stays ON. [ADR-0011](adr/0011-enforcement-gating.md), EC-20). Follow-up: full trusted-list settings UI stays with ND-040.
+
+> **Enforcement-gating follow-ups (from the ND-016/035/036 code review — non-blocking cleanups):**
+> - **Single trust-check path** (krusty): the trust toggle now uses `TrustedNetworksStore.isTrusted`/`add`/`remove`; keep all "is this network trusted?" checks going through the store (don't re-introduce a raw `contains`).
+> - **Consolidate disable methods** (homer): `sessionSuspended()` / `pause()` / `disabledOnTrustedNetwork()` are near-identical (`state = X; resetAbsenceAccounting()`); consider one `func disable(displayState:)` when convenient.
+> - **`WiFiMonitor.stop()`** (krusty): implemented for symmetry but not yet wired to app teardown — hook it up if/when the app gains an explicit shutdown path.
+> - **Gate no-op short-circuit** (krusty): `applyEnforcement()` re-renders + refreshes menu on every input callback even when the decision is unchanged; skip when the computed `enabled`/reason is identical to last time (minor).
 
 ## M4 — Settings, polish, anti-spoofing
 

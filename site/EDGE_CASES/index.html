@@ -687,6 +687,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0010-screen-lock-no-accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0010 — Screen lock (no Accessibility)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0011-enforcement-gating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0011 — Enforcement gating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -975,8 +1031,8 @@
 <tr>
 <td>EC-15</td>
 <td><strong>App paused by user, then walks away</strong></td>
-<td>Respect pause; don't lock. Consider auto-resume after timed pause.</td>
-<td>DECIDED</td>
+<td>Respect pause; don't lock. Pause is a first-class "enforcement off" reason in the single gate (<a href="../adr/0011-enforcement-gating/">ADR-0011</a>): pausing stops the loop <strong>and turns the camera off</strong> (honest "not watching"), and the menu bar shows a paused state. Options: <strong>15 min</strong> / <strong>1 hr</strong> (auto-resume via timer) / <strong>until I resume</strong> (indefinite). Pause is <strong>in-memory only</strong> — a relaunch/reboot comes back protecting (safe default). ND-035.</td>
+<td>IMPLEMENTED</td>
 <td>krusty/homer</td>
 </tr>
 <tr>
@@ -1009,6 +1065,7 @@
 </tr>
 </tbody>
 </table>
+<p>| EC-20 | <strong>On a user-trusted Wi-Fi network</strong> (e.g. home) | Don't enforce while connected to a network the user has explicitly marked trusted (ND-036, <a href="../adr/0011-enforcement-gating/">ADR-0011</a>). Trusted-network is a first-class "enforcement off" reason in the single gate: it stops the loop <strong>and turns the camera off</strong>, and the menu bar shows a distinct "paused (trusted Wi-Fi)" state. The trusted list holds SSIDs, managed via a checkable menu item for the current network, persisted locally (UserDefaults) — never transmitted. Reading the SSID (CoreWLAN) needs <strong>Location</strong> (when-in-use), requested lazily on first trust; Location is used only to read the SSID (no coordinates). <strong>Fail-safe:</strong> if the SSID can't be read (Location denied/unavailable, no Wi-Fi), the network is treated as <strong>untrusted</strong> → enforcement stays ON. Priority: an already-locked/asleep session and an explicit user pause both take precedence over trusted-network in the display state. | IMPLEMENTED | krusty/homer |</p>
 <h2 id="how-to-use-this-file">How to use this file<a class="headerlink" href="#how-to-use-this-file" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Add a row when a new edge case surfaces. Keep it OPEN until we agree on policy.</li>

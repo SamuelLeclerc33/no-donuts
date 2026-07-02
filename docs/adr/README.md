@@ -17,6 +17,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0008](0008-app-packaging.md) — Local app packaging: SPM build + bundling script (ad-hoc signed) — **Accepted**
 - [ADR-0009](0009-session-suspend.md) — Suspend the presence loop + camera while locked/asleep/inactive — **Accepted**
 - [ADR-0010](0010-screen-lock-no-accessibility.md) — Screen-lock mechanism: layered no-Accessibility lock (SACLockScreenImmediate → CGSession -suspend), CGSession-verified, async — **Accepted**
+- [ADR-0011](0011-enforcement-gating.md) — Enforcement gating: single gate combining session + pause + trusted Wi-Fi; disable reuses the suspend path; SSID fail-safe; lazy Location — **Accepted**
 
 ## Template
 

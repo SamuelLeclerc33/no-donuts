@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0009-session-suspend/">
+        <link rel="prev" href="../adr/0011-enforcement-gating/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -689,6 +689,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0010-screen-lock-no-accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0010 — Screen lock (no Accessibility)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0011-enforcement-gating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0011 — Enforcement gating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1079,7 +1135,7 @@
 <li>[x] ND-013 Display/lock/session state detection (suspend loop when locked/asleep) — blart/homer (event-driven <code>SessionStateMonitor</code> in App target pauses loop + stops camera while locked/asleep/not-on-console, resumes on unlock/wake; app calls <code>engine.sessionSuspended()</code> on suspend to reset absence for false-lock-free resume (the in-tick <code>.suspended</code> path is a backstop); ADR-0009, EC-02/EC-13)</li>
 <li>[x] ND-014 Verify a reliable programmatic <strong>screen lock</strong> under entitlements — wiggum</li>
 <li>[x] ND-015 Presence loop scaffold with fake "always present" recognizer — homer</li>
-<li>[ ] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon</li>
+<li>[x] ND-016 LaunchAgent plist + install script (RunAtLoad) — gordon (fixed plist path + <code>KeepAlive</code> dict <code>SuccessfulExit=false</code> = crash-recovery that honors a clean Quit; <code>scripts/install-launchagent.sh</code> installs to <code>/Applications</code> + bootstraps, <code>scripts/uninstall-launchagent.sh</code> undoes; ADR-0001)</li>
 <li>[x] ND-017 Menu-bar presence indicator (present / away / in a meeting / can't-see-you) — krusty/homer (per-state SF Symbol glyph + tint; <code>.absent</code> shown from the FIRST no-face tick (responsive); render cached to skip no-op redraws. Timing sped up for office-donut threat: tick 4→1s, consensus 3→5, grace 25→5 → walk-away→lock ≈ 10s. Fixed: a failed <code>lockNow()</code>'s "can't lock" warning was being clobbered to "away" by the next tick.)</li>
 <li>[x] ND-018 Runnable <code>.app</code> bundle with camera entitlement — <code>scripts/make-app.sh</code> (SPM build + bundle + ad-hoc codesign; CLT-only, no Xcode), ADR-0008 — gordon</li>
 <li>[ ] ND-019 Fix duplicate ADR number: <code>0005-docs-site.md</code> and <code>0005-presence-loop-concurrency.md</code> both numbered 0005 — renumber docs-site → 0007 and update CLAUDE.md + index references — gordon</li>
@@ -1129,9 +1185,16 @@
 <li>[ ] ND-032 Attempt multi-client shared frames during a call — blart — NOTE: likely unneeded on macOS (the camera shares by default across clients; a busy device still emits frames to additional sessions). Verify on-device before closing; if confirmed, fold into ND-031.</li>
 <li>[x] ND-033 Fallback "assume present" when busy + no frames (ADR-0003), bounded by <code>maxCallAssumedPresentSeconds</code> (default 30 min) → escalates to absence so an unattended call app can't stay unlocked forever — homer</li>
 <li>[ ] ND-034 Stranger-present-but-user-absent policy (see edge cases) — homer + wiggum</li>
-<li>[ ] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer</li>
-<li>[ ] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — user-configurable allowlist of SSIDs where No Donuts does NOT lock — krusty (settings) + homer (gating). Note: reading the current SSID needs Location permission on modern macOS (CoreWLAN). — krusty + homer</li>
+<li>[x] ND-035 Pause (timed + indefinite) + manual lock-now — krusty + homer (Pause 15 min / 1 hr / until-resume; pausing stops the loop + turns the camera off; manual "Lock now" already existed. Enforced purely by the App gate — no engine pause latch, so it can't get stuck "paused" and silently stop locking. <a href="../adr/0011-enforcement-gating/">ADR-0011</a>, EC-15)</li>
+<li>[x] ND-036 Wi-Fi SSID exclusion list: pause enforcement on trusted networks (e.g. home) — krusty + homer (checkable "Trust this Wi-Fi network" menu item for the current SSID; list in UserDefaults; reading SSID uses CoreWLAN + Location (when-in-use), requested lazily on first trust. Fail-safe: unknown/unreadable SSID → never trusted → enforcement stays ON. <a href="../adr/0011-enforcement-gating/">ADR-0011</a>, EC-20). Follow-up: full trusted-list settings UI stays with ND-040.</li>
 </ul>
+<blockquote>
+<p><strong>Enforcement-gating follow-ups (from the ND-016/035/036 code review — non-blocking cleanups):</strong>
+- <strong>Single trust-check path</strong> (krusty): the trust toggle now uses <code>TrustedNetworksStore.isTrusted</code>/<code>add</code>/<code>remove</code>; keep all "is this network trusted?" checks going through the store (don't re-introduce a raw <code>contains</code>).
+- <strong>Consolidate disable methods</strong> (homer): <code>sessionSuspended()</code> / <code>pause()</code> / <code>disabledOnTrustedNetwork()</code> are near-identical (<code>state = X; resetAbsenceAccounting()</code>); consider one <code>func disable(displayState:)</code> when convenient.
+- <strong><code>WiFiMonitor.stop()</code></strong> (krusty): implemented for symmetry but not yet wired to app teardown — hook it up if/when the app gains an explicit shutdown path.
+- <strong>Gate no-op short-circuit</strong> (krusty): <code>applyEnforcement()</code> re-renders + refreshes menu on every input callback even when the decision is unchanged; skip when the computed <code>enabled</code>/reason is identical to last time (minor).</p>
+</blockquote>
 <h2 id="m4-settings-polish-anti-spoofing">M4 — Settings, polish, anti-spoofing<a class="headerlink" href="#m4-settings-polish-anti-spoofing" title="Permanent link">&para;</a></h2>
 <ul>
 <li>[ ] ND-040 Settings UI: tick interval, grace, sensitivity, autostart — krusty</li>

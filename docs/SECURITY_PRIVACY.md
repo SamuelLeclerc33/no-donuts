@@ -22,8 +22,9 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 | Unattended unlocked session | User walks away; opportunistic snooping / "donuting" | Core function: detect absence → lock within grace period |
 | Enrolled face data | Exfiltration of biometric data | Local-only, encrypted at rest, embeddings (not images), no network |
 | Spoofing presence | Photo/phone held to camera to keep it unlocked | Basic anti-spoofing (M4): reject obvious flat/static photo, liveness signals. **v1 not hardened against determined attackers.** |
-| Fail-open | Bug/permission issue makes it silently never lock | Explicit fail policy + visible status; uncertain states lean conservative. **Caveat (MVP):** lock confirmation is best-effort — `lock()` confirms keystroke dispatch, not a verified lock, so a remapped/disabled Ctrl-Cmd-Q shortcut can fail open undetectably (EC-19, ND-014). |
+| Fail-open | Bug/permission issue makes it silently never lock | Explicit fail policy + visible status; uncertain states lean conservative. `lock()` is **CGSession-verified** — it returns `true` only once the session actually reports locked, else it surfaces honest `.lockFailed` (no silent fail-open, EC-19, [ADR-0010](adr/0010-screen-lock-no-accessibility.md)). |
 | Stranger present | Someone else sits down while user is gone | Non-matching face never counts as PRESENT (EC-03) |
+| Enforcement disabled without user intent | A bug in pause / trusted-Wi-Fi gating silently stops protecting | Gating **fails toward enforcing**: an unknown/unreadable SSID is never "trusted" (ND-036, EC-20); disabled states are shown honestly in the menu bar and turn the camera light off, so "not watching" is always visible. |
 
 ## Explicit non-goals (v1)
 
@@ -34,15 +35,16 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 
 - Default leans **secure** (lock) under sustained uncertainty, balanced against not annoying the user via grace periods and call-awareness.
 - Camera permission denied/restricted: do **not** silently pretend to protect. Surface clear status; pick a documented safe default (EC-08).
-- A **detectably failed lock** (e.g. Accessibility outright denied, so `osascript` errors / exits non-zero) is **detected** via the `lock() -> Bool` return value and **surfaced** to the user — it is never silently treated as "locked" (EC-19, [ADR-0006](adr/0006-screen-lock-mechanism.md)).
-- **Lock confirmation is currently best-effort, not verified.** A `true` from `lock()` means the Ctrl-Cmd-Q keystroke was **dispatched** (`osascript` exited 0), **not** that the screen is confirmed locked. If the Lock-Screen shortcut is **remapped/disabled**, the lock can fail open without detection. This is an accepted MVP limitation; **verified lock-state detection** (CGSession `CGSSessionScreenIsLocked`) plus an async/non-blocking `lock()` is a **planned hardening** (ND-014, [ADR-0006](adr/0006-screen-lock-mechanism.md)).
+- A **failed lock is detected and surfaced**, never silently treated as "locked". `lock()` is **CGSession-verified**: it returns `true` only once the session actually reports locked (`CGSSessionScreenIsLocked`, or off-console as `CGSession -suspend` presents), otherwise the engine shows honest `.lockFailed` (EC-19, [ADR-0010](adr/0010-screen-lock-no-accessibility.md), supersedes ADR-0006).
+- **Enforcement is disabled only on explicit signals, and always visibly.** The app stops locking only when (a) the session is already locked/asleep, (b) the user paused it, or (c) the current Wi-Fi is on the user's trusted list. All three turn the **camera light off** and show a distinct menu-bar state. Trusted-Wi-Fi gating **fails toward enforcing**: if the SSID can't be read (e.g. Location not granted), it is treated as untrusted and protection stays on (ND-036, EC-20, [ADR-0011](adr/0011-enforcement-gating.md)).
 
 ## Permissions & entitlements
 
-- **Camera is the only permission the app needs.** `NSCameraUsageDescription` — honest, specific copy. Camera access entitlement; avoid anything broader than required.
-- **The screen lock no longer requires Accessibility** ([ADR-0010](adr/0010-screen-lock-no-accessibility.md)). The lock mechanism is being moved off the synthetic-keystroke approach that needed Accessibility trust, so there is no Accessibility permission to request, prompt for, or recover from.
-- Programmatic screen-lock mechanism validated against sandbox/entitlement constraints (ND-014, owner: wiggum).
+- **Camera is the primary permission.** `NSCameraUsageDescription` — honest, specific copy. Camera access entitlement; avoid anything broader than required.
+- **Location (when-in-use) is optional and only for the trusted-Wi-Fi feature** (ND-036, [ADR-0011](adr/0011-enforcement-gating.md)). On modern macOS, reading the current Wi-Fi network name (SSID) via CoreWLAN requires Location authorization. No Donuts requests it **lazily** — only when you first mark a network as trusted, never at launch — with an honest `NSLocationWhenInUseUsageDescription`. It uses Location **solely to read the SSID**; it does not read, store, or transmit your coordinates. **The SSID never leaves your device** (it's only compared against your local trusted list in `UserDefaults`). If Location is denied, the trusted-Wi-Fi feature is simply unavailable (the menu item is disabled) and normal enforcement continues — declining Location never weakens protection.
+- **The screen lock requires no Accessibility permission** ([ADR-0010](adr/0010-screen-lock-no-accessibility.md)): the mechanism does not use synthetic keystrokes, so there is no Accessibility permission to request, prompt for, or recover from.
 - **The camera permission is requested at first launch.** On the very first run — and only while the session is active — the app shows a one-time, plain-language explainer that it uses the **Camera** to check you're at your Mac and locks the screen when you step away, all on-device with nothing recorded. It then triggers the macOS Camera prompt.
+- **Pause state is in-memory only** (not persisted); the **trusted-Wi-Fi list is stored locally** in `UserDefaults` and never transmitted.
 
 ## Open items
 
