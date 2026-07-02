@@ -21,4 +21,16 @@ enum Permissions {
         get { UserDefaults.standard.bool(forKey: didPrimeKey) }
         set { UserDefaults.standard.set(newValue, forKey: didPrimeKey) }
     }
+
+    /// UserDefaults key recording that we've shown the one-time Keychain explainer.
+    private static let didExplainKeychainKey = "com.nodonuts.didExplainKeychain"
+
+    /// Have we shown the one-time "we store your face signature in the Keychain,
+    /// macOS may ask you to Allow" explainer? macOS's Keychain-access prompt has no
+    /// custom-text hook (unlike TCC), so we set expectations ourselves before the
+    /// first enrollment write. Persisted across launches.
+    static var hasExplainedKeychain: Bool {
+        get { UserDefaults.standard.bool(forKey: didExplainKeychainKey) }
+        set { UserDefaults.standard.set(newValue, forKey: didExplainKeychainKey) }
+    }
 }

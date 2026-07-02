@@ -968,7 +968,7 @@
 <tr>
 <td>EC-02</td>
 <td><strong>Screen already locked / display asleep / session inactive</strong></td>
-<td>Event-driven <code>SessionStateMonitor</code> (ND-013, <a href="../adr/0009-session-suspend/">ADR-0009</a>) pauses the loop and stops the camera while the screen is locked, the display is asleep, or the session is not on the console; resumes both on unlock/wake. On suspend the app calls <code>PresenceEngine.sessionSuspended()</code>, which resets absence accounting so resume can't false-lock (the in-tick <code>.suspended</code> capture path is a backstop).</td>
+<td>Event-driven <code>SessionStateMonitor</code> (ND-013, <a href="../adr/0009-session-suspend/">ADR-0009</a>) pauses the loop and stops the camera while the screen is locked, the display is asleep, or the session is not on the console; resumes both on unlock/wake. On suspend the app calls <code>PresenceEngine.sessionSuspended()</code>, which resets absence accounting so resume can't false-lock (the in-tick <code>.suspended</code> capture path is a backstop). <strong>Resume robustness:</strong> our lock mechanism (SACLockScreenImmediate / CGSession <code>-suspend</code>, ADR-0010) does <strong>not</strong> reliably post <code>com.apple.screenIsUnlocked</code>, so relying only on notifications left the app stuck "locked" after unlock. The monitor therefore also runs a low-frequency <strong>safety-net poll</strong> (~2s) that re-reads the authoritative <code>CGSession</code>/<code>CGDisplay</code> state and fires on the real transition — a missed lock/unlock event self-heals within ~2s.</td>
 <td>IMPLEMENTED</td>
 <td>blart/homer</td>
 </tr>

@@ -234,6 +234,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isEnrolling, let coordinator = enrollmentCoordinator,
               let camera, let menuBar else { return }
 
+        // One-time Keychain explainer (macOS's Keychain-access prompt has no custom-text
+        // hook like camera/Location, so we set expectations ourselves before the first
+        // enrollment write). Shown before capture so it precedes any system prompt.
+        if !Permissions.hasExplainedKeychain {
+            Permissions.hasExplainedKeychain = true
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "No Donuts stores your face signature in your Keychain"
+            alert.informativeText = "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again."
+            alert.addButton(withTitle: "Continue")
+            alert.runModal()
+        }
+
         isEnrolling = true
         menuBar.setEnrolling(true)     // freeze header on "enrolling your face…"
         applyEnforcement()             // stops the loop; enrolling display state

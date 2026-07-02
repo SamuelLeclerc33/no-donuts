@@ -57,6 +57,25 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     private let account: String
     private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
 
+    /// Human-friendly item name/description. macOS shows the item's LABEL in the
+    /// Keychain-access prompt (there's no custom-text hook), so a clear label makes the
+    /// dialog read "…information stored in 'No Donuts — your face signature'…" instead of
+    /// the raw account. Set on add AND update so an existing unlabeled item gets relabeled
+    /// on the next enroll.
+    private let itemLabel = "No Donuts — your face signature"
+    private let itemDescription = "Encrypted face signature used to keep this Mac unlocked only for you. Stored on this device; never a photo, never uploaded."
+
+    /// In-memory cache of the last DEFINITIVE read (`.enrolled` / `.notEnrolled`).
+    /// The presence loop asks for `enrollmentState()` every tick (~1/s); without this
+    /// cache each tick hits the Keychain, and on an ad-hoc-signed build macOS shows a
+    /// Keychain-access prompt on every read → a prompt storm. The enrolled set only
+    /// changes via `enroll()`/`reset()` (both app-initiated), so we read the Keychain
+    /// at most once and update the cache in place on write. `.unavailable` (a transient
+    /// read failure) is deliberately NOT cached, so it can self-recover on a later tick.
+    /// Guarded by `cacheLock`.
+    private let cacheLock = NSLock()
+    private var cached: EnrollmentState?
+
     /// - Parameters:
     ///   - service: Keychain `kSecAttrService` (default `com.nodonuts.app`).
     ///   - account: Keychain `kSecAttrAccount` (default `enrollment`).
@@ -66,11 +85,29 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
         self.account = account
     }
 
+    /// Enrollment status, served from the in-memory cache when available so the
+    /// per-tick recognizer doesn't hammer the Keychain (see `cached`). Falls through to
+    /// a single Keychain read on a cache miss; caches only definitive results.
+    public func enrollmentState() -> EnrollmentState {
+        cacheLock.lock()
+        if let cached { cacheLock.unlock(); return cached }
+        cacheLock.unlock()
+
+        let state = readEnrollmentStateFromKeychain()
+        switch state {
+        case .enrolled, .notEnrolled:
+            cacheLock.lock(); cached = state; cacheLock.unlock()
+        case .unavailable:
+            break   // don't cache a transient failure — allow a later tick to recover
+        }
+        return state
+    }
+
     /// SINGLE Keychain read path (S1 fail-safe): distinguishes "genuinely not enrolled"
     /// from "read failed". `errSecItemNotFound` (or a decoded-empty set) → `.notEnrolled`;
     /// a valid non-empty blob → `.enrolled`; ANY other `OSStatus` OR a decode failure →
     /// `.unavailable` (the recognizer must treat this conservatively, never presence-only).
-    public func enrollmentState() -> EnrollmentState {
+    private func readEnrollmentStateFromKeychain() -> EnrollmentState {
         var query = baseQuery()
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -124,7 +161,11 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
         if existsStatus == errSecSuccess {
             let updateStatus = SecItemUpdate(
                 baseQuery() as CFDictionary,
-                [kSecValueData as String: data] as CFDictionary)
+                [
+                    kSecValueData as String: data,
+                    kSecAttrLabel as String: itemLabel,           // relabel legacy items
+                    kSecAttrDescription as String: itemDescription,
+                ] as CFDictionary)
             guard updateStatus == errSecSuccess else {
                 throw EnrollmentStoreError.keychain(updateStatus)
             }
@@ -132,11 +173,16 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
             var attributes = baseQuery()
             attributes[kSecValueData as String] = data
             attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            attributes[kSecAttrLabel as String] = itemLabel        // shown in the access prompt
+            attributes[kSecAttrDescription as String] = itemDescription
             let addStatus = SecItemAdd(attributes as CFDictionary, nil)
             guard addStatus == errSecSuccess else {
                 throw EnrollmentStoreError.keychain(addStatus)
             }
         }
+        // Update the cache in place so the next tick doesn't re-read the Keychain
+        // (avoids a fresh access prompt) — we already know the new value.
+        cacheLock.lock(); cached = .enrolled(embeddings); cacheLock.unlock()
     }
 
     public func reset() throws {
@@ -144,6 +190,8 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw EnrollmentStoreError.keychain(status)
         }
+        // Reflect the wipe in the cache immediately (no re-read / prompt).
+        cacheLock.lock(); cached = .notEnrolled; cacheLock.unlock()
     }
 
     // MARK: - Private
