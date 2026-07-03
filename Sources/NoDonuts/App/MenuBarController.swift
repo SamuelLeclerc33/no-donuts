@@ -198,21 +198,62 @@ public final class MenuBarController: NSObject {
         // glyph must read honestly at a glance — warnings/locked get a tint.
         let glyph = glyph(for: state)
         if let button = statusItem.button {
-            if let image = NSImage(systemSymbolName: glyph.symbolName,
-                                   accessibilityDescription: glyph.label) {
-                image.isTemplate = true            // adapt to light/dark menu bars
-                button.image = image
+            if let base = NSImage(systemSymbolName: glyph.symbolName,
+                                  accessibilityDescription: glyph.label) {
+                // EXPERIMENTAL (multi-display bug): never set button.contentTintColor
+                // to a non-nil value. A runtime-tinted status-item button only draws on
+                // the active display's menu bar; a STATIC colored (non-template) image
+                // replicates to all displays' menu bars. So:
+                //  - tinted states -> bake the color into a non-template palette image
+                //  - nil-tint states -> plain adaptive template (unchanged; replicates fine)
+                button.contentTintColor = nil
+                if let tint = glyph.tint {
+                    let colored = coloredSymbol(base, tint: tint,
+                                                accessibilityDescription: glyph.label)
+                    colored.isTemplate = false     // static color; do NOT adapt/tint at draw time
+                    button.image = colored
+                } else {
+                    base.isTemplate = true         // adapt to light/dark menu bars
+                    button.image = base
+                }
                 button.title = ""                  // image-only; clear any fallback text
-                button.contentTintColor = glyph.tint
             } else {
                 // Never leave the status item blank if the symbol is missing.
                 button.image = nil
-                button.contentTintColor = glyph.tint
+                button.contentTintColor = nil
                 button.title = glyph.fallbackText
             }
         }
         // Surface honest, visible status as the menu header (core trust rule).
         statusItemHeader.title = headerTitle(for: state)
+    }
+
+    /// EXPERIMENTAL (multi-display bug): produce a STATIC, non-template symbol image
+    /// with `tint` baked into the pixels, so the status item draws on every display's
+    /// menu bar (runtime `contentTintColor` only draws on the active display).
+    ///
+    /// Primary path: `NSImage.SymbolConfiguration(paletteColors:)` applied via
+    /// `withSymbolConfiguration(_:)` — a monochrome symbol takes the single palette
+    /// color. Fallback (if that yields nothing): `lockFocus` + `sourceAtop` bake, which
+    /// fills the symbol's alpha with the tint.
+    private func coloredSymbol(_ base: NSImage, tint: NSColor,
+                               accessibilityDescription: String) -> NSImage {
+        let config = NSImage.SymbolConfiguration(paletteColors: [tint])
+        if let configured = base.withSymbolConfiguration(config) {
+            configured.accessibilityDescription = accessibilityDescription
+            return configured
+        }
+        // Fallback: bake the tint into the symbol's alpha via sourceAtop.
+        let size = base.size
+        let baked = NSImage(size: size)
+        baked.lockFocus()
+        base.draw(at: .zero, from: NSRect(origin: .zero, size: size),
+                  operation: .sourceOver, fraction: 1.0)
+        tint.set()
+        NSRect(origin: .zero, size: size).fill(using: .sourceAtop)
+        baked.unlockFocus()
+        baked.accessibilityDescription = accessibilityDescription
+        return baked
     }
 
     /// The visual mapping for a presence state: an SF Symbol name, an optional
