@@ -1,6 +1,6 @@
 # ADR-0012 — Local identity: Vision feature-print embedder + Keychain enrollment
 
-- Status: Accepted (amends ADR-0002)
+- Status: Accepted (amends ADR-0002; amended by [ADR-0014](0014-coreml-face-embedding-model.md) — Core ML face model behind a model-agnostic descriptor, with the Vision feature print kept as the fallback default)
 - Date: 2026-07-02
 - Owner: cooper (+ krusty enrollment UX)
 

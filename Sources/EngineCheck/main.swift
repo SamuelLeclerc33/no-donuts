@@ -30,10 +30,18 @@ final class StubRecognizer: FaceRecognizing, @unchecked Sendable {
 /// `FaceEmbeddingOutcome` (e.g. `.failure`), and from a vector + explicit texture score.
 final class FakeEmbedder: FaceEmbedding, @unchecked Sendable {
     var result: FaceEmbeddingResult
-    init(result: FaceEmbeddingResult) { self.result = result }
+    /// ADR-0014: the model this fake claims to implement. Its `version` is what the
+    /// recognizer compares stored enrollments against (version-mismatch tests) and its
+    /// `defaultMatchThreshold` is the base default when the recognizer is built without an
+    /// explicit threshold. Defaults to a stable test descriptor.
+    let descriptor: FaceEmbeddingModelDescriptor
+    init(result: FaceEmbeddingResult, descriptor: FaceEmbeddingModelDescriptor = .fakeTest) {
+        self.result = result
+        self.descriptor = descriptor
+    }
     /// nil vector → `.noFace`; a vector → `.embedding(vector, high live score)`.
-    convenience init(_ vector: [Float]?) {
-        self.init(result: vector.map { .embedding($0, textureScore: 10_000) } ?? .noFace)
+    convenience init(_ vector: [Float]?, descriptor: FaceEmbeddingModelDescriptor = .fakeTest) {
+        self.init(result: vector.map { .embedding($0, textureScore: 10_000) } ?? .noFace, descriptor: descriptor)
     }
     /// Map the legacy `FaceEmbeddingOutcome` to the richer result so existing call
     /// sites (`FakeEmbedder(.failure)`) keep compiling.
@@ -49,6 +57,19 @@ final class FakeEmbedder: FaceEmbedding, @unchecked Sendable {
         self.init(result: .embedding(vector, textureScore: textureScore))
     }
     func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult { result }
+}
+
+extension FaceEmbeddingModelDescriptor {
+    /// Stable descriptor for EngineCheck's `FakeEmbedder` (ADR-0014). Its `version` is the
+    /// "active model version" the version-mismatch checks compare against.
+    static let fakeTest = FaceEmbeddingModelDescriptor(
+        version: "fake-test-v1",
+        displayName: "Fake test embedder",
+        inputSize: 0,
+        outputDimension: 4,
+        defaultMatchThreshold: 0.6,
+        thresholdIsTuned: false
+    )
 }
 
 // EnrollmentState isn't Equatable (associated value), so tiny matchers for the checks.
@@ -681,7 +702,7 @@ func runAll() async -> Bool {
     // (c) enrolled with V, embedder returns V → present, confidence >= threshold.
     do {
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         let r = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: store, matchThreshold: threshold)
         let result = await r.recognize(CapturedFrame())
         if case let .enrolledUserPresent(confidence) = result {
@@ -694,7 +715,7 @@ func runAll() async -> Bool {
     // (d) enrolled, embedder returns a very different vector (cos < threshold) → strangerOnly (EC-03).
     do {
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         let r = IdentityRecognizer(embedder: FakeEmbedder(differentV), store: store, matchThreshold: threshold)
         let result = await r.recognize(CapturedFrame())
         c.expect(result == .strangerOnly, "identity: enrolled + non-matching face → .strangerOnly (EC-03)")
@@ -703,7 +724,7 @@ func runAll() async -> Bool {
     // (e) enrolled + embedder nil → noFace.
     do {
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         let r = IdentityRecognizer(embedder: FakeEmbedder(nil), store: store, matchThreshold: threshold)
         let result = await r.recognize(CapturedFrame())
         c.expect(result == .noFace, "identity: enrolled + no face → .noFace")
@@ -717,7 +738,7 @@ func runAll() async -> Bool {
         let r1 = IdentityRecognizer(embedder: FakeEmbedder(.failure), store: notEnrolled, matchThreshold: threshold)
         let res1 = await r1.recognize(CapturedFrame())
         let enrolled = InMemoryEnrollmentStore()
-        try? enrolled.enroll(embeddings: [matchV])
+        try? enrolled.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         let r2 = IdentityRecognizer(embedder: FakeEmbedder(.failure), store: enrolled, matchThreshold: threshold)
         let res2 = await r2.recognize(CapturedFrame())
         c.expect(res1 == .error("face embedding failed") && res2 == .error("face embedding failed"),
@@ -732,6 +753,77 @@ func runAll() async -> Bool {
         let result = await r.recognize(CapturedFrame())
         c.expect(result == .error("enrollment store unavailable"),
                  "identity: store .unavailable + face → .error (fail-safe, never presence-only) [S1]")
+    }
+
+    // MARK: Embedding versioning + forced re-enrollment (ADR-0014, ND-021) — cooper
+
+    // (v1) VERSION MISMATCH: an enrollment stored under a DIFFERENT model version than the
+    // active embedder must NOT be cross-compared (unrelated embedding spaces). The
+    // recognizer treats it as NOT enrolled for this model → presence-only fallback, forcing
+    // re-enrollment — even with a face that would otherwise mismatch (differentV). If the
+    // stale vectors were (wrongly) compared, differentV would score below threshold →
+    // .strangerOnly; presence-only proves we skipped the cross-model compare.
+    do {
+        // Enrolled under an OLD model version; active embedder is `.fakeTest` (v1).
+        let store = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: "old-model-v0")
+        let r = IdentityRecognizer(embedder: FakeEmbedder(differentV), store: store)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .enrolledUserPresent(confidence: 1.0),
+                 "versioning: stored version != active model → re-enroll required (presence-only), never cross-compare (ADR-0014)")
+    }
+
+    // (v2) LEGACY (no-version) record: a pre-versioning enrollment (modelVersion nil) is
+    // stale under ANY active versioned model → same forced re-enroll (presence-only),
+    // never compared. Uses matchV (which WOULD match) to prove the version gate fires
+    // BEFORE the cosine compare.
+    do {
+        let store = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: nil)
+        let r = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: store)
+        let result = await r.recognize(CapturedFrame())
+        c.expect(result == .enrolledUserPresent(confidence: 1.0),
+                 "versioning: legacy no-version record → treated as stale, re-enroll required (ADR-0014)")
+    }
+
+    // (v3) VERSION MATCH still recognizes normally: enrolled under the ACTIVE version, a
+    // matching face → present; a non-matching face → stranger. Proves the version gate
+    // only blocks MISMATCHES, not the normal identity path.
+    do {
+        let matchStore = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
+        let rMatch = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: matchStore)
+        let matched = await rMatch.recognize(CapturedFrame())
+        var present = false
+        if case .enrolledUserPresent = matched { present = true }
+        let strangerStore = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
+        let rStranger = IdentityRecognizer(embedder: FakeEmbedder(differentV), store: strangerStore)
+        let stranger = await rStranger.recognize(CapturedFrame())
+        c.expect(present && stranger == .strangerOnly,
+                 "versioning: matching active version → normal identity (present / stranger), gate only blocks mismatch (ADR-0014)")
+    }
+
+    // (v4) DESCRIPTOR THRESHOLD plumbs through as the base default: build the recognizer
+    // WITHOUT an explicit threshold, so it must use the embedder descriptor's
+    // `defaultMatchThreshold`. Use a descriptor with a high threshold that a partial match
+    // (cos ≈ 0.707) can't clear → stranger; then a descriptor with a low threshold the same
+    // score clears → present. Proves descriptor.defaultMatchThreshold drives the decision.
+    do {
+        let partialV: [Float] = [1, 1, 0, 0]  // cos vs matchV=[1,0,0,0] = 1/sqrt(2) ≈ 0.707
+        func desc(_ t: Double) -> FaceEmbeddingModelDescriptor {
+            FaceEmbeddingModelDescriptor(version: "fake-test-v1", displayName: "d",
+                                         inputSize: 0, outputDimension: 4,
+                                         defaultMatchThreshold: t, thresholdIsTuned: false)
+        }
+        // High descriptor threshold (0.9): 0.707 < 0.9 → stranger.
+        let highStore = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: "fake-test-v1")
+        let rHigh = IdentityRecognizer(embedder: FakeEmbedder(partialV, descriptor: desc(0.9)), store: highStore)
+        let high = await rHigh.recognize(CapturedFrame())
+        // Low descriptor threshold (0.5): 0.707 >= 0.5 → present.
+        let lowStore = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: "fake-test-v1")
+        let rLow = IdentityRecognizer(embedder: FakeEmbedder(partialV, descriptor: desc(0.5)), store: lowStore)
+        let low = await rLow.recognize(CapturedFrame())
+        var presentLow = false
+        if case .enrolledUserPresent = low { presentLow = true }
+        c.expect(high == .strangerOnly && presentLow,
+                 "descriptor threshold: no explicit threshold → descriptor.defaultMatchThreshold drives decision (0.9 → stranger, 0.5 → present) (ADR-0014)")
     }
 
     // MARK: Anti-spoofing (ND-041, EC-12) + live threshold (ND-040) — cooper/wiggum
@@ -788,7 +880,7 @@ func runAll() async -> Bool {
     // (h) enrolled + matching + LIVE (score above floor) + anti-spoof ON → present.
     do {
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         // High texture score → clearly live.
         let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 10_000), store: store, matchThreshold: threshold)
         let result = await r.recognize(CapturedFrame())
@@ -817,7 +909,7 @@ func runAll() async -> Bool {
             else { UserDefaults.standard.removeObject(forKey: floorKey) }
         }
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         // Texture score BELOW the resolved floor (10 < 100) → flagged as spoof. Proves
         // the recognizer uses the LIVE resolved floor, not the hardcoded default.
         let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 10), store: store, matchThreshold: threshold)
@@ -837,7 +929,7 @@ func runAll() async -> Bool {
             else { UserDefaults.standard.removeObject(forKey: key) }
         }
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 0), store: store, matchThreshold: threshold)
         let result = await r.recognize(CapturedFrame())
         var present = false
@@ -878,7 +970,7 @@ func runAll() async -> Bool {
             else { UserDefaults.standard.removeObject(forKey: key) }
         }
         let store = InMemoryEnrollmentStore()
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         // Base default passed at init is lenient (0.6); a perfect self-match = 1.0.
         let r = IdentityRecognizer(embedder: FakeEmbedder(matchV, textureScore: 10_000), store: store, matchThreshold: threshold)
         // Live: set a strict 0.99 → matching vector (cos 1.0) still clears? cos of
@@ -891,7 +983,7 @@ func runAll() async -> Bool {
         if case .enrolledUserPresent = atLow { presentAtLow = true }
         // Now raise to a value the (orthogonal) score can't meet using a different embed.
         let store2 = InMemoryEnrollmentStore()
-        try? store2.enroll(embeddings: [matchV])
+        try? store2.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         // Embed a vector at cosine ~0.7 vs matchV so the threshold is the deciding factor.
         let partialV: [Float] = [1, 1, 0, 0]  // cos(matchV=[1,0,0,0]) = 1/sqrt(2) ≈ 0.707
         let r2 = IdentityRecognizer(embedder: FakeEmbedder(partialV, textureScore: 10_000), store: store2, matchThreshold: threshold)
@@ -910,7 +1002,7 @@ func runAll() async -> Bool {
     do {
         let store = InMemoryEnrollmentStore()
         let notEnrolledInitially = !store.isEnrolled && isNotEnrolled(store.enrollmentState())
-        try? store.enroll(embeddings: [matchV])
+        try? store.enroll(embeddings: [matchV], modelVersion: FaceEmbeddingModelDescriptor.fakeTest.version)
         let enrolledAfter = store.isEnrolled && store.enrolledEmbeddings() == [matchV] && isEnrolledState(store.enrollmentState())
         try? store.reset()
         let notEnrolledAfterReset = !store.isEnrolled && isNotEnrolled(store.enrollmentState())

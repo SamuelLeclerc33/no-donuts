@@ -799,6 +799,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0014-coreml-face-embedding-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0014 — Core ML face-embedding model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1003,8 +1031,8 @@
 <tr>
 <td>EC-03</td>
 <td><strong>Stranger sits down, enrolled user absent</strong></td>
-<td><strong>Identity (v1.1, ND-021–024/ND-034, <a href="../adr/0012-local-identity-featureprint/">ADR-0012</a>):</strong> once the user has enrolled, a detected face is embedded (<code>VNGenerateImageFeaturePrint</code>) and cosine-matched against the enrolled reference vectors; a face that doesn't clear <code>Config.matchThreshold</code> returns <code>.strangerOnly</code> → the engine treats it as absence → locks after grace. A non-matching face NEVER counts as present. <strong>Before enrollment</strong> the app falls back to presence-only (any face = present), so this strict behavior is active only after the user enrolls. Accuracy caveat: the v1.1 embedder is a general (not face-optimized) feature print with a lenient default threshold, so a determined look-alike/stranger may occasionally pass until the threshold is tuned (ND-024) or a Core ML face model is swapped in (ND-021).</td>
-<td>IMPLEMENTED (after enrollment; presence-only until then)</td>
+<td><strong>Identity (ND-021–024/ND-034, <a href="../adr/0012-local-identity-featureprint/">ADR-0012</a>):</strong> once the user has enrolled, a detected face is embedded and cosine-matched against the enrolled reference vectors; a face that doesn't clear the threshold returns <code>.strangerOnly</code> → the engine treats it as absence → locks after grace. A non-matching face NEVER counts as present. <strong>Before enrollment</strong> the app falls back to presence-only (any face = present). <strong>Durable fix in progress (<a href="../adr/0014-coreml-face-embedding-model/">ADR-0014</a>, ND-021):</strong> the shipping embedder is still Apple <code>VNGenerateImageFeaturePrint</code> — a <em>general</em> (image-similarity, not face-identity) feature print, so a determined look-alike ("Marco") can still false-accept. Phase 1 landed the real fix's scaffolding — a model-agnostic descriptor, a <code>CoreMLFaceEmbedder</code> (FaceNet/VGGFace2, 512-dim), and embedding-versioning that forces re-enrollment on a model swap (no cross-model vector compares). <strong>The structural EC-03 guarantee is only restored once that Core ML face model is bundled and its threshold re-tuned (Phase 2, blocked on the model file);</strong> until then the caveat stands (lenient/un-tuned separation).</td>
+<td>IN PROGRESS — enforced after enrollment; general feature print today (look-alikes may pass), Core ML face-identity model landing via ND-021 Phase 2</td>
 <td>homer/wiggum/cooper</td>
 </tr>
 <tr>

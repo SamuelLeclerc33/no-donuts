@@ -104,7 +104,9 @@ public final class EnrollmentCoordinator {
         guard vectors.count >= minimumVectors else { return .notEnoughFaces }
 
         do {
-            try store.enroll(embeddings: vectors)
+            // ADR-0014: stamp the vectors with the active model's version so a later model
+            // swap forces re-enrollment (the recognizer never cross-compares model spaces).
+            try store.enroll(embeddings: vectors, modelVersion: embedder.descriptor.version)
             return .success(count: vectors.count)
         } catch {
             // A genuine store failure (e.g. Keychain write error). This is NOT a

@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0007-package-layout-testable-core/">
+        <link rel="prev" href="../0013-settings-ui-and-login-item/">
       
       
-        <link rel="next" href="../0009-session-suspend/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0008 — App packaging - No Donuts</title>
+        <title>ADR-0014 — Core ML face-embedding model - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0008-local-app-packaging-spm-build-bundling-script-ad-hoc-signed" class="md-skip">
+        <a href="#adr-0014-core-ml-face-recognition-embedding-behind-a-model-agnostic-descriptor" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0008 — App packaging
+              ADR-0014 — Core ML face-embedding model
             
           </span>
         </div>
@@ -639,37 +639,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0008 — App packaging
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0008-app-packaging/" class="md-nav__link">
         
   
   
@@ -685,70 +658,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -898,10 +807,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0014-coreml-face-embedding-model/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0014 — Core ML face-embedding model
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -917,6 +853,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1070,33 +1070,44 @@
 
 
 
-<h1 id="adr-0008-local-app-packaging-spm-build-bundling-script-ad-hoc-signed">ADR-0008 — Local app packaging: SPM build + bundling script (ad-hoc signed)<a class="headerlink" href="#adr-0008-local-app-packaging-spm-build-bundling-script-ad-hoc-signed" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0014-core-ml-face-recognition-embedding-behind-a-model-agnostic-descriptor">ADR-0014 — Core ML face-recognition embedding behind a model-agnostic descriptor<a class="headerlink" href="#adr-0014-core-ml-face-recognition-embedding-behind-a-model-agnostic-descriptor" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Status: Accepted</li>
-<li>Date: 2026-06-30</li>
-<li>Owner: gordon</li>
+<li>Status: Accepted (amends <a href="../0012-local-identity-featureprint/">ADR-0012</a>; ADR-0012 stays the shipping default until the model is bundled)</li>
+<li>Date: 2026-07-06</li>
+<li>Owner: cooper</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>A bare SPM executable (<code>swift run NoDonuts</code>) cannot present the macOS camera permission prompt or honor <code>LSUIElement</code> — those need a real <code>.app</code> bundle with an <code>Info.plist</code> and a code signature carrying the camera entitlement. The conventional way to produce that is an Xcode <code>.app</code> target, but the baseline toolchain here is <strong>Command Line Tools only</strong> (no full Xcode — ADR-0001), so <code>xcodebuild</code> against an app target isn't available. We still need a runnable bundle locally to test camera permission, the menu-bar (no-Dock) behavior, and the presence/lock loop (ND-018 gates all P0 testing).</p>
-<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>Produce the local <code>.app</code> from the SPM build plus a small bundling script — <code>scripts/make-app.sh</code> — with <strong>ad-hoc codesign</strong>, no Xcode and no <code>.xcodeproj</code>:</p>
+<p><a href="../0012-local-identity-featureprint/">ADR-0012</a> shipped identity v1.1 using Apple's <code>VNGenerateImageFeaturePrint</code> behind the <code>FaceEmbedding</code> protocol. That is a <strong>general image feature print, not a face-identity embedding</strong> — it encodes <em>image</em> similarity, so a look-alike colleague ("Marco") in similar framing/lighting can score close enough to the enrolled user to pass (EC-03 false-accept). No threshold tuning fully fixes this: the signal itself isn't identity.</p>
+<p>The durable fix is a real face-recognition model. Constraints:</p>
 <ul>
-<li><code>swift build</code> produces the <code>NoDonuts</code> executable (product of the package).</li>
-<li>The script assembles <code>build/NoDonuts.app/Contents/{MacOS,Resources}</code>, copying the binary to <code>Contents/MacOS/NoDonuts</code> and <code>Resources/Info.plist</code> to <code>Contents/Info.plist</code>.</li>
-<li><code>codesign --force --sign - --entitlements Resources/NoDonuts.entitlements</code> ad-hoc-signs the bundle so the camera entitlement is present and the TCC prompt fires.</li>
+<li><strong>100% on-device, no network</strong> (hard requirement) — the model must be bundled and run via Core ML.</li>
+<li>The build environment <strong>cannot download or convert</strong> a model, and no <code>.mlmodel</code>/<code>.mlpackage</code> is in the repo. So all code must compile, build, and pass EngineCheck <strong>without any model file present</strong>.</li>
+<li>License flexibility: we want to start with a known-good model for <strong>internal use</strong> now, and swap to a <strong>permissively-licensed</strong> model for distribution later with minimal code change.</li>
 </ul>
-<p>This script is the <strong>canonical local build path</strong> for a runnable bundle.</p>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p>Adopt a <strong>Core ML face-recognition embedding</strong>, selected behind a <strong>model-agnostic descriptor</strong> so the model, its threshold, and its preprocessing travel together and a later swap is low-friction. This is delivered in two phases; <strong>Phase 1 (this ADR) is the Swift seam + versioning + tests, model-file-independent.</strong></p>
+<ul>
+<li><strong>Model descriptor abstraction.</strong> <code>FaceEmbeddingModelDescriptor</code> (pure <code>Sendable</code> value type) carries a stable <code>version</code> id/tag, <code>inputSize</code>, <code>outputDimension</code>, <code>defaultMatchThreshold</code>, and <code>thresholdIsTuned</code>. Every <code>FaceEmbedding</code> now exposes a <code>descriptor</code>. Matching, threshold, and preprocessing are <strong>model-driven, not hardcoded</strong>.</li>
+<li><strong>Internal-use model = FaceNet.</strong> <code>facenet-pytorch</code> InceptionResnetV1 pretrained on <strong>VGGFace2</strong>: 160×160 RGB input, 512-dim L2-normalized output. Normalization <code>(x-127.5)/128</code> is <strong>folded into the Core ML model</strong> at conversion time (<code>ct.ImageType(scale=1/128, bias=-127.5/128)</code>), so the model takes an image input and emits a 512-float embedding. License is acceptable for internal use; a permissive/other model (e.g. ArcFace, also 512-dim) can be swapped in for distribution behind the same descriptor.</li>
+<li><strong><code>CoreMLFaceEmbedder</code></strong> conforms to <code>FaceEmbedding</code>: Vision detects + crops the largest face, resizes to the descriptor's input size, feeds it as an image input, reads the float output, and <strong>L2-normalizes defensively</strong>. Its initializer is <strong>failable</strong>: if the compiled model resource is absent (the current repo state) it returns <code>nil</code> and logs — the app keeps running with <code>VisionFeaturePrintEmbedder</code> as the wired default. We do <strong>not</strong> switch the default embedder yet.</li>
+<li><strong>Preprocessing/alignment reality.</strong> We feed Vision face-<strong>rectangle</strong> crops, not MTCNN 5-point aligned faces (what <code>facenet-pytorch</code> normally expects). Accepted for v1 as an accuracy compromise; part of why the threshold must be re-tuned on device.</li>
+<li><strong>Each model carries its own threshold + preprocessing.</strong> Cosine scores are <strong>not comparable across models</strong>, so the threshold is a descriptor field. Vision keeps <code>0.6</code> (unchanged); FaceNet gets a <strong>provisional, un-tuned <code>0.5</code></strong> (<code>thresholdIsTuned = false</code>), a starting guess to be tuned on device.</li>
+<li><strong>Embedding versioning + forced re-enrollment.</strong> Stored enrollments record the model <code>version</code> that produced them (<code>EnrollmentStore</code> schema extended compatibly; legacy bare-array records decode to <code>version = nil</code>). On load, if the stored version ≠ the active embedder's <code>descriptor.version</code>, the recognizer treats the enrollment as <strong>NOT for this model</strong> → presence-only fallback → <strong>forces re-enrollment</strong>. We <strong>never</strong> cross-compare vectors from different embedding spaces (a stale compare could false-accept or false-reject). This is the correctness-critical part and is EngineCheck-covered.</li>
+</ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Runs locally with <strong>Command Line Tools only</strong> — no full Xcode required to get a permission-prompting, menu-bar-correct app for development.</li>
-<li>Ad-hoc signing is fine for local dev, but <strong>does not</strong> satisfy distribution: Developer-ID signing + notarization remain required to ship (ND-050). Ad-hoc-signed bundles are not Gatekeeper-distributable and TCC grants don't transfer to other machines.</li>
-<li><code>Info.plist</code> gained the keys a real bundle needs (<code>CFBundleExecutable</code>, <code>CFBundlePackageType</code>, <code>CFBundleInfoDictionaryVersion</code>) alongside the existing identity/permission keys.</li>
-<li>The build-run skill, README, and CLAUDE.md now point at <code>scripts/make-app.sh</code> instead of implying full Xcode is mandatory for a local run.</li>
+<li>The seam and versioning are in place and tested <strong>without</strong> the model file: <code>swift build</code> + <code>swift run EngineCheck</code> pass (61/61, incl. 4 new ADR-0014 checks). The app is unchanged today (Vision embedder still wired).</li>
+<li><strong>The EC-03 guarantee is only STRUCTURALLY restored once the real model is bundled and its threshold re-tuned.</strong> Until then, identity still uses the general feature print and a determined look-alike may pass. <code>thresholdIsTuned = false</code> keeps this honest in code and diagnostics.</li>
+<li>Swapping to a distribution model later is low-friction: add a descriptor + point <code>CoreMLFaceEmbedder</code> at the new resource; the version bump auto-forces a clean one-time re-enroll, so no cross-model vectors are ever compared.</li>
+<li>Storage stays Keychain, device-only, embeddings-only (ADR-0012 unchanged) — only the blob schema gained a version tag, with legacy fallback.</li>
+<li><strong>Phase-2 follow-ups (ND-021):</strong> convert + bundle the FaceNet <code>.mlmodelc</code> (with gordon; sizing, codesign, ad-hoc build); switch the default embedder to Core ML with the graceful Vision fallback; capture FaceNet's real threshold vs the Marco false-accept and set a tuned <code>defaultMatchThreshold</code> (<code>thresholdIsTuned = true</code>); users re-enroll once (forced by the version bump). Distribution-model swap (permissive license) remains deferred (license TBD).</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Xcode <code>.xcodeproj</code> app target</strong> — the conventional packaging route, but requires full Xcode (unavailable in the CLT-only baseline) and adds a project file to keep in sync with <code>Package.swift</code>. Rejected for local dev; revisit only if a distribution pipeline (ND-050) makes an Xcode target worthwhile.</li>
-<li><strong>Bare <code>swift run NoDonuts</code></strong> — no bundle, so no camera prompt and no <code>LSUIElement</code> behavior. Insufficient for the testing ND-018 needs to unblock.</li>
+<li><strong>Keep tuning the Vision feature print (ADR-0012 only):</strong> cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).</li>
+<li><strong>Bundle the model without a descriptor/versioning:</strong> would silently cross-compare old Vision vectors against a new model's space on the first run after a swap → garbage matches. Rejected; versioning is mandatory.</li>
+<li><strong>Download/convert the model at build or first run:</strong> violates the no-network requirement and isn't possible in the build environment. Rejected — conversion is a manual, local, developer step.</li>
+<li><strong>Proper MTCNN 5-point alignment before embedding:</strong> more accurate, but adds another model + pipeline stage. Deferred; Vision-rectangle crops are the accepted v1 input, re-tuned accordingly.</li>
 </ul>
 
 

@@ -64,8 +64,13 @@ public enum FaceEmbeddingResult: Sendable {
 /// `.failure` → `.error` (EC-10 conservative hold) and `.noFace` → absence — failures
 /// are **never** conflated with "no face".
 public protocol FaceEmbedding: Sendable {
+    /// The model this embedder implements (ADR-0014). Drives the base match threshold and
+    /// the embedding-version stamp used to force re-enrollment when the model changes
+    /// (see `FaceEmbeddingModelDescriptor` / `IdentityRecognizer`). Static per embedder.
+    var descriptor: FaceEmbeddingModelDescriptor { get }
+
     /// Detect the (largest) face in `frame` and return its embedding + liveness
-    /// outcome (ND-041). Runs off the main actor. This is the sole requirement;
+    /// outcome (ND-041). Runs off the main actor. This is the sole behavioral requirement;
     /// `embedding(for:)` is derived from it by default.
     func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult
 }
@@ -177,6 +182,12 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
     private let paddingFraction: CGFloat
 
     private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+
+    /// ADR-0014: this embedder implements the Vision feature-print model. Its descriptor
+    /// carries the unchanged lenient `0.6` threshold and the `"vision-featureprint-v1"`
+    /// version tag (which legacy untagged enrollments are treated as, so shipping the
+    /// descriptor doesn't force a re-enroll of existing Vision users).
+    public let descriptor = FaceEmbeddingModelDescriptor.visionFeaturePrint
 
     public init(paddingFraction: CGFloat = 0.25) {
         self.paddingFraction = paddingFraction

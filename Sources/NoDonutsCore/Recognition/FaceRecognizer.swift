@@ -32,8 +32,18 @@ public protocol FaceRecognizing: Sendable {
 /// - embed `.failure`                              → `.error` (EC-10 hold)
 /// - embed `.noFace`                               → `.noFace`
 /// - embed `.embedding`, store `.notEnrolled`      → `.enrolledUserPresent(1.0)` (presence-only, only when GENUINELY not enrolled)
-/// - embed `.embedding`, store `.enrolled(refs)`   → max cosine vs refs; `>= threshold`
-///     → `.enrolledUserPresent(max)`, else `.strangerOnly` (EC-03: non-match never present)
+/// - embed `.embedding`, store `.enrolled(refs, ver)` where `ver != active model version`
+///     → presence-only fallback (STALE / cross-model — force re-enroll; NEVER cross-compare, ADR-0014)
+/// - embed `.embedding`, store `.enrolled(refs, ver)` matching version → max cosine vs refs;
+///     `>= threshold` → `.enrolledUserPresent(max)`, else `.strangerOnly` (EC-03: non-match never present)
+///
+/// **Embedding versioning (ADR-0014):** the stored enrollment records the model
+/// `version` that produced it. If that differs from the active embedder's descriptor
+/// version (a model swap, or a legacy `nil`-version record), the vectors live in an
+/// unrelated embedding space — cross-comparing them is garbage that could false-accept or
+/// false-reject. So a version mismatch is treated as NOT enrolled for this model → the
+/// presence-only fallback (honest: identity re-engages once the user re-enrolls under the
+/// new model). We NEVER silently compare cross-model vectors.
 ///
 /// `Sendable`: the presence engine (ADR-0005, `@MainActor`) awaits `recognize()` from
 /// the main actor. No main-actor work happens here — the heavy lifting is inside the
@@ -47,10 +57,19 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     /// score, the threshold, and the decision — never an embedding or image (privacy).
     private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
 
-    public init(embedder: FaceEmbedding, store: EnrollmentStoring, matchThreshold: Double) {
+    /// - Parameters:
+    ///   - embedder: the active `FaceEmbedding`; its `descriptor` supplies the base
+    ///     threshold and the active model version used for the re-enroll check (ADR-0014).
+    ///   - store: enrollment store.
+    ///   - matchThreshold: BASE default the live `resolvedMatchThreshold` falls back to.
+    ///     Defaults to the embedder's `descriptor.defaultMatchThreshold` so the threshold
+    ///     is model-driven; an explicit value (e.g. the App's persisted Settings value)
+    ///     still overrides the base. The live `matchThreshold` UserDefaults key wins over
+    ///     both, per tick.
+    public init(embedder: FaceEmbedding, store: EnrollmentStoring, matchThreshold: Double? = nil) {
         self.embedder = embedder
         self.store = store
-        self.matchThreshold = matchThreshold
+        self.matchThreshold = matchThreshold ?? embedder.descriptor.defaultMatchThreshold
     }
 
     public func recognize(_ frame: CapturedFrame) async -> RecognitionResult {
@@ -79,7 +98,18 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 // Anti-spoof is intentionally NOT applied here: before identity is set up
                 // we don't want surprising flat-image locks (ND-041 decision).
                 return .enrolledUserPresent(confidence: 1.0)
-            case .enrolled(let references):
+            case .enrolled(let references, let storedVersion):
+                // ADR-0014 embedding versioning: the stored vectors were produced by
+                // `storedVersion`. If that isn't the active model's version (a model swap,
+                // or a legacy `nil`-version record), the coordinate spaces are unrelated —
+                // cross-comparing is garbage. Treat as NOT enrolled for this model → the
+                // presence-only fallback (identity re-engages after the user re-enrolls).
+                // NEVER silently compare cross-model vectors.
+                let activeVersion = embedder.descriptor.version
+                guard storedVersion == activeVersion else {
+                    log.notice("enrollment model version mismatch (stored \(storedVersion ?? "<legacy/none>", privacy: .public) vs active \(activeVersion, privacy: .public)) → forcing re-enrollment; presence-only until re-enrolled")
+                    return .enrolledUserPresent(confidence: 1.0)
+                }
                 // Defensive: enrolled-but-empty shouldn't happen; presence-only rather
                 // than lock out the real user.
                 guard !references.isEmpty else { return .enrolledUserPresent(confidence: 1.0) }

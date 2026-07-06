@@ -17,8 +17,12 @@ import os
 public enum EnrollmentState: Sendable {
     /// No enrollment item exists (or it decoded to an empty set) — presence-only OK.
     case notEnrolled
-    /// A valid non-empty set of reference embeddings.
-    case enrolled([[Float]])
+    /// A valid non-empty set of reference embeddings, tagged with the model
+    /// `version` that produced them (ADR-0014). `modelVersion` is `nil` for a LEGACY
+    /// record written before versioning existed — the recognizer treats a `nil` (or a
+    /// mismatched) version as stale and forces re-enrollment, never cross-comparing
+    /// vectors from a different model's embedding space.
+    case enrolled([[Float]], modelVersion: String?)
     /// The Keychain read failed or the blob was undecodable — DO NOT downgrade to
     /// presence-only. Treat conservatively (fail-safe).
     case unavailable
@@ -31,7 +35,11 @@ public protocol EnrollmentStoring: Sendable {
     func enrollmentState() -> EnrollmentState
     var isEnrolled: Bool { get }
     func enrolledEmbeddings() -> [[Float]]
-    func enroll(embeddings: [[Float]]) throws
+    /// Persist `embeddings`, stamping the model `modelVersion` that produced them
+    /// (ADR-0014). On load, a stored version that differs from the active embedder's
+    /// forces re-enrollment (see `IdentityRecognizer`) so vectors from different models
+    /// are never cross-compared.
+    func enroll(embeddings: [[Float]], modelVersion: String) throws
     func reset() throws
 }
 
@@ -39,6 +47,19 @@ public protocol EnrollmentStoring: Sendable {
 public enum EnrollmentStoreError: Error {
     /// A `SecItem*` call failed with an unexpected `OSStatus`.
     case keychain(OSStatus)
+}
+
+/// On-disk (Keychain-blob) schema for a versioned enrollment (ADR-0014). Stored as JSON.
+///
+/// Backward compatibility: enrollments written before versioning existed are a BARE
+/// `[[Float]]` JSON array (no wrapping object). The read path tries this struct first and,
+/// on failure, falls back to decoding a bare `[[Float]]` → treated as a legacy record with
+/// `modelVersion == nil` (which the recognizer treats as stale → forces re-enroll). New
+/// writes always use this wrapped form.
+private struct StoredEnrollment: Codable {
+    /// Model id/version tag that produced these vectors (`FaceEmbeddingModelDescriptor.version`).
+    var modelVersion: String
+    var embeddings: [[Float]]
 }
 
 /// Keychain-backed enrollment store — encrypted at rest (ND-023, ADR-0012).
@@ -124,20 +145,33 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
                 log.error("enrollment read returned no data despite success")
                 return .unavailable
             }
-            do {
-                let embeddings = try JSONDecoder().decode([[Float]].self, from: data)
-                return embeddings.isEmpty ? .notEnrolled : .enrolled(embeddings)
-            } catch {
-                // Corrupt/undecodable blob → conservative, NOT presence-only.
-                log.error("failed to decode enrollment blob: \(error.localizedDescription, privacy: .public)")
-                return .unavailable
-            }
+            return decodeEnrollment(data)
         default:
             // e.g. errSecInteractionNotAllowed (before first unlock), errSecAuthFailed —
             // a genuine read failure. Fail SAFE: unavailable, never "not enrolled".
             log.error("enrollment read failed: OSStatus \(status)")
             return .unavailable
         }
+    }
+
+    /// Decode a Keychain blob into an `EnrollmentState` (ADR-0014). Tries the versioned
+    /// `StoredEnrollment` wrapper first; on failure falls back to a bare `[[Float]]`
+    /// (a LEGACY, pre-versioning record → `modelVersion: nil`). A truly undecodable blob →
+    /// `.unavailable` (conservative, never presence-only). An empty set → `.notEnrolled`.
+    private func decodeEnrollment(_ data: Data) -> EnrollmentState {
+        let decoder = JSONDecoder()
+        if let stored = try? decoder.decode(StoredEnrollment.self, from: data) {
+            return stored.embeddings.isEmpty
+                ? .notEnrolled
+                : .enrolled(stored.embeddings, modelVersion: stored.modelVersion)
+        }
+        // Legacy bare array (written before versioning) → nil version = stale.
+        if let legacy = try? decoder.decode([[Float]].self, from: data) {
+            return legacy.isEmpty ? .notEnrolled : .enrolled(legacy, modelVersion: nil)
+        }
+        // Corrupt/undecodable blob → conservative, NOT presence-only.
+        log.error("failed to decode enrollment blob")
+        return .unavailable
     }
 
     // isEnrolled / enrolledEmbeddings derive from the single read path above.
@@ -147,12 +181,12 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     }
 
     public func enrolledEmbeddings() -> [[Float]] {
-        if case .enrolled(let e) = enrollmentState() { return e }
+        if case .enrolled(let e, _) = enrollmentState() { return e }
         return []
     }
 
-    public func enroll(embeddings: [[Float]]) throws {
-        let data = try JSONEncoder().encode(embeddings)
+    public func enroll(embeddings: [[Float]], modelVersion: String) throws {
+        let data = try JSONEncoder().encode(StoredEnrollment(modelVersion: modelVersion, embeddings: embeddings))
 
         // Non-destructive replace (S2): UPDATE an existing item in place, and only ADD
         // when none exists. NEVER delete-then-add — a failed add after a successful
@@ -181,8 +215,8 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
             }
         }
         // Update the cache in place so the next tick doesn't re-read the Keychain
-        // (avoids a fresh access prompt) — we already know the new value.
-        cacheLock.lock(); cached = .enrolled(embeddings); cacheLock.unlock()
+        // (avoids a fresh access prompt) — we already know the new value (incl. version).
+        cacheLock.lock(); cached = .enrolled(embeddings, modelVersion: modelVersion); cacheLock.unlock()
     }
 
     public func reset() throws {
@@ -213,12 +247,21 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
 public final class InMemoryEnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var embeddings: [[Float]] = []
+    /// Model version stamp for the stored vectors (ADR-0014). `nil` models a LEGACY
+    /// pre-versioning record so the recognizer's stale-version path is testable.
+    private var modelVersion: String?
     /// Test hook: when true, reads report `.unavailable` (simulates a Keychain read
     /// failure) so the recognizer's fail-safe path can be exercised in EngineCheck.
     private var simulateUnavailable: Bool
 
-    public init(embeddings: [[Float]] = [], simulateUnavailable: Bool = false) {
+    /// - Parameters:
+    ///   - embeddings: seed vectors (empty = not enrolled).
+    ///   - modelVersion: version stamp for the seed vectors; `nil` simulates a legacy
+    ///     (pre-versioning) record. `enroll(embeddings:modelVersion:)` overwrites it.
+    ///   - simulateUnavailable: force `.unavailable` reads (fail-safe path tests).
+    public init(embeddings: [[Float]] = [], modelVersion: String? = nil, simulateUnavailable: Bool = false) {
         self.embeddings = embeddings
+        self.modelVersion = modelVersion
         self.simulateUnavailable = simulateUnavailable
     }
 
@@ -231,7 +274,7 @@ public final class InMemoryEnrollmentStore: EnrollmentStoring, @unchecked Sendab
     public func enrollmentState() -> EnrollmentState {
         lock.lock(); defer { lock.unlock() }
         if simulateUnavailable { return .unavailable }
-        return embeddings.isEmpty ? .notEnrolled : .enrolled(embeddings)
+        return embeddings.isEmpty ? .notEnrolled : .enrolled(embeddings, modelVersion: modelVersion)
     }
 
     public var isEnrolled: Bool {
@@ -240,17 +283,19 @@ public final class InMemoryEnrollmentStore: EnrollmentStoring, @unchecked Sendab
     }
 
     public func enrolledEmbeddings() -> [[Float]] {
-        if case .enrolled(let e) = enrollmentState() { return e }
+        if case .enrolled(let e, _) = enrollmentState() { return e }
         return []
     }
 
-    public func enroll(embeddings: [[Float]]) throws {
+    public func enroll(embeddings: [[Float]], modelVersion: String) throws {
         lock.lock(); defer { lock.unlock() }
         self.embeddings = embeddings
+        self.modelVersion = modelVersion
     }
 
     public func reset() throws {
         lock.lock(); defer { lock.unlock() }
         embeddings = []
+        modelVersion = nil
     }
 }

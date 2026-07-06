@@ -48,5 +48,6 @@ nav:
       - "ADR-0011 — Enforcement gating": adr/0011-enforcement-gating.md
       - "ADR-0012 — Local identity (feature print)": adr/0012-local-identity-featureprint.md
       - "ADR-0013 — Settings UI + login item": adr/0013-settings-ui-and-login-item.md
+      - "ADR-0014 — Core ML face-embedding model": adr/0014-coreml-face-embedding-model.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md
