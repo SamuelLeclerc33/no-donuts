@@ -34,8 +34,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // coordinator (writes them). Held so they aren't deallocated and so enrollment
     // can reuse them.
     private let enrollmentStore = EnrollmentStore()
-    private let embedder = VisionFeaturePrintEmbedder()
+    /// Active face embedder (ND-021 Phase 2). Prefer the bundled Core ML FaceNet model
+    /// (`CoreMLFaceEmbedder`) for a true face-IDENTITY embedding (durable EC-03 fix); fall
+    /// back to `VisionFeaturePrintEmbedder` when the compiled `.mlmodelc` isn't bundled
+    /// (its failable init returns nil and logs). Shared by the recognizer AND enrollment,
+    /// so both always use the SAME model — enrollment tags its stored vectors with this
+    /// embedder's descriptor.version, and a mismatch forces re-enroll (never cross-compared).
+    private let embedder: FaceEmbedding = AppDelegate.makeEmbedder()
     private var enrollmentCoordinator: EnrollmentCoordinator?
+
+    /// Select the launch embedder: Core ML FaceNet if its compiled model is bundled,
+    /// otherwise the Vision feature-print fallback. Logs which one is active (honest —
+    /// mirrors the existing launch logging), so `log stream` shows the real engine.
+    private static func makeEmbedder() -> FaceEmbedding {
+        let log = OSLog(subsystem: "com.nodonuts.app", category: "recognition")
+        if let coreML = CoreMLFaceEmbedder(resourceName: "FaceNetVGGFace2") {
+            os_log("active face embedder = CoreMLFaceEmbedder (%{public}@, %d-d, tuned=%{public}@)",
+                   log: log, type: .default,
+                   coreML.descriptor.version, coreML.descriptor.outputDimension,
+                   coreML.descriptor.thresholdIsTuned ? "yes" : "no")
+            return coreML
+        }
+        os_log("active face embedder = VisionFeaturePrintEmbedder (Core ML model not bundled — fallback)",
+               log: log, type: .default)
+        return VisionFeaturePrintEmbedder()
+    }
     /// True during an enrollment capture: an enforcement-disabled reason (like pause)
     /// so nothing can lock the screen mid-capture. Priority in the gate sits just
     /// below a real session suspend and above pause / trusted Wi-Fi.

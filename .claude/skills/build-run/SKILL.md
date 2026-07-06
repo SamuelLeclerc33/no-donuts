@@ -37,6 +37,12 @@ open build/NoDonuts.app        # launch it
 - `Resources/NoDonuts.entitlements` carries the camera entitlement; `make-app.sh` embeds it at sign time.
 - Ad-hoc signing (`--sign -`) is fine for local runs. **Distribution** needs Developer-ID signing + notarization (ND-050) — ad-hoc bundles aren't Gatekeeper-distributable and TCC grants don't transfer to other machines.
 
+## Core ML face model (ND-021 / ADR-0014)
+
+- If `Resources/Models/FaceNetVGGFace2.mlpackage` is present, `make-app.sh` compiles it to `FaceNetVGGFace2.mlmodelc` (via `xcrun coremlcompiler compile`) into `Contents/Resources/`, so the app uses the FaceNet **face-identity** embedder at launch (`CoreMLFaceEmbedder`). Otherwise it warns and continues — the app falls back to `VisionFeaturePrintEmbedder`. Check the launch log (`log stream --predicate 'subsystem == "com.nodonuts.app"'`) for the `active face embedder = …` line.
+- **`coremlcompiler` ships with full Xcode, NOT Command Line Tools.** On a CLT-only machine the model can't be compiled/bundled and the app runs on the Vision fallback. Bundling the FaceNet model into a build therefore needs full Xcode installed (a wrinkle vs the CLT-only ADR-0008 path).
+- The 45MB model blob is **git-ignored**. Reproduce it with `Resources/Models/convert_facenet.py` — see `Resources/Models/README.md`.
+
 ## Camera permission
 
 First run triggers the macOS camera prompt (uses `NSCameraUsageDescription`). To reset during testing:

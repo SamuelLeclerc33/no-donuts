@@ -24,6 +24,14 @@ build/
 # Local enrollment data should NEVER be committed (it lives in Keychain/encrypted store anyway)
 *.embeddings
 
+# Core ML face model binary (ND-021 / ADR-0014): the 45MB model blob is kept OUT of git
+# to avoid permanent history bloat and for distribution hygiene (privacy app). It is
+# reproduced deterministically from Resources/Models/convert_facenet.py — see
+# Resources/Models/README.md. The compiled .mlmodelc lives only inside the built .app.
+Resources/Models/*.mlpackage
+Resources/Models/*.mlmodel
+Resources/Models/*.mlmodelc
+
 # Docs site tooling
 .venv/
 __pycache__/
