@@ -58,18 +58,37 @@ This writes `FaceNetVGGFace2.mlpackage` **into this directory**
 > The very first run downloads the VGGFace2 weights (`InceptionResnetV1`) into a
 > local torch cache. The conversion itself is deterministic.
 
+## Compiling to `.mlmodelc` (Xcode-free — the normal path)
+
+The app bundles a **compiled** model directory (`.mlmodelc`), not the `.mlpackage`.
+Compile it with **coremltools** (pure Python — **no Xcode required**), from this
+directory in the same venv used above:
+
+```sh
+.venv/bin/python -c 'from coremltools.models.utils import compile_model; compile_model("FaceNetVGGFace2.mlpackage", "FaceNetVGGFace2.mlmodelc")'
+```
+
+This produces `FaceNetVGGFace2.mlmodelc` **into this directory** (`Resources/Models/`),
+which is exactly where the build looks for it first. Both the `.mlpackage` and the
+`.mlmodelc` are git-ignored blobs.
+
 ## How the build finds it
 
-`scripts/make-app.sh` looks for `Resources/Models/FaceNetVGGFace2.mlpackage`. If
-present, it compiles it to `FaceNetVGGFace2.mlmodelc` with
-`xcrun coremlcompiler compile <pkg> <dest>` and copies the compiled `.mlmodelc` into
-the built app bundle's `Contents/Resources/`, so
+`scripts/make-app.sh` resolves the model in this order, and copies/compiles the
+result into the built app bundle's `Contents/Resources/`, so
 `Bundle.main.url(forResource: "FaceNetVGGFace2", withExtension: "mlmodelc")` resolves
-at runtime and `CoreMLFaceEmbedder` loads it.
+at runtime and `CoreMLFaceEmbedder` loads it:
 
-If the package is **absent** — or `coremlcompiler` is unavailable (it ships with
-**full Xcode**, not Command Line Tools) — the script logs a clear warning and
-continues; the app then falls back to the Vision feature-print embedder
-(`VisionFeaturePrintEmbedder`) and still runs. Compiling the model into a shippable
-bundle therefore currently needs full Xcode installed (a wrinkle vs the CLT-only
-ADR-0008 local-dev path).
+1. **Pre-compiled `Resources/Models/FaceNetVGGFace2.mlmodelc`** (produced by
+   coremltools as above) → `cp -R` into the bundle. This is the **primary, Xcode-free
+   path** and the normal case on this repo.
+2. Else **`Resources/Models/FaceNetVGGFace2.mlpackage`** *and* an available
+   `xcrun coremlcompiler` (full Xcode only) → compile it on the fly (fallback for
+   full-Xcode machines).
+3. Else → a clear warning; the app falls back to the Vision feature-print embedder
+   (`VisionFeaturePrintEmbedder`) and still runs.
+
+Bundling the FaceNet model therefore needs **either** a pre-compiled `.mlmodelc`
+(via coremltools — **no Xcode**) **or** full Xcode's `coremlcompiler`. The earlier
+"needs full Xcode" wrinkle is resolved by the coremltools compile step above, which
+keeps the whole flow on the CLT-only ADR-0008 local-dev path.

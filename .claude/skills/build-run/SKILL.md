@@ -39,9 +39,9 @@ open build/NoDonuts.app        # launch it
 
 ## Core ML face model (ND-021 / ADR-0014)
 
-- If `Resources/Models/FaceNetVGGFace2.mlpackage` is present, `make-app.sh` compiles it to `FaceNetVGGFace2.mlmodelc` (via `xcrun coremlcompiler compile`) into `Contents/Resources/`, so the app uses the FaceNet **face-identity** embedder at launch (`CoreMLFaceEmbedder`). Otherwise it warns and continues — the app falls back to `VisionFeaturePrintEmbedder`. Check the launch log (`log stream --predicate 'subsystem == "com.nodonuts.app"'`) for the `active face embedder = …` line.
-- **`coremlcompiler` ships with full Xcode, NOT Command Line Tools.** On a CLT-only machine the model can't be compiled/bundled and the app runs on the Vision fallback. Bundling the FaceNet model into a build therefore needs full Xcode installed (a wrinkle vs the CLT-only ADR-0008 path).
-- The 45MB model blob is **git-ignored**. Reproduce it with `Resources/Models/convert_facenet.py` — see `Resources/Models/README.md`.
+- `make-app.sh` bundles the FaceNet **face-identity** model into `Contents/Resources/` so the app uses `CoreMLFaceEmbedder` at launch. Precedence: (a) a **pre-compiled** `Resources/Models/FaceNetVGGFace2.mlmodelc` → `cp -R` (the normal, **Xcode-free** path); (b) else a `FaceNetVGGFace2.mlpackage` + full-Xcode `xcrun coremlcompiler` → compile on the fly; (c) else warn and continue — the app falls back to `VisionFeaturePrintEmbedder`. Check the launch log (`log stream --predicate 'subsystem == "com.nodonuts.app"'`) for the `active face embedder = …` line.
+- **No full Xcode needed to bundle the model:** compile the `.mlpackage` to `.mlmodelc` with **coremltools** (`compile_model(...)`, pure Python) and drop it in `Resources/Models/` — see `Resources/Models/README.md`. Full Xcode's `coremlcompiler` is only the fallback (path b). This resolves the earlier "needs full Xcode" wrinkle and keeps model bundling on the CLT-only ADR-0008 path.
+- The model blobs (`.mlpackage`, `.mlmodelc`) are **git-ignored**. Reproduce with `Resources/Models/convert_facenet.py` + the coremltools compile step — see `Resources/Models/README.md`.
 
 ## Camera permission
 
