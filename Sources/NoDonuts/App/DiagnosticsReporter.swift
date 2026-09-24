@@ -40,6 +40,7 @@ struct DiagnosticsReporter {
     func diagnosticsSummary(
         state: PresenceState,
         config: Config,
+        descriptor: FaceEmbeddingModelDescriptor,
         store: EnrollmentStoring,
         identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
@@ -87,7 +88,6 @@ struct DiagnosticsReporter {
         lines.append("[Config (raw base values from store)]")
         lines.append("  tickIntervalSeconds:            \(config.tickIntervalSeconds)")
         lines.append("  graceSeconds:                   \(config.graceSeconds)")
-        lines.append("  matchThreshold:                 \(config.matchThreshold)")
         lines.append("  consecutiveAbsentTicksToLock:   \(config.consecutiveAbsentTicksToLock)")
         lines.append("  maxConsecutiveErrorsBeforeAbsent: \(config.maxConsecutiveErrorsBeforeAbsent)")
         lines.append("  maxCallAssumedPresentSeconds:   \(config.maxCallAssumedPresentSeconds)")
@@ -100,7 +100,12 @@ struct DiagnosticsReporter {
         // what is actually in effect. Report the SAME resolved values the recognizer
         // uses, via the shared resolvers. PII-safe: numbers/bools only.
         lines.append("[Effective (live, as used by the recognizer)]")
-        lines.append("  matchThreshold:  \(resolvedMatchThreshold(default: config.matchThreshold))")
+        lines.append("  matchThreshold:  \(resolvedMatchThreshold(for: descriptor))")
+        // ND-076: per-model threshold provenance (numbers only).
+        let range = descriptor.matchThresholdRange
+        lines.append("  matchThreshold model default: \(descriptor.defaultMatchThreshold) (\(descriptor.thresholdIsTuned ? "tuned" : "not yet tuned"))")
+        lines.append("  matchThreshold range:  \(range.lowerBound)...\(range.upperBound)")
+        lines.append("  matchThreshold override (\(descriptor.thresholdOverrideKey)): \(thresholdOverrideDescription(descriptor))")
         lines.append("  antiSpoofEnabled: \(resolvedAntiSpoofEnabled())")
         lines.append("  spoofTextureFloor: \(resolvedSpoofTextureFloor(default: defaultSpoofTextureFloor))")
         lines.append("")
@@ -117,12 +122,28 @@ struct DiagnosticsReporter {
         return lines.joined(separator: "\n")
     }
 
+    /// Describe the stored per-model override: "none", its value, or its value flagged as
+    /// rejected when the resolver would ignore it (out of range / non-numeric).
+    private func thresholdOverrideDescription(_ descriptor: FaceEmbeddingModelDescriptor) -> String {
+        guard let raw = UserDefaults.standard.object(forKey: descriptor.thresholdOverrideKey) else {
+            return "none"
+        }
+        guard let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else {
+            return "(non-numeric) — rejected: not a number"
+        }
+        let v = n.doubleValue
+        return v.isFinite && descriptor.matchThresholdRange.contains(v)
+            ? "\(v)"
+            : "\(v) — rejected: out of range"
+    }
+
     /// Copy the summary to the general pasteboard. Convenience wrapper around
     /// `diagnosticsSummary(...)` so the menu action is a one-liner.
     @discardableResult
     func copyToPasteboard(
         state: PresenceState,
         config: Config,
+        descriptor: FaceEmbeddingModelDescriptor,
         store: EnrollmentStoring,
         identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
@@ -133,6 +154,7 @@ struct DiagnosticsReporter {
         let summary = diagnosticsSummary(
             state: state,
             config: config,
+            descriptor: descriptor,
             store: store,
             identity: identity,
             locationStatus: locationStatus,

@@ -66,8 +66,9 @@ struct SettingsView: View {
                     Text(String(format: "%.2f", store.matchThreshold))
                         .foregroundStyle(.secondary).monospacedDigit()
                 }
+                // Bounds come from the ACTIVE model (ND-076) — per-model score scales differ.
                 Slider(value: $store.matchThreshold,
-                       in: SettingsStore.Range.threshold,
+                       in: store.thresholdRange,
                        step: 0.01) {
                     Text("Lock sensitivity")
                 } minimumValueLabel: {
@@ -75,8 +76,20 @@ struct SettingsView: View {
                 } maximumValueLabel: {
                     Text("Strict").font(.caption).foregroundStyle(.secondary)
                 }
+                .accessibilityLabel("Lock sensitivity")
+                .accessibilityValue(String(format: "%.2f", store.matchThreshold))
                 Text("How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.")
                     .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    // Honest about provenance: an un-tuned default is a provisional guess.
+                    Text(String(format: "Model default %.2f", store.modelDefaultThreshold)
+                         + (store.thresholdIsTuned ? " (tuned)" : " (not yet tuned)"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to default") { store.resetMatchThreshold() }
+                        .controlSize(.small)
+                        .disabled(!store.hasThresholdOverride)
+                }
             }
 
             // Grace period (graceSeconds).

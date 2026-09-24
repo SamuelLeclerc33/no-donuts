@@ -11,24 +11,6 @@ public struct Config: Codable, Equatable {
     /// turn-aways). Effective walk-away→lock ≈ consensus (`consecutiveAbsentTicksToLock`
     /// × `tickIntervalSeconds`) + `graceSeconds` ≈ 5 + 5 = ~10s at defaults.
     public var graceSeconds: Double = 5
-    /// Minimum cosine similarity for a face embedding to count as the enrolled user
-    /// (see `IdentityRecognizer` / `cosineSimilarity`). A score below this → the face
-    /// is a stranger, never present (EC-03).
-    ///
-    /// This default is tuned for the current embedder (`VisionFeaturePrintEmbedder`,
-    /// ADR-0012), which uses Apple's `VNGenerateImageFeaturePrint`. That is a
-    /// **general** image feature print, NOT a face-optimized embedding, so its
-    /// same-person vs different-person separation is weaker than a dedicated face
-    /// model — absolute scores here are not comparable to FaceNet-style thresholds and
-    /// MUST be tuned on real device data (ND-024).
-    ///
-    /// The default is deliberately **lenient** (biased toward NOT locking out the real
-    /// user): a false lock of the enrolled user is far more annoying than briefly
-    /// treating a lookalike as present, and the presence engine's 5-tick consensus +
-    /// grace already debounces occasional misreads. `0.6` is a defensible lenient
-    /// starting point for the general feature print; it is user-tunable (ND-040) and
-    /// should be raised once on-device tuning data exists (ND-024).
-    public var matchThreshold: Double = 0.6
     /// Consecutive no-face/stranger ticks required to begin the grace countdown
     /// (the absence "consensus"). Debounces single-frame glitches: a lone bad
     /// reading can't start the lock clock; it takes 5 in a row (≈5s of consensus

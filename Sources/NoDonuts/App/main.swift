@@ -135,12 +135,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let camera = CameraController()
         self.camera = camera
 
+        // ND-076: the old GLOBAL `matchThreshold` override was model-agnostic (a value
+        // tuned for one model carried over to another). Drop it once, before the Settings
+        // store / recognizer / threshold log read anything. Overrides are now per-model.
+        if let dropped = dropLegacyMatchThresholdKey() {
+            os_log("dropped legacy global matchThreshold %{public}@ (ND-076: overrides are now per-model)",
+                   log: OSLog(subsystem: "com.nodonuts.app", category: "recognition"),
+                   type: .default, String(dropped))
+        }
+
         // Settings (ND-040): create the store (loads persisted values from UserDefaults,
-        // falling back to Config defaults). Seed `config` from it so the engine and the
-        // recognizer start with the user's saved tunables. matchThreshold flows through
-        // here (still validated by the store's clamp AND the recognizer's live resolver);
-        // this replaces the old ND-024 applyMatchThresholdOverride() launch read.
-        let settingsStore = SettingsStore()
+        // falling back to Config defaults). Seed `config` from it so the engine starts
+        // with the user's saved grace / tick tunables. The match threshold does NOT flow
+        // through Config (ND-076): the store reads/writes the ACTIVE model's per-model key
+        // and the recognizer resolves it live per tick from `embedder.descriptor`.
+        let settingsStore = SettingsStore(descriptor: embedder.descriptor)
         self.settingsStore = settingsStore
         applyStoreToConfig(settingsStore)
         // onChange: rebuild Config from the store + live-apply to the engine. Threshold /
@@ -158,7 +167,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let recognizer = IdentityRecognizer(
             embedder: embedder,
             store: enrollmentStore,
-            matchThreshold: config.matchThreshold,
             marker: enrollmentMarker
         )
         self.recognizer = recognizer
@@ -521,16 +529,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notProtectingNotifier.requestAuthorizationIfNeeded()
     }
 
-    /// Copy the Settings store's tunables into `config` (ND-040). These three fields are
-    /// consumed via Config: `graceSeconds` + `tickIntervalSeconds` by the engine/loop,
-    /// and `matchThreshold` as the recognizer's BASE default (the recognizer still
-    /// resolves the live `matchThreshold` UserDefaults key per tick, so a Settings change
-    /// applies immediately even before the next engine.updateConfig). The store has
-    /// already clamped these to sane ranges; the Core resolvers remain the final guard.
+    /// Copy the Settings store's tunables into `config` (ND-040): `graceSeconds` +
+    /// `tickIntervalSeconds`, consumed by the engine/loop. The match threshold is NOT in
+    /// Config (ND-076) — the recognizer resolves it per tick from the active model's
+    /// descriptor. The store has already clamped these; the Core resolvers are the guard.
     private func applyStoreToConfig(_ store: SettingsStore) {
         config.tickIntervalSeconds = store.tickIntervalSeconds
         config.graceSeconds = store.graceSeconds
-        config.matchThreshold = store.matchThreshold
     }
 
     /// Log the effective identity matchThreshold once (pairs with cooper's per-tick score
@@ -538,7 +543,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// logged value matches what the recognizer will actually use.
     private func logEffectiveMatchThreshold() {
         let log = OSLog(subsystem: "com.nodonuts.app", category: "recognition")
-        let resolved = resolvedMatchThreshold(default: config.matchThreshold)
+        let resolved = resolvedMatchThreshold(for: embedder.descriptor)
         os_log("identity matchThreshold = %.2f", log: log, type: .default, resolved)
     }
 
@@ -578,6 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DiagnosticsReporter().copyToPasteboard(
             state: engine.state,
             config: config,
+            descriptor: embedder.descriptor,
             store: enrollmentStore,
             identity: identityStatus(
                 for: enrollmentStore.enrollmentState(),

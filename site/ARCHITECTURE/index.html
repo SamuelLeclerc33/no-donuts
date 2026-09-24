@@ -1327,7 +1327,7 @@ recognition path:
 transition:
     if ABSENT continuously &gt;= graceSeconds -&gt; request LOCK -&gt; SUSPENDED
 </code></pre></div>
-<p>Tunables (config): <code>tickIntervalSeconds</code>, <code>graceSeconds</code>, <code>matchThreshold</code>, <code>consecutiveAbsentTicksToLock</code>, fail policy.</p>
+<p>Tunables (config): <code>tickIntervalSeconds</code>, <code>graceSeconds</code>, <code>consecutiveAbsentTicksToLock</code>, and a per-model <code>matchThreshold</code> (from the embedder's descriptor, overridable via <code>matchThreshold.&lt;model version&gt;</code>), fail policy.</p>
 <h2 id="data-flow-privacy">Data flow &amp; privacy<a class="headerlink" href="#data-flow-privacy" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Frames live in memory only; not written to disk, not transmitted.</li>

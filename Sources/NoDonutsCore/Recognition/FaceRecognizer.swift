@@ -63,7 +63,6 @@ public protocol FaceRecognizing: Sendable {
 public final class IdentityRecognizer: FaceRecognizing, Sendable {
     private let embedder: FaceEmbedding
     private let store: EnrollmentStoring
-    private let matchThreshold: Double
     /// Optional non-secret enrollment marker (ND-073) — distinguishes "Keychain item
     /// deleted" from "never enrolled". `nil` → a `.notEnrolled` read is `.notEnrolled`.
     private let marker: EnrollmentMarkerStoring?
@@ -82,21 +81,16 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
 
     /// - Parameters:
-    ///   - embedder: the active `FaceEmbedding`; its `descriptor` supplies the base
-    ///     threshold and the active model version used for the re-enroll check (ADR-0014).
+    ///   - embedder: the active `FaceEmbedding`; its `descriptor` is the SOLE source of the
+    ///     match threshold (default + per-model override key + accepted range, ND-076)
+    ///     and the active model version used for the re-enroll check (ADR-0014).
     ///   - store: enrollment store.
-    ///   - matchThreshold: BASE default the live `resolvedMatchThreshold` falls back to.
-    ///     Defaults to the embedder's `descriptor.defaultMatchThreshold` so the threshold
-    ///     is model-driven; an explicit value (e.g. the App's persisted Settings value)
-    ///     still overrides the base. The live `matchThreshold` UserDefaults key wins over
-    ///     both, per tick.
     ///   - marker: optional non-secret enrollment marker (ND-073) used only to compute
     ///     `lastIdentityStatus`; it never changes a recognition result.
-    public init(embedder: FaceEmbedding, store: EnrollmentStoring, matchThreshold: Double? = nil,
+    public init(embedder: FaceEmbedding, store: EnrollmentStoring,
                 marker: EnrollmentMarkerStoring? = nil) {
         self.embedder = embedder
         self.store = store
-        self.matchThreshold = matchThreshold ?? embedder.descriptor.defaultMatchThreshold
         self.marker = marker
     }
 
@@ -115,10 +109,10 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                                     markerVersion: marker?.markerVersion)
         statusLock.withLock { $0 = status }
 
-        // ND-040: resolve the match threshold LIVE per call from UserDefaults, using
-        // the init `matchThreshold` as the safe BASE default. A Settings change to the
-        // `matchThreshold` key thus takes effect on the very next tick, no relaunch.
-        let threshold = resolvedMatchThreshold(default: matchThreshold)
+        // ND-040 / ND-076: resolve the match threshold LIVE per call from the active
+        // model's own per-model key, falling back to the model's default (out-of-range
+        // overrides rejected). A Settings change takes effect on the very next tick.
+        let threshold = resolvedMatchThreshold(for: embedder.descriptor)
 
         switch await embedder.embeddingWithLiveness(for: frame) {
         case .failure:

@@ -118,37 +118,67 @@ public func resolvedVisionOrientation(
     return orientation
 }
 
-/// Resolve the cosine-similarity **match threshold** for identity recognition,
-/// validating any user override before trusting it.
+/// Legacy global override key (pre-ND-076). Model-agnostic, so a value tuned for one
+/// model carried over to another — dropped once at launch by `dropLegacyMatchThresholdKey`.
+public let legacyMatchThresholdKey = "matchThreshold"
+
+/// Resolve the cosine-similarity **match threshold** for identity recognition on the
+/// given model, validating any user override before trusting it (ND-076).
 ///
-/// Mirrors `resolvedVisionOrientation`: a pure, testable resolver that reads a single
-/// `UserDefaults` value and falls back to a safe `def` when the stored value is absent
-/// or nonsensical. The App calls this instead of reading `matchThreshold` raw.
+/// Reads ONLY the model's own per-model key (`descriptor.thresholdOverrideKey`, e.g.
+/// `matchThreshold.facenet-vggface2-v1`), so an override tuned for one model never bleeds
+/// into another. The override is accepted ONLY if it is a number inside
+/// `descriptor.matchThresholdRange`. Anything else — absent, non-numeric, or OUT OF RANGE
+/// — falls back to `descriptor.defaultMatchThreshold`. Out-of-range is REJECTED, never
+/// clamped: an injected `0.01` must not land on the floor (that would still be the
+/// loosest acceptable identity check); it lands on the model default instead.
 ///
-/// Validation — an override is accepted ONLY if it is a number strictly in `(0.0, 1.0)`:
-/// - A threshold of `0.0` (or negative) is effectively **fail-open for identity**: any
-///   face — including a stranger's — clears it, so identity checks stop meaning anything.
-/// - A threshold of `1.0` (or above) demands a *perfect* cosine match, which live camera
-///   frames never produce → the enrolled user never matches → **permanent lockout**.
-///
-/// Both extremes defeat the whole point, so either is rejected in favor of the safe
-/// default `def` (typically `Config().matchThreshold`). Absent / non-numeric values also
-/// fall back to `def`.
+/// A rejected (present-but-invalid) override is logged once per key+value (numbers only).
 ///
 /// Cheap (a single `UserDefaults` read); safe to call per recognition pass.
 public func resolvedMatchThreshold(
-    default def: Double,
-    defaults: UserDefaults = .standard,
-    key: String = "matchThreshold"
+    for descriptor: FaceEmbeddingModelDescriptor,
+    defaults: UserDefaults = .standard
 ) -> Double {
-    // `object(forKey:)` distinguishes "absent" from a stored 0, and lets us reject
-    // non-numeric junk (a stored String, etc.) rather than coercing it to 0.
-    guard let value = defaults.object(forKey: key) as? NSNumber else { return def }
-    let threshold = value.doubleValue
-    // Reject the fail-open (<= 0) and permanent-lockout (>= 1) extremes; accept only
-    // the safe open interval.
-    guard threshold > 0.0, threshold < 1.0 else { return def }
+    let key = descriptor.thresholdOverrideKey
+    let fallback = descriptor.defaultMatchThreshold
+    // `object(forKey:)` distinguishes "absent" from a stored 0.
+    guard let raw = defaults.object(forKey: key) else { return fallback }
+    // Reject non-numeric junk (a stored String, etc.) rather than coercing it. A Bool
+    // bridges to NSNumber too; exclude it explicitly (a `true` must not read as 1.0).
+    guard let number = raw as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else {
+        noteRejectedThreshold(key: key, description: "non-numeric", fallback: fallback)
+        return fallback
+    }
+    let threshold = number.doubleValue
+    guard threshold.isFinite, descriptor.matchThresholdRange.contains(threshold) else {
+        noteRejectedThreshold(key: key, description: String(threshold), fallback: fallback)
+        return fallback
+    }
     return threshold
+}
+
+/// Remove the legacy global `matchThreshold` override key (ND-076), once, at launch.
+/// Returns its numeric value if one existed (so the caller can log what was dropped),
+/// `nil` if the key was absent or non-numeric. The key is removed in either case.
+@discardableResult
+public func dropLegacyMatchThresholdKey(defaults: UserDefaults = .standard) -> Double? {
+    guard let raw = defaults.object(forKey: legacyMatchThresholdKey) else { return nil }
+    defaults.removeObject(forKey: legacyMatchThresholdKey)
+    guard let number = raw as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+    return number.doubleValue
+}
+
+/// Log-once bookkeeping for rejected threshold overrides — the resolver runs every tick,
+/// so without this a bad `defaults write` would spam the log at 1 Hz.
+private let rejectedThresholdLog = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+private let rejectedThresholdSeen = OSAllocatedUnfairLock<Set<String>>(initialState: [])
+
+private func noteRejectedThreshold(key: String, description: String, fallback: Double) {
+    let token = "\(key)=\(description)"
+    let isNew = rejectedThresholdSeen.withLock { $0.insert(token).inserted }
+    guard isNew else { return }
+    rejectedThresholdLog.notice("rejected matchThreshold override \(key, privacy: .public) = \(description, privacy: .public) (outside model range or not a number) → using model default \(fallback, privacy: .public)")
 }
 
 /// `FaceEmbedding` backed by Apple Vision's `VNGenerateImageFeaturePrint` (ADR-0012).

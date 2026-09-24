@@ -10,6 +10,11 @@ import NoDonutsCore
 //     UserDefaults keys the recognizer reads every tick via `resolvedMatchThreshold`
 //     / `resolvedAntiSpoofEnabled` (NoDonutsCore/Recognition). Writing them here
 //     applies on the recognizer's next tick with no engine round-trip.
+//   - The match threshold is PER-MODEL (ND-076): it lives under the ACTIVE embedder's
+//     `descriptor.thresholdOverrideKey`, clamped to `descriptor.matchThresholdRange`.
+//     Loading NEVER writes that key — only a user edit does — so an untouched install
+//     keeps following the model's `defaultMatchThreshold` as the model is retuned, and
+//     "Reset to default" (`resetMatchThreshold()`) simply removes the key.
 //   - `tickIntervalSeconds` and `graceSeconds` are consumed through `Config`: on any
 //     change we fire `onChange`, and the AppDelegate rebuilds `Config` from this
 //     store, calls `engine.updateConfig(_:)`, and the loop (which now reads
@@ -22,28 +27,44 @@ import NoDonutsCore
 // Privacy: writes local UserDefaults only. No network, no telemetry.
 @MainActor
 final class SettingsStore: ObservableObject {
-    /// UserDefaults keys. `matchThresholdKey` / `antiSpoofKey` MUST match the
-    /// recognizer's resolver keys (see FaceEmbedding.swift / FaceLiveness.swift).
+    /// UserDefaults keys. `antiSpoofKey` MUST match the recognizer's resolver key
+    /// (FaceLiveness.swift). The threshold key is per-model — see `thresholdKey`.
     private enum Keys {
         static let tickInterval = "tickIntervalSeconds"
         static let grace = "graceSeconds"
-        static let matchThreshold = "matchThreshold"       // == resolvedMatchThreshold key
         static let antiSpoof = "antiSpoofEnabled"          // == resolvedAntiSpoofEnabled key
     }
 
-    /// Sane clamp ranges, consistent with the Core resolvers and defaults.
-    /// `matchThreshold` mirrors `resolvedMatchThreshold`'s accepted open interval
-    /// (0.0, 1.0); we clamp to a slightly inset closed range so the slider can never
-    /// write a value the resolver would reject and silently fall back on.
+    /// Sane clamp ranges for the Config-backed tunables. The match-threshold range is
+    /// NOT here: it belongs to the active model (`thresholdRange`), so the slider can
+    /// never write a value the resolver would reject and silently fall back on.
     enum Range {
         static let tick: ClosedRange<Double> = 0.5...10
         // Lower bound is 2s (not 0): there must always be some away-grace so a brief
         // look-away never locks instantly (code-review #3). Upper bound unchanged.
         static let grace: ClosedRange<Double> = 2...60
-        static let threshold: ClosedRange<Double> = 0.05...0.95
     }
 
     private let defaults: UserDefaults
+
+    /// The ACTIVE embedder's descriptor (ND-076). Owns the threshold key, range and default.
+    private let descriptor: FaceEmbeddingModelDescriptor
+
+    /// Per-model override key, e.g. `matchThreshold.facenet-vggface2-v1`.
+    private var thresholdKey: String { descriptor.thresholdOverrideKey }
+
+    // MARK: - Model threshold facts (read-only, for the Settings caption / slider)
+
+    /// The accepted threshold range for the active model — the slider's bounds.
+    var thresholdRange: ClosedRange<Double> { descriptor.matchThresholdRange }
+    /// The active model's own default threshold (what "Reset to default" returns to).
+    var modelDefaultThreshold: Double { descriptor.defaultMatchThreshold }
+    /// Whether the model default has been measured (ND-056) or is still provisional.
+    var thresholdIsTuned: Bool { descriptor.thresholdIsTuned }
+
+    /// True when ANY value is stored under the per-model key — including one the resolver
+    /// rejects as out of range — so "Reset to default" can always clear it.
+    @Published private(set) var hasThresholdOverride: Bool = false
 
     /// Fired after any published value changes (and after UserDefaults is written).
     /// The AppDelegate sets this to rebuild Config + `engine.updateConfig(_:)`.
@@ -77,11 +98,15 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    @Published var matchThreshold: Double = Config().matchThreshold {
+    /// Seeded in `load()` from the resolver's EFFECTIVE value (a rejected stored value
+    /// shows the model default and is left untouched). Only a user edit persists.
+    @Published var matchThreshold: Double = 0 {
         didSet {
-            let clamped = clamp(matchThreshold, to: Range.threshold)
+            guard !isLoading else { return }
+            let clamped = clamp(matchThreshold, to: thresholdRange)
             if clamped != matchThreshold { matchThreshold = clamped; return }
-            commit(clamped, key: Keys.matchThreshold)
+            commit(clamped, key: thresholdKey)
+            hasThresholdOverride = true
         }
     }
 
@@ -111,9 +136,19 @@ final class SettingsStore: ObservableObject {
 
     // MARK: - Init
 
-    init(defaults: UserDefaults = .standard) {
+    init(descriptor: FaceEmbeddingModelDescriptor, defaults: UserDefaults = .standard) {
+        self.descriptor = descriptor
         self.defaults = defaults
         load()
+    }
+
+    /// "Reset to default" (ND-076): remove the per-model override so the recognizer falls
+    /// back to the model's `defaultMatchThreshold`, then re-seed the slider from the
+    /// resolver without writing anything back. Fires `onChange` like any other edit.
+    func resetMatchThreshold() {
+        defaults.removeObject(forKey: thresholdKey)
+        loadMatchThreshold()
+        onChange?()
     }
 
     /// Re-read the externally-sourced state (login-item registration + trusted-network
@@ -124,6 +159,9 @@ final class SettingsStore: ObservableObject {
     /// update. The persisted tunables are already live via their own `@Published` didSets,
     /// so they don't need refreshing.
     func refresh() {
+        // Re-read the threshold too: it may have been changed via `defaults write` while
+        // the window was closed. Read-only — never persists.
+        loadMatchThreshold()
         startAtLogin = LoginItem.isEnabled()
         trustedNetworks = trustedNetworksProvider?() ?? trustedNetworks
     }
@@ -138,11 +176,21 @@ final class SettingsStore: ObservableObject {
         let d = Config()
         tickIntervalSeconds = readDouble(Keys.tickInterval, default: d.tickIntervalSeconds, in: Range.tick)
         graceSeconds = readDouble(Keys.grace, default: d.graceSeconds, in: Range.grace)
-        matchThreshold = readDouble(Keys.matchThreshold, default: d.matchThreshold, in: Range.threshold)
+        loadMatchThreshold(alreadyLoading: true)
         // Anti-spoof defaults ON when absent — matches resolvedAntiSpoofEnabled.
         antiSpoofEnabled = defaults.object(forKey: Keys.antiSpoof) == nil
             ? true
             : defaults.bool(forKey: Keys.antiSpoof)
+    }
+
+    /// Seed `matchThreshold` from the SAME resolver the recognizer uses (so the slider
+    /// shows what is actually in effect — the model default if the stored value is absent
+    /// or rejected) and mirror whether a key is stored. Never writes UserDefaults.
+    private func loadMatchThreshold(alreadyLoading: Bool = false) {
+        if !alreadyLoading { isLoading = true }
+        defer { if !alreadyLoading { isLoading = false } }
+        matchThreshold = resolvedMatchThreshold(for: descriptor, defaults: defaults)
+        hasThresholdOverride = defaults.object(forKey: thresholdKey) != nil
     }
 
     // MARK: - Helpers

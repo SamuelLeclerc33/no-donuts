@@ -925,6 +925,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-24-the-threshold-travels-with-the-model-nd-076" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-24): the threshold travels with the model (ND-076)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1087,6 +1098,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-24-the-threshold-travels-with-the-model-nd-076" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-24): the threshold travels with the model (ND-076)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1165,6 +1187,13 @@
 <li>The app shows it everywhere: the header reads "⚠️ identity off: re-enroll needed", the present glyph becomes an orange <code>person.fill.questionmark</code>, the menu item reads "Re-enroll my face (required)…", a local notification (<code>nd.identityOff</code>) repeats every 5 min, and diagnostics carry an Identity line.</li>
 <li><code>EnrollmentStore</code> caches its first definitive read for the process lifetime. An external deletion mid-session therefore does not weaken the running app (it keeps matching the cached vectors) and is flagged at the next launch.</li>
 </ul>
+<h2 id="amendment-2026-09-24-the-threshold-travels-with-the-model-nd-076">Amendment (2026-09-24): the threshold travels with the model (ND-076)<a class="headerlink" href="#amendment-2026-09-24-the-threshold-travels-with-the-model-nd-076" title="Permanent link">&para;</a></h2>
+<p>The descriptor's <code>defaultMatchThreshold</code> was supposed to be the base default, but the App always passed the Vision-era <code>Config.matchThreshold</code> (0.6). So FaceNet's 0.5 never applied, and one global <code>matchThreshold</code> override carried across model swaps. Measured genuine p5 is 0.662, so 0.6 already put some real-user ticks at risk.</p>
+<p><strong>Decision:</strong>
+- <code>Config.matchThreshold</code> is removed. The active descriptor is the <strong>only</strong> default.
+- Each descriptor declares a safe <code>matchThresholdRange</code> (FaceNet 0.40–0.90, Vision 0.40–0.95). Overrides live under the per-model key <code>matchThreshold.&lt;version&gt;</code>, and a value outside the range is <strong>rejected</strong> (the model default applies), never clamped. An injected 0.01 cannot become "the floor". The 0.40 floor sits below the measured genuine p1 (0.525), so it can't lock out the real user, and it blocks the near-zero values that accept anyone.
+- The legacy global <code>matchThreshold</code> key is deleted once at launch, so a value tuned for another model never leaks.
+- The Settings slider is limited to the active model's range, shows the model default and whether it is tuned, and has a Reset button that removes the override.</p>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Keep tuning the Vision feature print (ADR-0012 only):</strong> cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).</li>

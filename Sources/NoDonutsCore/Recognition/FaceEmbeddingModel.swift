@@ -12,9 +12,10 @@ import Foundation
 /// the call site. Two things depend on it directly:
 ///
 /// 1. **Threshold source of truth.** `defaultMatchThreshold` is the model's own tuned (or,
-///    for an un-tuned model, provisional) cosine cutoff. The App uses it as the BASE
-///    default that `resolvedMatchThreshold` falls back to, still overridable via the
-///    `matchThreshold` UserDefaults key. Absolute cosine scores are NOT comparable across
+///    for an un-tuned model, provisional) cosine cutoff — the SOLE default that
+///    `resolvedMatchThreshold(for:)` falls back to, overridable only via the model's own
+///    per-model key (`thresholdOverrideKey`) and only within `matchThresholdRange`
+///    (ND-076). Absolute cosine scores are NOT comparable across
 ///    models (a general image feature print and a face-optimized FaceNet embedding live on
 ///    different scales), so the threshold MUST travel with the model.
 ///
@@ -49,10 +50,19 @@ public struct FaceEmbeddingModelDescriptor: Sendable, Equatable {
     /// `cosineSimilarity` already fails safe (→ 0, no match) on any length mismatch.
     public let outputDimension: Int
 
-    /// The model's default cosine match threshold — the base default the recognizer uses
-    /// (overridable live via the `matchThreshold` UserDefaults key). Because score scales
-    /// differ per model, this is a per-model value, not a global constant.
+    /// The model's default cosine match threshold — the sole default the recognizer uses
+    /// (overridable live via the per-model `thresholdOverrideKey` UserDefaults key, within
+    /// `matchThresholdRange`). Because score scales differ per model, this is a per-model
+    /// value, not a global constant (ND-076).
     public let defaultMatchThreshold: Double
+
+    /// The ONLY range a user/`defaults write` override of this model's threshold is
+    /// accepted in (ND-076). An override outside it is REJECTED (→ `defaultMatchThreshold`),
+    /// never clamped, so an injected `0.01` can't land on the floor. The floor is the
+    /// security-relevant bound: below it, near-any face would clear identity on this
+    /// model's score scale (fail-open, EC-03). The ceiling guards against a permanent
+    /// lockout of the real user. Always contains `defaultMatchThreshold` (asserted in init).
+    public let matchThresholdRange: ClosedRange<Double>
 
     /// True when `defaultMatchThreshold` is a provisional guess that has NOT yet been tuned
     /// against real device data (false-accept vs false-reject, incl. the EC-03 look-alike).
@@ -66,21 +76,30 @@ public struct FaceEmbeddingModelDescriptor: Sendable, Equatable {
         inputSize: Int,
         outputDimension: Int,
         defaultMatchThreshold: Double,
+        matchThresholdRange: ClosedRange<Double>,
         thresholdIsTuned: Bool
     ) {
+        precondition(matchThresholdRange.contains(defaultMatchThreshold),
+                     "defaultMatchThreshold \(defaultMatchThreshold) outside matchThresholdRange \(matchThresholdRange)")
         self.version = version
         self.displayName = displayName
         self.inputSize = inputSize
         self.outputDimension = outputDimension
         self.defaultMatchThreshold = defaultMatchThreshold
+        self.matchThresholdRange = matchThresholdRange
         self.thresholdIsTuned = thresholdIsTuned
     }
+
+    /// Per-model UserDefaults key for a threshold override (ND-076), e.g.
+    /// `"matchThreshold.facenet-vggface2-v1"`. Keyed on `version` so a value tuned for one
+    /// model never carries over to another (their score scales are unrelated).
+    public var thresholdOverrideKey: String { "matchThreshold.\(version)" }
 }
 
 public extension FaceEmbeddingModelDescriptor {
-    /// Descriptor for the current `VisionFeaturePrintEmbedder` (ADR-0012). Unchanged
-    /// behavior: threshold `0.6`, the lenient general-feature-print default documented on
-    /// `Config.matchThreshold`. `inputSize = 0` (Vision accepts the arbitrary-sized crop);
+    /// Descriptor for the `VisionFeaturePrintEmbedder` (ADR-0012). Threshold `0.6`, a
+    /// lenient general-feature-print default; override range `0.40...0.95` (ND-076).
+    /// `inputSize = 0` (Vision accepts the arbitrary-sized crop);
     /// `outputDimension = 0` (the feature print's element count is model-internal and not
     /// asserted). Marked un-tuned — it has never been tuned against real data.
     ///
@@ -94,6 +113,7 @@ public extension FaceEmbeddingModelDescriptor {
         inputSize: 0,
         outputDimension: 0,
         defaultMatchThreshold: 0.6,
+        matchThresholdRange: 0.40...0.95,
         thresholdIsTuned: false
     )
 
@@ -107,7 +127,8 @@ public extension FaceEmbeddingModelDescriptor {
     /// scores for same-person pairs typically sit well above different-person pairs, but
     /// the real cutoff — especially the EC-03 look-alike ("Marco") margin — MUST be tuned
     /// on device captures before this model is trusted for distribution. `thresholdIsTuned`
-    /// is therefore `false`.
+    /// is therefore `false`. Override range `0.40...0.90` (ND-076): the measured genuine
+    /// p5 is ~0.66, and below 0.40 near-any face would clear on this scale.
     ///
     /// Version tag `"facenet-vggface2-v1"` — distinct from the Vision tag, so activating
     /// this embedder forces a one-time re-enroll (stored Vision vectors are never
@@ -118,6 +139,7 @@ public extension FaceEmbeddingModelDescriptor {
         inputSize: 160,
         outputDimension: 512,
         defaultMatchThreshold: 0.5,
+        matchThresholdRange: 0.40...0.90,
         thresholdIsTuned: false
     )
 }

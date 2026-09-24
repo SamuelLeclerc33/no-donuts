@@ -75,11 +75,14 @@ All local; nothing leaves the device.
 # Watch what the app is doing (presence decisions, identity scores, session state):
 log stream --predicate 'subsystem == "com.nodonuts.app"'
 
-# Identity strictness — cosine match threshold, strictly between 0 and 1
-# (0 and 1.0 are rejected: 0 would let any face pass, 1.0 is never reachable from
-# live frames = permanent lockout). Higher = stricter; lower = more lenient.
-# Default 0.6. Re-launch after changing.
-defaults write com.nodonuts.app matchThreshold 0.7
+# Identity strictness — cosine match threshold, PER MODEL (ND-076). The key is
+# matchThreshold.<model version>; each model has its own default and safe range, and a
+# value outside the range is rejected (the model default applies instead).
+#   FaceNet (facenet-vggface2-v1): default 0.50, range 0.40–0.90
+#   Vision fallback (vision-featureprint-v1): default 0.60, range 0.40–0.95
+# Higher = stricter; lower = more lenient. Applies on the next tick (no relaunch).
+# Easier: Settings → Lock sensitivity (has a Reset to default button).
+defaults write com.nodonuts.app matchThreshold.facenet-vggface2-v1 0.6
 
 # Camera orientation fed to Vision (CGImagePropertyOrientation 1–8; default 1 = up).
 # Only needed if an atypical/external camera isn't detecting your face.
@@ -91,7 +94,7 @@ defaults write com.nodonuts.app visionOrientation 6
 defaults write com.nodonuts.app spoofTextureFloor 8
 
 # Undo an override:
-defaults delete com.nodonuts.app matchThreshold
+defaults delete com.nodonuts.app matchThreshold.facenet-vggface2-v1
 ```
 
 When enrolled, the app logs the live identity match score each tick, so you can watch your-face vs someone-else scores and pick a threshold between them.

@@ -58,6 +58,16 @@ The forced re-enrollment above falls back to **presence-only** (any face = prese
 - The app shows it everywhere: the header reads "⚠️ identity off: re-enroll needed", the present glyph becomes an orange `person.fill.questionmark`, the menu item reads "Re-enroll my face (required)…", a local notification (`nd.identityOff`) repeats every 5 min, and diagnostics carry an Identity line.
 - `EnrollmentStore` caches its first definitive read for the process lifetime. An external deletion mid-session therefore does not weaken the running app (it keeps matching the cached vectors) and is flagged at the next launch.
 
+## Amendment (2026-09-24): the threshold travels with the model (ND-076)
+
+The descriptor's `defaultMatchThreshold` was supposed to be the base default, but the App always passed the Vision-era `Config.matchThreshold` (0.6). So FaceNet's 0.5 never applied, and one global `matchThreshold` override carried across model swaps. Measured genuine p5 is 0.662, so 0.6 already put some real-user ticks at risk.
+
+**Decision:**
+- `Config.matchThreshold` is removed. The active descriptor is the **only** default.
+- Each descriptor declares a safe `matchThresholdRange` (FaceNet 0.40–0.90, Vision 0.40–0.95). Overrides live under the per-model key `matchThreshold.<version>`, and a value outside the range is **rejected** (the model default applies), never clamped. An injected 0.01 cannot become "the floor". The 0.40 floor sits below the measured genuine p1 (0.525), so it can't lock out the real user, and it blocks the near-zero values that accept anyone.
+- The legacy global `matchThreshold` key is deleted once at launch, so a value tuned for another model never leaks.
+- The Settings slider is limited to the active model's range, shows the model default and whether it is tuned, and has a Reset button that removes the override.
+
 ## Alternatives considered
 
 - **Keep tuning the Vision feature print (ADR-0012 only):** cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).

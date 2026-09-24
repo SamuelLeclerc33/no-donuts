@@ -7,8 +7,8 @@ import Foundation
 /// (`1` = identical direction, `0` = orthogonal / undefined).
 ///
 /// Used to score a freshly computed face embedding against the enrolled reference
-/// embeddings (see `IdentityRecognizer`). A score at or above `Config.matchThreshold`
-/// counts as the enrolled user.
+/// embeddings (see `IdentityRecognizer`). A score at or above the model's resolved
+/// threshold (`resolvedMatchThreshold(for:)`) counts as the enrolled user.
 ///
 /// Defensive by design — returns `0` (treated as "no match", never a false positive)
 /// when the inputs are unusable:

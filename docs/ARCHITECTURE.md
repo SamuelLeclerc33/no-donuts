@@ -73,7 +73,7 @@ transition:
     if ABSENT continuously >= graceSeconds -> request LOCK -> SUSPENDED
 ```
 
-Tunables (config): `tickIntervalSeconds`, `graceSeconds`, `matchThreshold`, `consecutiveAbsentTicksToLock`, fail policy.
+Tunables (config): `tickIntervalSeconds`, `graceSeconds`, `consecutiveAbsentTicksToLock`, and a per-model `matchThreshold` (from the embedder's descriptor, overridable via `matchThreshold.<model version>`), fail policy.
 
 ## Data flow & privacy
 
