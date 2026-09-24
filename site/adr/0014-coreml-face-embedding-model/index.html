@@ -903,6 +903,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#phase-2-outcome-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 outcome (2026-08-24)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1043,6 +1054,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#phase-2-outcome-2026-08-24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 outcome (2026-08-24)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1072,8 +1094,8 @@
 
 <h1 id="adr-0014-core-ml-face-recognition-embedding-behind-a-model-agnostic-descriptor">ADR-0014 — Core ML face-recognition embedding behind a model-agnostic descriptor<a class="headerlink" href="#adr-0014-core-ml-face-recognition-embedding-behind-a-model-agnostic-descriptor" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Status: Accepted (amends <a href="../0012-local-identity-featureprint/">ADR-0012</a>; ADR-0012 stays the shipping default until the model is bundled)</li>
-<li>Date: 2026-07-06</li>
+<li>Status: Accepted (amends <a href="../0012-local-identity-featureprint/">ADR-0012</a>). <strong>Phase 2 landed 2026-08-24</strong> — the Core ML embedder is now the shipping default; ADR-0012's Vision embedder is the fallback. Threshold still un-tuned (see <em>Phase 2 outcome</em>).</li>
+<li>Date: 2026-07-06 (amended 2026-08-24)</li>
 <li>Owner: cooper</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
@@ -1102,6 +1124,16 @@
 <li>Storage stays Keychain, device-only, embeddings-only (ADR-0012 unchanged) — only the blob schema gained a version tag, with legacy fallback.</li>
 <li><strong>Phase-2 follow-ups (ND-021):</strong> convert + bundle the FaceNet <code>.mlmodelc</code> (with gordon; sizing, codesign, ad-hoc build); switch the default embedder to Core ML with the graceful Vision fallback; capture FaceNet's real threshold vs the Marco false-accept and set a tuned <code>defaultMatchThreshold</code> (<code>thresholdIsTuned = true</code>); users re-enroll once (forced by the version bump). Distribution-model swap (permissive license) remains deferred (license TBD).</li>
 </ul>
+<h2 id="phase-2-outcome-2026-08-24">Phase 2 outcome (2026-08-24)<a class="headerlink" href="#phase-2-outcome-2026-08-24" title="Permanent link">&para;</a></h2>
+<p>Phase 2 is <strong>delivered except the tuned threshold</strong>, which is deliberately left open.</p>
+<ul>
+<li><strong>Bundled + active.</strong> The converted FaceNet <code>.mlmodelc</code> ships in the app bundle and <code>CoreMLFaceEmbedder</code> is the selected embedder at launch: <code>active face embedder = CoreMLFaceEmbedder (facenet-vggface2-v1, 512-d, tuned=no)</code>. The full-Xcode caveat recorded during Phase 2 is <strong>gone</strong> — <code>scripts/make-app.sh</code> prefers a pre-compiled <code>.mlmodelc</code> produced by coremltools, so bundling works on the Command Line Tools baseline (ADR-0008).</li>
+<li><strong>Forced re-enrollment observed working.</strong> Enrollments from the Vision era do not carry <code>facenet-vggface2-v1</code>, so identity falls back to presence-only until the user re-enrolls. No cross-model comparison occurred.</li>
+<li><strong>Genuine distribution measured</strong> (1008 live ticks, one enrolled user): mean 0.830, median 0.877, p5 0.662, p1 0.525, min 0.056, with 6 samples below 0.5. The bulk sits ~0.88–0.94, comfortably clear of the provisional 0.5.</li>
+</ul>
+<p><strong>The threshold stays un-tuned (<code>thresholdIsTuned = false</code>), by decision.</strong> Live per-tick logging can only ever produce GENUINE scores; it structurally cannot produce impostor scores, which require other people's faces on cue. Genuine-only data bounds the false-<strong>reject</strong> rate and carries no information about where false-<strong>accept</strong> begins, so it cannot justify a threshold — and <code>thresholdIsTuned = true</code> is a claim that the EC-03 look-alike margin was measured. Setting it on half the evidence would put a false assurance into a security-relevant descriptor.</p>
+<p>To unblock that measurement, Phase 2 adds <strong><code>FaceScore</code></strong> (<code>swift run FaceScore</code>), an offline harness that scores still images through the <em>real</em> <code>CoreMLFaceEmbedder</code> — same detection, crop, resize, and <code>cosineSimilarity</code> — so an impostor set becomes a folder of photos rather than a scheduling problem. It reports genuine vs impostor distributions, an FRR/FAR sweep, and a recommendation that <strong>refuses to endorse a threshold unless the two classes separate cleanly</strong>. Its statistics and that refusal live in <code>NoDonutsCore/Recognition/ThresholdAnalysis.swift</code> and are EngineCheck-covered (70/70), because the arithmetic under a shipped threshold is itself security-relevant. Tuning proper is <strong>ND-056</strong>.</p>
+<p>A second gap opened by this phase is tracked separately: the anti-spoof texture score is not computed on the Core ML path, so the ND-041 gate never trips there (<strong>ND-072</strong>, EC-12).</p>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Keep tuning the Vision feature print (ADR-0012 only):</strong> cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).</li>

@@ -47,6 +47,8 @@ The package is split into `NoDonutsCore` (AppKit-free, testable logic), the `NoD
 
 Run the engine checks with **`swift run EngineCheck`** — a framework-free harness that verifies the presence/lock decision logic and exits non-zero on failure. It works in **any** toolchain, including Command Line Tools only (where `XCTest` / Swift Testing are unavailable, so `swift test` can't run). Add new engine assertions in `Sources/EngineCheck/main.swift`.
 
+**`swift run FaceScore`** is a separate developer-only tool (never shipped in the `.app`) for **threshold tuning** (ND-056): it scores a folder of face photos — one subdirectory per person — through the real `CoreMLFaceEmbedder` and reports genuine vs impostor score distributions, an FRR/FAR sweep, and a threshold recommendation that refuses to endorse a number unless the two classes separate cleanly. Live camera logging can only ever produce genuine scores, so this is the only way to measure the false-accept side. Its statistics live in `NoDonutsCore/Recognition/ThresholdAnalysis.swift` and are EngineCheck-covered.
+
 ## Documentation site
 
 The `docs/` Markdown is published as a local, fully-offline **MkDocs** (Material) site → see [ADR-0005](docs/adr/0005-docs-site.md). The built `site/` is committed (source-versioned). A **pre-commit hook** regenerates it when `docs/` or `mkdocs.yml` are staged. Setup: `python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt`, then `scripts/install-hooks.sh`. Preview with `.venv/bin/mkdocs serve`. If you edit docs without the hook installed, run `.venv/bin/mkdocs build` and commit `site/` yourself.

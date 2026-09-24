@@ -69,15 +69,12 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
     /// Returns `nil` (graceful failure, logged) when the model resource is ABSENT or fails
     /// to load — the caller keeps using `VisionFeaturePrintEmbedder`. This is the expected
     /// path in the current repo (no model file present).
-    public init?(
+    public convenience init?(
         descriptor: FaceEmbeddingModelDescriptor = .facenetVGGFace2,
         resourceName: String,
         bundle: Bundle = .main,
         paddingFraction: CGFloat = 0.25
     ) {
-        self.descriptor = descriptor
-        self.paddingFraction = paddingFraction
-
         guard let url = bundle.url(forResource: resourceName, withExtension: "mlmodelc") else {
             // Expected in the current repo: the model isn't bundled. Log and fail so the
             // app falls back to the Vision embedder — never crash, never no-op silently.
@@ -85,6 +82,26 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
                 .notice("Core ML face model '\(resourceName, privacy: .public).mlmodelc' not bundled — falling back to the Vision embedder (ND-021 Phase 1)")
             return nil
         }
+        self.init(descriptor: descriptor, compiledModelURL: url, paddingFraction: paddingFraction)
+    }
+
+    /// Load a compiled Core ML model from an explicit **file URL**, bypassing bundle
+    /// resource lookup.
+    ///
+    /// Same contract as the `resourceName:` initializer (this is the designated one it
+    /// delegates to) — `nil` on a model that is absent, unloadable, or has no image input.
+    ///
+    /// Exists so off-app tools can drive the EXACT production embedder rather than a
+    /// reimplementation of it: `FaceScore` (the ND-056 threshold-tuning harness) scores
+    /// image files through this same pipeline, so measured thresholds transfer to the app
+    /// unchanged. A tuning number produced by a parallel implementation would not.
+    public init?(
+        descriptor: FaceEmbeddingModelDescriptor = .facenetVGGFace2,
+        compiledModelURL url: URL,
+        paddingFraction: CGFloat = 0.25
+    ) {
+        self.descriptor = descriptor
+        self.paddingFraction = paddingFraction
 
         do {
             let configuration = MLModelConfiguration()

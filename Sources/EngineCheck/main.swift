@@ -1113,6 +1113,99 @@ func runAll() async -> Bool {
         }
     }
 
+    // MARK: ND-056 / ND-021 Phase 2 — threshold analysis (ThresholdAnalysis.swift)
+    //
+    // These back the FaceScore harness's recommendation. A shipped `matchThreshold` is a
+    // security parameter, so the arithmetic under it is pinned here.
+    do {
+        // Percentiles are nearest-rank over SORTED input, and the input need not arrive
+        // sorted (FaceScore appends scores in directory order).
+        let d = ScoreDistribution([0.9, 0.1, 0.5, 0.7, 0.3])
+        let basics = d.count == 5 && d.minimum == 0.1 && d.maximum == 0.9
+            && d.sorted == [0.1, 0.3, 0.5, 0.7, 0.9]
+        let meanOK = (d.mean.map { abs($0 - 0.5) < 1e-9 }) ?? false
+        // Nearest-rank: p50 of 5 samples → index floor(0.5*5)=2 → 0.5.
+        let percentileOK = d.percentile(0.5) == 0.5 && d.percentile(0.0) == 0.1 && d.percentile(1.0) == 0.9
+        c.expect(basics && meanOK && percentileOK,
+                 "ScoreDistribution: sorts unsorted input; min/max/mean/nearest-rank percentiles")
+
+        // Empty → nil everywhere, never a NaN that could be mistaken for a real statistic.
+        let empty = ScoreDistribution([])
+        c.expect(empty.isEmpty && empty.minimum == nil && empty.maximum == nil
+                 && empty.mean == nil && empty.standardDeviation == nil && empty.percentile(0.5) == nil,
+                 "ScoreDistribution: empty set → nil statistics (never NaN)")
+
+        // Single sample → spread is undefined, not zero.
+        c.expect(ScoreDistribution([0.42]).standardDeviation == nil,
+                 "ScoreDistribution: single sample → nil standard deviation")
+    }
+
+    do {
+        // FRR/FAR must mirror IdentityRecognizer's `maxSim >= threshold` accept test
+        // EXACTLY: a score EQUAL to the threshold is accepted, so it is not a false
+        // reject, and it IS a false accept. An off-by-one here biases every recommendation.
+        let genuine = ScoreDistribution([0.4, 0.5, 0.6])
+        let impostor = ScoreDistribution([0.2, 0.5, 0.8])
+        let frr = falseRejectRate(genuine: genuine, at: 0.5)
+        let far = falseAcceptRate(impostor: impostor, at: 0.5)
+        let boundaryOK = (frr.map { abs($0 - 1.0 / 3.0) < 1e-9 }) ?? false
+            && (far.map { abs($0 - 2.0 / 3.0) < 1e-9 }) ?? false
+        c.expect(boundaryOK, "FRR/FAR: score == threshold is ACCEPTED, matching IdentityRecognizer's >=")
+
+        // Empty class → nil, so a missing class can never read as "0% error".
+        c.expect(falseRejectRate(genuine: ScoreDistribution([]), at: 0.5) == nil
+                 && falseAcceptRate(impostor: ScoreDistribution([]), at: 0.5) == nil,
+                 "FRR/FAR: empty class → nil (never a spurious 0%)")
+    }
+
+    do {
+        // Genuine-only data — the exact state this project was in before FaceScore —
+        // must be refused, not turned into a number.
+        let genuineOnly = recommendThreshold(
+            genuine: ScoreDistribution([0.88, 0.91, 0.93]),
+            impostor: ScoreDistribution([])
+        )
+        var refusedGenuineOnly = false
+        if case .insufficientData = genuineOnly { refusedGenuineOnly = true }
+        c.expect(refusedGenuineOnly && !genuineOnly.justifiesTunedFlag,
+                 "recommendThreshold: genuine-only data → insufficientData, never a threshold (ND-056)")
+
+        // Clean separation → gap midpoint, and this is the ONLY case allowed to justify
+        // flipping a descriptor's `thresholdIsTuned`.
+        let separated = recommendThreshold(
+            genuine: ScoreDistribution([0.80, 0.90, 0.95]),
+            impostor: ScoreDistribution([0.20, 0.40, 0.60])
+        )
+        var separationOK = false
+        if case let .cleanSeparation(threshold, margin, impostorMaximum, genuineMinimum) = separated {
+            separationOK = abs(threshold - 0.70) < 1e-9 && abs(margin - 0.20) < 1e-9
+                && impostorMaximum == 0.60 && genuineMinimum == 0.80
+        }
+        c.expect(separationOK && separated.justifiesTunedFlag,
+                 "recommendThreshold: clean separation → gap midpoint, justifies thresholdIsTuned")
+
+        // Overlap → report the equal-error point but REFUSE to bless it.
+        let overlapping = recommendThreshold(
+            genuine: ScoreDistribution([0.30, 0.60, 0.90]),
+            impostor: ScoreDistribution([0.25, 0.65, 0.85])
+        )
+        var overlapOK = false
+        if case let .overlap(equalError, _, _) = overlapping {
+            overlapOK = equalError > 0.0 && equalError < 1.0
+        }
+        c.expect(overlapOK && !overlapping.justifiesTunedFlag,
+                 "recommendThreshold: overlap → equal-error point reported, tuned flag REFUSED")
+
+        // A single impostor above the genuine floor is enough to deny separation — the
+        // conservative direction (one look-alike that matches is the EC-03 failure).
+        let oneBadImpostor = recommendThreshold(
+            genuine: ScoreDistribution([0.80, 0.90]),
+            impostor: ScoreDistribution([0.10, 0.20, 0.85])
+        )
+        c.expect(!oneBadImpostor.justifiesTunedFlag,
+                 "recommendThreshold: one impostor above the genuine floor denies clean separation (EC-03)")
+    }
+
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0
 }

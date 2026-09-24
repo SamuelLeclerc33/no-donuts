@@ -1,7 +1,7 @@
 # ADR-0014 — Core ML face-recognition embedding behind a model-agnostic descriptor
 
-- Status: Accepted (amends [ADR-0012](0012-local-identity-featureprint.md); ADR-0012 stays the shipping default until the model is bundled)
-- Date: 2026-07-06
+- Status: Accepted (amends [ADR-0012](0012-local-identity-featureprint.md)). **Phase 2 landed 2026-08-24** — the Core ML embedder is now the shipping default; ADR-0012's Vision embedder is the fallback. Threshold still un-tuned (see *Phase 2 outcome*).
+- Date: 2026-07-06 (amended 2026-08-24)
 - Owner: cooper
 
 ## Context
@@ -32,6 +32,20 @@ Adopt a **Core ML face-recognition embedding**, selected behind a **model-agnost
 - Swapping to a distribution model later is low-friction: add a descriptor + point `CoreMLFaceEmbedder` at the new resource; the version bump auto-forces a clean one-time re-enroll, so no cross-model vectors are ever compared.
 - Storage stays Keychain, device-only, embeddings-only (ADR-0012 unchanged) — only the blob schema gained a version tag, with legacy fallback.
 - **Phase-2 follow-ups (ND-021):** convert + bundle the FaceNet `.mlmodelc` (with gordon; sizing, codesign, ad-hoc build); switch the default embedder to Core ML with the graceful Vision fallback; capture FaceNet's real threshold vs the Marco false-accept and set a tuned `defaultMatchThreshold` (`thresholdIsTuned = true`); users re-enroll once (forced by the version bump). Distribution-model swap (permissive license) remains deferred (license TBD).
+
+## Phase 2 outcome (2026-08-24)
+
+Phase 2 is **delivered except the tuned threshold**, which is deliberately left open.
+
+- **Bundled + active.** The converted FaceNet `.mlmodelc` ships in the app bundle and `CoreMLFaceEmbedder` is the selected embedder at launch: `active face embedder = CoreMLFaceEmbedder (facenet-vggface2-v1, 512-d, tuned=no)`. The full-Xcode caveat recorded during Phase 2 is **gone** — `scripts/make-app.sh` prefers a pre-compiled `.mlmodelc` produced by coremltools, so bundling works on the Command Line Tools baseline (ADR-0008).
+- **Forced re-enrollment observed working.** Enrollments from the Vision era do not carry `facenet-vggface2-v1`, so identity falls back to presence-only until the user re-enrolls. No cross-model comparison occurred.
+- **Genuine distribution measured** (1008 live ticks, one enrolled user): mean 0.830, median 0.877, p5 0.662, p1 0.525, min 0.056, with 6 samples below 0.5. The bulk sits ~0.88–0.94, comfortably clear of the provisional 0.5.
+
+**The threshold stays un-tuned (`thresholdIsTuned = false`), by decision.** Live per-tick logging can only ever produce GENUINE scores; it structurally cannot produce impostor scores, which require other people's faces on cue. Genuine-only data bounds the false-**reject** rate and carries no information about where false-**accept** begins, so it cannot justify a threshold — and `thresholdIsTuned = true` is a claim that the EC-03 look-alike margin was measured. Setting it on half the evidence would put a false assurance into a security-relevant descriptor.
+
+To unblock that measurement, Phase 2 adds **`FaceScore`** (`swift run FaceScore`), an offline harness that scores still images through the *real* `CoreMLFaceEmbedder` — same detection, crop, resize, and `cosineSimilarity` — so an impostor set becomes a folder of photos rather than a scheduling problem. It reports genuine vs impostor distributions, an FRR/FAR sweep, and a recommendation that **refuses to endorse a threshold unless the two classes separate cleanly**. Its statistics and that refusal live in `NoDonutsCore/Recognition/ThresholdAnalysis.swift` and are EngineCheck-covered (70/70), because the arithmetic under a shipped threshold is itself security-relevant. Tuning proper is **ND-056**.
+
+A second gap opened by this phase is tracked separately: the anti-spoof texture score is not computed on the Core ML path, so the ND-041 gate never trips there (**ND-072**, EC-12).
 
 ## Alternatives considered
 

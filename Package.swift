@@ -35,6 +35,15 @@ let package = Package(
             name: "EngineCheck",
             dependencies: ["NoDonutsCore"],
             path: "Sources/EngineCheck"
+        ),
+        // Offline face-scoring harness for threshold tuning (ND-056 / ND-021 Phase 2):
+        // embeds still images through the REAL CoreMLFaceEmbedder and reports the
+        // genuine vs impostor score distributions the live camera logging can't produce.
+        // Developer tool — never shipped in the .app.
+        .executableTarget(
+            name: "FaceScore",
+            dependencies: ["NoDonutsCore"],
+            path: "Sources/FaceScore"
         )
     ]
 )
