@@ -116,6 +116,38 @@ final class SlowSpyLocker: ScreenLocking {
     }
 }
 
+// MARK: - Lock chain fakes (ND-058/ND-074)
+//
+// SAFETY: these NEVER touch login.framework. Fake resolvers return a dummy non-nil
+// pointer that is NEVER dereferenced or called: selfTest() only resolves, and the
+// lock() checks inject a recording `invoke` + fake `isLocked` probe. EngineCheck
+// must never call the real ScreenLocker().lock() — it would lock this Mac.
+
+/// Dummy, never-called "symbol" address for fake resolvers.
+nonisolated(unsafe) let dummySymbol = UnsafeMutableRawPointer(bitPattern: 0x1)!
+
+func fakeResolver(_ names: Set<String>) -> ScreenLocker.SymbolResolver {
+    { name in names.contains(name) ? dummySymbol : nil }
+}
+
+/// Records invoked mechanisms and flips "locked" once a chosen mechanism is invoked.
+final class FakeLockSession: @unchecked Sendable {
+    private let q = NSLock()
+    private var _invoked: [LockMechanism] = []
+    private var _locked = false
+    let locksOn: LockMechanism?
+    init(locksOn: LockMechanism?) { self.locksOn = locksOn }
+    var invoked: [LockMechanism] { q.lock(); defer { q.unlock() }; return _invoked }
+    func invoke(_ m: LockMechanism) { q.lock(); _invoked.append(m); if m == locksOn { _locked = true }; q.unlock() }
+    func isLocked() -> Bool { q.lock(); defer { q.unlock() }; return _locked }
+    func locker(resolving names: Set<String>) -> ScreenLocker {
+        ScreenLocker(resolveSymbol: fakeResolver(names),
+                     invoke: { [self] m, _ in invoke(m) },   // never calls the pointer
+                     isLocked: { [self] in isLocked() },
+                     lockTimeout: 0.3)
+    }
+}
+
 // MARK: - Tiny check runner
 
 final class Checks {
@@ -1390,6 +1422,65 @@ func runAll() async -> Bool {
         )
         c.expect(!oneBadImpostor.justifiesTunedFlag,
                  "recommendThreshold: one impostor above the genuine floor denies clean separation (EC-03)")
+    }
+
+    print("\nScreenLocker self-test + chain checks (fakes only, ND-058/ND-074):")
+    do {
+        let both: Set<String> = ["SACLockScreenImmediate", "SACSwitchToLoginWindow"]
+        c.expect(LockMechanism.allCases == [.sacLockScreenImmediate, .sacSwitchToLoginWindow],
+                 "LockMechanism chain order: immediate, then switch-to-login-window")
+        c.expect(LockMechanism.sacLockScreenImmediate.symbolName == "SACLockScreenImmediate"
+                 && LockMechanism.sacSwitchToLoginWindow.symbolName == "SACSwitchToLoginWindow",
+                 "LockMechanism.symbolName maps to the login.framework exports")
+
+        let none = ScreenLocker(resolveSymbol: fakeResolver([])).selfTest()
+        c.expect(!none.canLock && none.available.isEmpty, "selfTest: nothing resolvable → canLock == false")
+
+        let onlySwitch = ScreenLocker(resolveSymbol: fakeResolver(["SACSwitchToLoginWindow"])).selfTest()
+        c.expect(onlySwitch.available == [.sacSwitchToLoginWindow] && onlySwitch.canLock,
+                 "selfTest: only switch symbol → [.sacSwitchToLoginWindow]")
+
+        let all = ScreenLocker(resolveSymbol: fakeResolver(both)).selfTest()
+        c.expect(all == LockCapability(available: [.sacLockScreenImmediate, .sacSwitchToLoginWindow]),
+                 "selfTest: both resolvable → chain order preserved")
+
+        let probeSession = FakeLockSession(locksOn: nil)
+        _ = probeSession.locker(resolving: both).selfTest()
+        c.expect(probeSession.invoked.isEmpty, "selfTest NEVER invokes a mechanism")
+
+        c.expect(SpyLocker(succeed: true).selfTest().canLock,
+                 "ScreenLocking default selfTest() → fake lockers canLock (all mechanisms)")
+
+        // lock() chain behaviour with injected invoke + probe.
+        let s1 = FakeLockSession(locksOn: .sacLockScreenImmediate)
+        let ok1 = await s1.locker(resolving: both).lock()
+        c.expect(ok1 && s1.invoked == [.sacLockScreenImmediate],
+                 "lock: immediate confirms → true, fallback NOT invoked")
+
+        let s2 = FakeLockSession(locksOn: .sacSwitchToLoginWindow)
+        let started = Date()
+        let ok2 = await s2.locker(resolving: both).lock()
+        c.expect(ok2 && s2.invoked == [.sacLockScreenImmediate, .sacSwitchToLoginWindow],
+                 "lock: immediate unconfirmed → falls through to switch-to-login-window → true")
+        c.expect(Date().timeIntervalSince(started) < 1.0,
+                 "lock: fallback confirmed within the shared deadline")
+
+        let s3 = FakeLockSession(locksOn: nil)
+        let started3 = Date()
+        let ok3 = await s3.locker(resolving: both).lock()
+        let elapsed3 = Date().timeIntervalSince(started3)
+        c.expect(!ok3 && s3.invoked == [.sacLockScreenImmediate, .sacSwitchToLoginWindow],
+                 "lock: nothing confirms → both tried in order, returns false (never fail open)")
+        c.expect(elapsed3 < 0.3 + 0.5, "lock: whole chain bounded by ONE shared deadline")
+
+        let s4 = FakeLockSession(locksOn: .sacSwitchToLoginWindow)
+        let ok4 = await s4.locker(resolving: ["SACSwitchToLoginWindow"]).lock()
+        c.expect(ok4 && s4.invoked == [.sacSwitchToLoginWindow],
+                 "lock: only switch resolvable → invokes switch only → true")
+
+        let s5 = FakeLockSession(locksOn: .sacLockScreenImmediate)
+        let ok5 = await s5.locker(resolving: []).lock()
+        c.expect(!ok5 && s5.invoked.isEmpty, "lock: nothing resolvable → false, nothing invoked")
     }
 
     print("\n\(c.passed) passed, \(c.failed) failed")

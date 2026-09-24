@@ -35,6 +35,7 @@ struct DiagnosticsReporter {
     ///   - notificationStatusDescription: optional pre-fetched notification
     ///     authorization label (that API is async; the caller fetches it and
     ///     passes it in). `nil` → omitted.
+    ///   - lockCapability: lock self-test result (ND-058) — mechanism names only.
     ///   - now: injectable clock for the timestamp (defaults to `Date()`).
     /// - Returns: a multi-line plaintext report with no PII.
     func diagnosticsSummary(
@@ -46,6 +47,7 @@ struct DiagnosticsReporter {
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
         notificationStatusDescription: String? = nil,
+        lockCapability: LockCapability,
         now: Date = Date()
     ) -> String {
         var lines: [String] = []
@@ -84,6 +86,7 @@ struct DiagnosticsReporter {
         // --- Presence + effective config ---
         lines.append("[Presence]")
         lines.append("  State: \(presenceStateDescription(state))")
+        lines.append("  Lock mechanisms: \(Self.lockCapabilityDescription(lockCapability))")
         lines.append("")
         lines.append("[Config (raw base values from store)]")
         lines.append("  tickIntervalSeconds:            \(config.tickIntervalSeconds)")
@@ -149,6 +152,7 @@ struct DiagnosticsReporter {
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
         notificationStatusDescription: String? = nil,
+        lockCapability: LockCapability,
         now: Date = Date()
     ) -> String {
         let summary = diagnosticsSummary(
@@ -160,6 +164,7 @@ struct DiagnosticsReporter {
             locationStatus: locationStatus,
             trustedNetworkCount: trustedNetworkCount,
             notificationStatusDescription: notificationStatusDescription,
+            lockCapability: lockCapability,
             now: now
         )
         let pasteboard = NSPasteboard.general
@@ -169,6 +174,14 @@ struct DiagnosticsReporter {
     }
 
     // MARK: - Status label helpers (labels only, no data)
+
+    /// Lock self-test result (ND-058): "SACLockScreenImmediate, SACSwitchToLoginWindow"
+    /// or "NONE". Also used by the app's launch/wake self-test log line.
+    static func lockCapabilityDescription(_ capability: LockCapability) -> String {
+        capability.canLock
+            ? capability.available.map(\.symbolName).joined(separator: ", ")
+            : "NONE"
+    }
 
     /// Human-readable identity status (ND-073). Model version strings only — never
     /// embeddings or images. Also used by the app's identity-change log line.

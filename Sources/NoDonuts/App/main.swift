@@ -64,6 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// that STARTED before a refresh may carry a recognizer status read before it (e.g.
     /// Reset clicked while `recognize()` awaited the embedder) — the loop drops it.
     private var identityGeneration = 0
+    /// ND-058/ND-074: last lock self-test result pushed to the menu + notifier (nil until
+    /// the first run). Pushed and logged only on change, so the wake re-check is quiet.
+    private var lastLockCapability: LockCapability?
 
     /// Select the launch embedder: Core ML FaceNet if its compiled model is bundled,
     /// otherwise the Vision feature-print fallback. Logs which one is active (honest —
@@ -193,6 +196,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Render the initial state before the loop produces its first reading.
         menuBar.render(state: engine.state)
 
+        // ND-058/ND-074: resolve-only lock self-test (never locks). Warn loudly NOW if
+        // this macOS has no usable lock mechanism, instead of at the first walk-away.
+        runLockSelfTest()
+
         // ND-013: pause the loop + stop the camera while the Mac is
         // locked/asleep/not-on-console; resume cleanly on unlock/wake (ADR-0009).
         // All three inputs (session, pause, trusted Wi-Fi) funnel through the
@@ -200,7 +207,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // that decides whether the loop/camera run and what the honest state is.
         let monitor = SessionStateMonitor()
         self.sessionMonitor = monitor
-        monitor.onChange = { [weak self] _ in self?.applyEnforcement() }
+        monitor.onChange = { [weak self] active in
+            self?.applyEnforcement()
+            // ND-058: re-check on every unlock/wake (e.g. an OS update applied while
+            // asleep). Resolve-only, so cheap and safe.
+            if active { self?.runLockSelfTest() }
+        }
         monitor.start()
 
         pauseController.onChange = { [weak self] in self?.applyEnforcement() }
@@ -422,6 +434,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notProtectingNotifier.update(identity: status)
     }
 
+    /// ND-058/ND-074: run the resolve-only lock self-test and, on change, log it and push
+    /// it to the menu + notifier. `selfTest()` never invokes a lock, so it's safe anytime.
+    private func runLockSelfTest() {
+        let real = locker.selfTest()
+        var display = real
+        #if DEBUG
+        // DEBUG-only: simulate "no lock mechanism" for the WARNING UI only
+        // (`defaults write com.nodonuts.app debugSimulateNoLockMechanism -bool YES`).
+        // Never touches the locker — the real lock() path is unaffected.
+        if UserDefaults.standard.bool(forKey: "debugSimulateNoLockMechanism") {
+            display = LockCapability(available: [])
+        }
+        #endif
+        guard display != lastLockCapability else { return }
+        lastLockCapability = display
+        let description = DiagnosticsReporter.lockCapabilityDescription(real)
+        let simulated = display != real ? " (DEBUG: simulating NONE for display)" : ""
+        if real.canLock {
+            Self.appLog.notice("lock self-test: available = \(description, privacy: .public)\(simulated, privacy: .public)")
+        } else {
+            Self.appLog.error("lock self-test: NONE — cannot lock on this macOS")
+        }
+        menuBar?.setLockCapability(display)
+        notProtectingNotifier.update(lockCapability: display)
+    }
+
     /// Lightweight, honest NSAlert for the enrollment outcome.
     private func showEnrollmentResult(_ result: EnrollmentCoordinator.Result) {
         let alert = NSAlert()
@@ -591,7 +629,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 markerVersion: enrollmentMarker.markerVersion),
             locationStatus: wifiMonitor.authorizationStatus(),
             trustedNetworkCount: trustedNetworks.all().count,
-            notificationStatusDescription: nil
+            notificationStatusDescription: nil,
+            lockCapability: locker.selfTest()   // resolve-only; reports the REAL result
         )
     }
 

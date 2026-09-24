@@ -802,6 +802,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-24-cgsession-is-gone-sacswitchtologinwindow-replaces-it-nd-058-nd-074" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-24): CGSession is gone; SACSwitchToLoginWindow replaces it (ND-058, ND-074)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1065,6 +1076,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-24-cgsession-is-gone-sacswitchtologinwindow-replaces-it-nd-058-nd-074" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-24): CGSession is gone; SACSwitchToLoginWindow replaces it (ND-058, ND-074)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1188,6 +1210,14 @@ failure is logged rather than silently swallowed.</p>
   determined attacker; v1 anti-spoofing scope is unchanged (EC-12,
   SECURITY_PRIVACY.md).</li>
 </ul>
+<h2 id="amendment-2026-09-24-cgsession-is-gone-sacswitchtologinwindow-replaces-it-nd-058-nd-074">Amendment (2026-09-24): CGSession is gone; SACSwitchToLoginWindow replaces it (ND-058, ND-074)<a class="headerlink" href="#amendment-2026-09-24-cgsession-is-gone-sacswitchtologinwindow-replaces-it-nd-058-nd-074" title="Permanent link">&para;</a></h2>
+<p><strong>Observed:</strong> on macOS 27.0 (26A428) the <code>CGSession</code> tool (<code>/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession</code>) no longer exists. The public fallback was dead, leaving <code>SACLockScreenImmediate</code> as the only working mechanism. A break there would surface only at the first real walk-away, as <code>.lockFailed</code> shown to an empty chair.</p>
+<p><strong>Probe on the same machine:</strong> <code>dlopen(login.framework)</code> succeeds and <code>dlsym</code> resolves <code>SACLockScreenImmediate</code>, <code>SACSwitchToLoginWindow</code> and <code>SACScreenSaverStartNow</code>. Screensaver and display-sleep routes are rejected as lock mechanisms: they only lock when the user's "require password" delay is 0, and on the dev Mac it is 300 s.</p>
+<p><strong>Decision:</strong>
+- The lock chain is <code>SACLockScreenImmediate</code>, then <code>SACSwitchToLoginWindow</code>. The second is the in-process equivalent of the old <code>CGSession -suspend</code> (it switches to the login window). Verification is unchanged: CGSession <code>ScreenIsLocked</code>, or off-console, with the same fast-user-switching caveat.
+- <strong>Launch self-test (ND-058):</strong> <code>ScreenLocker.selfTest()</code> resolves the symbols without calling them. It runs at launch and on every session resume or wake. If no mechanism resolves, the app shows a persistent "can't lock the screen on this macOS" state: header, red glyph, and a repeating <code>nd.lockUnavailable</code> notification.
+- Each lock logs which mechanism confirmed it (<code>lock confirmed via …</code>, persisted <code>.notice</code>), as a canary for Apple changing the private API.
+- <strong>Accepted risk:</strong> both mechanisms live in <code>login.framework</code>, so they aren't independent. An opt-in Accessibility Ctrl-Cmd-Q tier was considered and declined, because it brings back the permission and ad-hoc-signing unreliability this ADR removed. The self-test turns a silent break into a loud one.</p>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Synthetic Ctrl-Cmd-Q via <code>osascript</code> (ADR-0006):</strong> required Accessibility,

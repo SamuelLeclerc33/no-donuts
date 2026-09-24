@@ -43,6 +43,11 @@ public final class MenuBarController: NSObject {
     /// While true, the header shows an honest "enrolling…" line regardless of the
     /// presence state (which is frozen at .paused by the gate during capture).
     private var isEnrolling = false
+    /// ND-058/ND-074: result of the lock self-test (resolve-only). When `!canLock`, the
+    /// app CANNOT lock this Mac, so every "watching" state must say so loudly — the UI
+    /// must never look protecting when walking away won't lock. Starts optimistic (the
+    /// AppDelegate pushes the real result at launch, right after creating the menu).
+    private var lockCapability = LockCapability(available: LockMechanism.allCases)
 
     // Pause items shown when NOT paused; hidden and replaced by `resumeItem` when paused.
     private let pause15Item = NSMenuItem(title: "Pause for 15 minutes", action: #selector(pause15Clicked), keyEquivalent: "")
@@ -151,6 +156,30 @@ public final class MenuBarController: NSObject {
         // rendered state (render(state:)'s cache would otherwise skip it).
         if let state = lastRenderedState {
             draw(state: state)
+        }
+    }
+
+    /// Reflect the lock self-test result (ND-058/ND-074). Forces a redraw on change —
+    /// the glyph AND header depend on it, and render(state:)'s cache would skip it.
+    public func setLockCapability(_ capability: LockCapability) {
+        guard capability != lockCapability else { return }
+        lockCapability = capability
+        if let state = lastRenderedState {
+            draw(state: state)
+        }
+    }
+
+    /// True when the lock-unavailable warning overrides `state`'s normal look. Only the
+    /// "we'd be enforcing" states are overridden; paused / trusted Wi-Fi / suspended are
+    /// honest as-is (enforcement is off anyway), and lockFailed already shows the red
+    /// triangle. Precedence: lock-unavailable > identity-off (ND-073) > normal.
+    private func showsLockUnavailable(for state: PresenceState) -> Bool {
+        guard !lockCapability.canLock else { return false }
+        switch state {
+        case .present, .absent, .callAssumedPresent, .unknown, .cameraUnavailable:
+            return true
+        case .paused, .trustedNetwork, .suspended, .lockFailed:
+            return false
         }
     }
 
@@ -289,6 +318,12 @@ public final class MenuBarController: NSObject {
     /// Map a PresenceState to its menu-bar glyph. Exhaustive — every new state
     /// must declare how it looks in the menu bar (no `default`).
     private func glyph(for state: PresenceState) -> Glyph {
+        // ND-058/ND-074: can't lock → red warning triangle (baked tint, EC-22), above
+        // every other overlay (incl. identity-off) for the active states.
+        if showsLockUnavailable(for: state) {
+            return Glyph(symbolName: "exclamationmark.triangle.fill", tint: .systemRed,
+                         label: "can't lock the screen on this macOS", fallbackText: "!lock")
+        }
         switch state {
         case .unknown:
             return Glyph(symbolName: "hourglass", tint: nil,
@@ -339,6 +374,9 @@ public final class MenuBarController: NSObject {
     ///   face keeps the Mac unlocked until the user re-enrolls.
     private func headerTitle(for state: PresenceState) -> String {
         if isEnrolling { return "No Donuts — enrolling your face…" }
+        if showsLockUnavailable(for: state) {
+            return "No Donuts — ⚠️ can't lock the screen on this macOS"
+        }
         if isIdentityOff, state == .present || state == .absent {
             return "No Donuts — ⚠️ identity off: re-enroll needed"
         }

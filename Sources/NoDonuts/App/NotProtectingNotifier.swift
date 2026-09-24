@@ -39,6 +39,17 @@ final class NotProtectingNotifier {
     /// Repeating identity-off re-post timer, live only while identity is off.
     private var identityRepeatTimer: Timer?
 
+    // ND-058/ND-074: lock-unavailable alert — independent of the camera and identity
+    // alerts above (own id, own timer, own last-seen value).
+    /// Stable identifier for the lock-unavailable alert (re-posts replace, never stack).
+    private static let lockNotificationID = "nd.lockUnavailable"
+    /// How often to re-surface the lock-unavailable alert while it persists.
+    private static let lockRepeatInterval: TimeInterval = 300
+    /// Last-seen "can lock" value. Starts true so a first `!canLock` counts as entry.
+    private var lastCanLock = true
+    /// Repeating lock-unavailable re-post timer, live only while we can't lock.
+    private var lockRepeatTimer: Timer?
+
     /// Request notification authorization if it hasn't been granted/denied yet.
     /// Idempotent: `requestAuthorization` no-ops after the user's first choice, so
     /// this is safe to call on every active transition. Non-blocking; result ignored
@@ -96,7 +107,53 @@ final class NotProtectingNotifier {
         }
     }
 
+    /// Feed the lock self-test result (ND-058/ND-074). Posts + starts the repeat timer
+    /// on entry into `!canLock`; clears the timer + delivered AND pending alerts of the
+    /// lock-unavailable id on recovery. Steady values do nothing.
+    func update(lockCapability: LockCapability) {
+        let canLock = lockCapability.canLock
+        guard canLock != lastCanLock else { return }
+        lastCanLock = canLock
+        if !canLock {
+            postLockNotification()
+            startLockRepeatTimer()
+        } else {
+            stopLockRepeatTimer()
+            let center = UNUserNotificationCenter.current()
+            center.removeDeliveredNotifications(withIdentifiers: [Self.lockNotificationID])
+            center.removePendingNotificationRequests(withIdentifiers: [Self.lockNotificationID])
+        }
+    }
+
     // MARK: - Internals
+
+    private func postLockNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "No Donuts can\u{2019}t lock your Mac"
+        content.body = "The macOS screen-lock mechanism No Donuts uses isn\u{2019}t available on this version of macOS, so walking away WON\u{2019}T lock your Mac. Update No Donuts, and lock manually with Control-Command-Q until then."
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: Self.lockNotificationID,
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    private func startLockRepeatTimer() {
+        stopLockRepeatTimer()   // never stack timers
+        let timer = Timer(timeInterval: Self.lockRepeatInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.postLockNotification() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        lockRepeatTimer = timer
+    }
+
+    private func stopLockRepeatTimer() {
+        lockRepeatTimer?.invalidate()
+        lockRepeatTimer = nil
+    }
 
     private func postIdentityNotification() {
         guard let reason = identityOffReason else { return }

@@ -102,6 +102,18 @@ This supersedes **ADR-0006**.
   determined attacker; v1 anti-spoofing scope is unchanged (EC-12,
   SECURITY_PRIVACY.md).
 
+## Amendment (2026-09-24): CGSession is gone; SACSwitchToLoginWindow replaces it (ND-058, ND-074)
+
+**Observed:** on macOS 27.0 (26A428) the `CGSession` tool (`/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession`) no longer exists. The public fallback was dead, leaving `SACLockScreenImmediate` as the only working mechanism. A break there would surface only at the first real walk-away, as `.lockFailed` shown to an empty chair.
+
+**Probe on the same machine:** `dlopen(login.framework)` succeeds and `dlsym` resolves `SACLockScreenImmediate`, `SACSwitchToLoginWindow` and `SACScreenSaverStartNow`. Screensaver and display-sleep routes are rejected as lock mechanisms: they only lock when the user's "require password" delay is 0, and on the dev Mac it is 300 s.
+
+**Decision:**
+- The lock chain is `SACLockScreenImmediate`, then `SACSwitchToLoginWindow`. The second is the in-process equivalent of the old `CGSession -suspend` (it switches to the login window). Verification is unchanged: CGSession `ScreenIsLocked`, or off-console, with the same fast-user-switching caveat.
+- **Launch self-test (ND-058):** `ScreenLocker.selfTest()` resolves the symbols without calling them. It runs at launch and on every session resume or wake. If no mechanism resolves, the app shows a persistent "can't lock the screen on this macOS" state: header, red glyph, and a repeating `nd.lockUnavailable` notification.
+- Each lock logs which mechanism confirmed it (`lock confirmed via …`, persisted `.notice`), as a canary for Apple changing the private API.
+- **Accepted risk:** both mechanisms live in `login.framework`, so they aren't independent. An opt-in Accessibility Ctrl-Cmd-Q tier was considered and declined, because it brings back the permission and ad-hoc-signing unreliability this ADR removed. The self-test turns a silent break into a loud one.
+
 ## Alternatives considered
 
 - **Synthetic Ctrl-Cmd-Q via `osascript` (ADR-0006):** required Accessibility,
