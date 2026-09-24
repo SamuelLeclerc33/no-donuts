@@ -29,6 +29,7 @@ struct DiagnosticsReporter {
     ///   - state: the current presence state (from the engine).
     ///   - config: the effective tunable config (tick / grace / threshold / …).
     ///   - store: enrollment store — only its `isEnrolled` flag is read.
+    ///   - identity: identity-recognition status (ND-073) — model version strings only.
     ///   - locationStatus: the current `CLAuthorizationStatus` (status label only).
     ///   - trustedNetworkCount: number of trusted Wi-Fi SSIDs — a COUNT, never names.
     ///   - notificationStatusDescription: optional pre-fetched notification
@@ -40,6 +41,7 @@ struct DiagnosticsReporter {
         state: PresenceState,
         config: Config,
         store: EnrollmentStoring,
+        identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
         notificationStatusDescription: String? = nil,
@@ -75,6 +77,7 @@ struct DiagnosticsReporter {
         // --- Enrollment (yes/no only — never the embeddings) ---
         lines.append("[Enrollment]")
         lines.append("  Enrolled: \(store.isEnrolled ? "yes" : "no")")
+        lines.append("  Identity: \(Self.identityStatusDescription(identity))")
         lines.append("")
 
         // --- Presence + effective config ---
@@ -121,6 +124,7 @@ struct DiagnosticsReporter {
         state: PresenceState,
         config: Config,
         store: EnrollmentStoring,
+        identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
         notificationStatusDescription: String? = nil,
@@ -130,6 +134,7 @@ struct DiagnosticsReporter {
             state: state,
             config: config,
             store: store,
+            identity: identity,
             locationStatus: locationStatus,
             trustedNetworkCount: trustedNetworkCount,
             notificationStatusDescription: notificationStatusDescription,
@@ -142,6 +147,20 @@ struct DiagnosticsReporter {
     }
 
     // MARK: - Status label helpers (labels only, no data)
+
+    /// Human-readable identity status (ND-073). Model version strings only — never
+    /// embeddings or images. Also used by the app's identity-change log line.
+    static func identityStatusDescription(_ status: IdentityStatus) -> String {
+        switch status {
+        case .active:      return "active"
+        case .notEnrolled: return "not enrolled"
+        case .unknown:     return "unknown (enrollment store unreadable / not yet checked)"
+        case .off(.modelMismatch(let stored, let active)):
+            return "OFF — model mismatch (enrolled with \(stored ?? "legacy/unversioned"), active \(active)); any face counts, re-enroll needed"
+        case .off(.enrollmentMissing(let expected)):
+            return "OFF — enrollment missing (marker says enrolled with \(expected)); any face counts, re-enroll needed"
+        }
+    }
 
     private func cameraStatusDescription() -> String {
         switch AVCaptureDevice.authorizationStatus(for: .video) {

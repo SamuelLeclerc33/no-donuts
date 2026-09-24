@@ -13,8 +13,10 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 
 **Goal:** no silent fail-open, no UI that claims protection it isn't delivering, identity on a measured footing, then distribution.
 
+**Distribution target (decided 2026-09-24):** internal distribution to colleagues at the user's company, all on essentially the same Mac hardware. Not sold and not public. This narrows scope: one hardware profile to validate (ND-066, ND-096, ND-042 measured on that fleet); no public updater (ND-107 becomes manual DMG or company MDM); no App Store. It does **not** remove the license question: internal use inside a for-profit company generally still counts as commercial use under research-only terms (see ND-089). Channel, signing identity and privacy obligations are decided in ND-111.
+
 **Tier 0 — silent fail-opens (do first, in order):**
-1. ND-073 — identity-off state: model mismatch / missing model / deleted Keychain item silently → any face = present, menu still says "enrolled" — cooper + krusty
+1. ✅ ND-073 — identity-off state: model mismatch / missing model / deleted Keychain item silently → any face = present, menu still says "enrolled" — cooper + krusty
 2. ND-076 — threshold wiring: app runs FaceNet at the Vision-era 0.6, not the descriptor default; per-model floor for slider + resolver — cooper + krusty
 3. ND-058 + ND-074 — lock self-test at launch + dead CGSession fallback (binary absent on macOS 27 → only the private SAC path locks) — wiggum
 4. ND-054 + ND-079 — lock-failed alarm + retry w/ backoff; manual lock in flight swallows the auto-lock — wiggum + homer + krusty
@@ -36,7 +38,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 
 **Tier 2 — tamper resistance & correctness:**
 18. ND-082 — app kill/quit watchdog + "No Donuts stopped" notification — gordon + wiggum
-19. ND-083 — single-instance guard + one launcher per install (LaunchAgent vs SMAppService) — gordon
+19. ✅ ND-083 — single-instance guard (launcher choice → ND-053/ND-111) — gordon
 20. ND-080 — indefinite pause: reminder + clear on unlock — krusty + homer
 21. ND-081 — trusted Wi-Fi bound to SSID + BSSID/gateway, not SSID alone — krusty + wiggum
 22. ND-084 — camera: post-suspend stale frame + failed `addOutput` leaves input attached — blart
@@ -50,27 +52,28 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 30. ND-093 — `enroll()` input validation + Keychain doc/attr fixes — cooper
 31. ND-066 — on-device multi-client validation + configured-device busy probe — blart
 
-**Tier 3 — pre-distribution gates (must precede M5):**
-32. ND-089 — model license: VGGFace2 weights are non-commercial → pick a distributable model (ADR) — cooper
-33. ND-087 — model reproducibility: pinned deps + SHA-256 verified in `make-app.sh` + output-dim assert — gordon + cooper
-34. ND-065 — identity constants + Keychain migration plan — gordon + wiggum + cooper
-35. ND-088 — Location entitlement for hardened runtime — gordon
-36. ND-105 — `.gitignore` face-photo dirs (privacy, do alongside ND-056) — gordon
-37. ND-103 — CI (`swift build` + `swift run EngineCheck` on macOS runner) — gordon
-38. ND-104 — release mode fails when the model is absent — gordon
-39. ND-109 — threat-model table in `SECURITY_PRIVACY.md` — wiggum
-40. ND-050 → ND-051 → ND-052 → ND-053 — codesign/notarize, DMG, uninstall (`--purge` + SMAppService unregister), MDM notes — gordon
+**Tier 3 — pre-distribution gates (must precede M5; target = internal company distribution, ND-111):**
+32. ND-111 — internal-distribution ADR: channel, signing identity, IT/privacy sign-off — gordon + wiggum
+33. ND-089 — model license: VGGFace2 weights are non-commercial; internal company use still likely counts as commercial → verify terms or swap model (ADR) — cooper
+34. ND-087 — model reproducibility: pinned deps + SHA-256 verified in `make-app.sh` + output-dim assert — gordon + cooper
+35. ND-065 — identity constants + Keychain migration plan — gordon + wiggum + cooper
+36. ND-088 — Location entitlement for hardened runtime — gordon
+37. ND-105 — `.gitignore` face-photo dirs (privacy, do alongside ND-056) — gordon
+38. ND-103 — CI (`swift build` + `swift run EngineCheck` on macOS runner) — gordon
+39. ND-104 — release mode fails when the model is absent — gordon
+40. ND-109 — threat-model table in `SECURITY_PRIVACY.md` — wiggum
+41. ND-050 → ND-051 → ND-052 → ND-053 — codesign/notarize, DMG, uninstall (`--purge` + SMAppService unregister), MDM notes — gordon
 
 **Tier 4 — performance, power, UX polish:**
-41. ND-042 — loop timing + power (deadline tick, cancellation-aware capture, pre-warm, buffer copy) — blart + homer
-42. ND-096 — capture preset 640×480, lowest fps range, follow `systemPreferredCamera` — blart
-43. ND-095 — model load off main thread + explicit compute units — cooper
-44. ND-102 — `isEnrolled` Keychain read off main at launch — krusty
-45. ND-099 — Recognition row in Settings + model/version in diagnostics — krusty + gordon
-46. ND-070 — de-modalize the two remaining `runModal` alerts — krusty
-47. ND-100 — VoiceOver labels — krusty
-48. ND-101 — localization (string catalog, pluralization) — krusty
-49. ND-069 — `throttleOnBattery` implement-or-delete — homer + blart
+42. ND-042 — loop timing + power (deadline tick, cancellation-aware capture, pre-warm, buffer copy) — blart + homer
+43. ND-096 — capture preset 640×480, lowest fps range, follow `systemPreferredCamera` — blart
+44. ND-095 — model load off main thread + explicit compute units — cooper
+45. ND-102 — `isEnrolled` Keychain read off main at launch — krusty
+46. ND-099 — Recognition row in Settings + model/version in diagnostics — krusty + gordon
+47. ND-070 — de-modalize the two remaining `runModal` alerts — krusty
+48. ND-100 — VoiceOver labels — krusty
+49. ND-101 — localization (string catalog, pluralization) — krusty
+50. ND-069 — `throttleOnBattery` implement-or-delete — homer + blart
 
 **Tier 5 — hygiene & tooling (batchable, anytime):**
 ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetectionRecognizer` · ND-110 EngineCheck coverage gaps · ND-097 `-fobjc-arc-exceptions` · ND-106 docs deps lock · ND-107 update-mechanism ADR · ND-108 local crash summary · ND-047 XCTest target · small follow-ups listed under M3/M6.
@@ -172,7 +175,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetect
 - [ ] ND-050 Codesign + notarization pipeline — gordon (needs a decision ADR first: signing account (personal/Chrono — **not** the Serko account), final bundle id, hardened-runtime entitlement audit, `notarytool` flow. **Blocked on ND-065** — renaming the bundle id without the Keychain-service migration plan silently orphans enrollments)
 - [ ] ND-051 Signed `.app` + DMG/installer — gordon
 - [ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon (scope from review: `uninstall.sh --purge` = agent + `/Applications` app + Keychain enrollment item + `defaults delete com.nodonuts.app` + `tccutil reset Camera` + unregister the `SMAppService` login item (today the app returns at next login after "uninstall") — a trust/privacy story this app markets on)
-- [ ] ND-053 MDM/enterprise deployment notes — gordon
+- [ ] ND-053 MDM/enterprise deployment notes — gordon. **Now in scope (internal distribution, ND-111):** if colleagues' Macs are company-managed, deploy via MDM. Note that a PPPC profile can pre-DENY but cannot pre-GRANT camera access, so each user still clicks Allow once. Document the LaunchAgent vs login-item choice for managed installs (ND-083).
 
 ## M6 — v1.2 Hardening (from the 2026-07-02 full review)
 
@@ -214,26 +217,27 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetect
 
 **P0 — silent fail-opens:**
 
-- [ ] ND-073 Identity-off state — a stored enrollment whose model version ≠ the active embedder (model missing/unloadable → Vision fallback at `main.swift:51-60`; fresh clone; CLT build without the model; someone deletes the `.mlmodelc` from the ad-hoc-signed bundle) makes `IdentityRecognizer` return present for ANY face (`FaceRecognizer.swift:109-111`), logged only as `log.notice`, while the menu still says "enrolled" (`main.swift:158`, `EnrollmentStore.isEnrolled` ignores version). Deleting the Keychain item gives the same result via `.notEnrolled`. Fix: expose stored-vs-active version from the store, add a distinct "Re-enroll needed / identity off" state in the menu header + `NotProtectingNotifier` (on entry + repeat), EngineCheck the mismatch path. EC-03. — cooper + krusty
+- [x] ND-073 Identity-off state — a stored enrollment whose model version ≠ the active embedder (model missing/unloadable → Vision fallback at `main.swift:51-60`; fresh clone; CLT build without the model; someone deletes the `.mlmodelc` from the ad-hoc-signed bundle) makes `IdentityRecognizer` return present for ANY face (`FaceRecognizer.swift:109-111`), logged only as `log.notice`, while the menu still says "enrolled" (`main.swift:158`, `EnrollmentStore.isEnrolled` ignores version). Deleting the Keychain item gives the same result via `.notEnrolled`. Fix: expose stored-vs-active version from the store, add a distinct "Re-enroll needed / identity off" state in the menu header + `NotProtectingNotifier` (on entry + repeat), EngineCheck the mismatch path. EC-03.. **DONE 2026-09-24:** `IdentityStatus` + `lastIdentityStatus` (Core, EngineCheck +15 → 85/85); UserDefaults marker (set on enroll, cleared on Reset, backfilled at launch); orange `person.fill.questionmark` glyph, "identity off" header, "Re-enroll my face (required)…", repeating `nd.identityOff` notification, Identity line in diagnostics. ADR-0014 amended. Note: `EnrollmentStore` caches its first read, so an external delete mid-session is flagged at next launch (the running app keeps matching cached vectors) — cooper + krusty
 - [ ] ND-074 Dead CGSession fallback — `ScreenLocker.swift:116` launches `/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession`, which does NOT exist on macOS 27 (verified 2026-09-24). Only the private `SACLockScreenImmediate` path can lock; if it breaks there is no second mechanism. Fix: find a working public fallback (or remove the dead one and say so in ADR-0010 amendment), and have ND-058's self-test report mechanism availability. EC-19. — wiggum
 - [ ] ND-075 Virtual camera accepted — `AVCaptureDevice.default(for: .video)` (`CameraController.swift:151`) accepts any device incl. virtual cams (OBS etc.), so a looped video of the enrolled user keeps the Mac unlocked indefinitely. Fix: select via `AVCaptureDevice.DiscoverySession` limited to physical device types (built-in / external / Continuity), log the active camera, warn in the menu when it isn't a known physical camera. EC-12. — blart
 
 **P1 — correctness & tamper resistance:**
 
-- [ ] ND-076 Threshold wiring — `main.swift:139` always passes `Config.matchThreshold` (0.6, `Config.swift:31`), so FaceNet's descriptor default 0.5 (`FaceEmbeddingModel.swift:120`) never applies; with measured genuine p5 = 0.662 some real-user ticks already fall below 0.6 (false-lock risk). The stored `matchThreshold` key isn't per-model, so a Vision-era value carries across a model swap. Slider floor 0.05 (`SettingsStore.swift:43`) and resolver `(0,1)` (`FaceEmbedding.swift:150`) allow values that accept any face on FaceNet. Fix: pass `nil`/descriptor unless the user overrode; key the override by model version; per-model minimum (e.g. 0.3) in BOTH resolver and slider; fix stale Vision-era comment `Config.swift:18-30`. — cooper + krusty
+- [ ] ND-076 Threshold wiring — `main.swift:139` always passes `Config.matchThreshold` (0.6, `Config.swift:31`), so FaceNet's descriptor default 0.5 (`FaceEmbeddingModel.swift:120`) never applies; with measured genuine p5 = 0.662 some real-user ticks already fall below 0.6 (false-lock risk). *(Observed 2026-09-24: the dev Mac runs at 0.50 only because of a manual `defaults write matchThreshold 0.5` override; a fresh install, such as a colleague's Mac (ND-111), gets 0.6.)* The stored `matchThreshold` key isn't per-model, so a Vision-era value carries across a model swap. Slider floor 0.05 (`SettingsStore.swift:43`) and resolver `(0,1)` (`FaceEmbedding.swift:150`) allow values that accept any face on FaceNet. Fix: pass `nil`/descriptor unless the user overrode; key the override by model version; per-model minimum (e.g. 0.3) in BOTH resolver and slider; fix stale Vision-era comment `Config.swift:18-30`. — cooper + krusty
 - [ ] ND-077 Tamper-visible tunables — `defaults write com.nodonuts.app matchThreshold 0.01`, `spoofTextureFloor 0.0001`, `antiSpoofEnabled false` all apply silently (`FaceEmbedding.swift:153`, `FaceLiveness.swift:88`). A colleague with 10 s of access can neuter identity with no UI trace. Fix: show "protection reduced" in the menu header when any security tunable differs from its default. — krusty + wiggum
 - [ ] ND-078 Bounded camera-unavailable policy — `.unavailable` resets absence accounting with no time limit (`PresenceEngine.swift:53-56`), so an unplugged/wedged/removed camera keeps the Mac unlocked forever (only a 5-min notification). It also clears `callAssumedSince`, so interleaved unavailable ticks restart the ND-033 call cap (`:55`, `:131`). Fix: ADR for a capped unavailable window (like `maxCallAssumedPresentSeconds`) then escalate to absence; don't reset the call cap on `.unavailable`. Revisits EC-07/08/09 (needs ADR — clamshell must not lock out the user unfairly). — homer
 - [ ] ND-079 Manual lock swallows auto-lock — if `lockNow()` is in flight when grace expires, the auto path sets `lockAttempted = true` (`PresenceEngine.swift:217`) then is skipped by `isLocking` (`:171`); if the manual lock fails, nothing retries this episode. Fix: set `lockAttempted` only when `attemptLock` actually runs; EngineCheck it. Pair with ND-054. — homer
 - [ ] ND-080 Indefinite pause never ends — "Pause until I resume" (`PauseController.swift:31-45`) has no reminder and survives lock/unlock. Fix: clear on session unlock (or cap), nag every N minutes while paused. EC-15. — krusty + homer
 - [ ] ND-081 Trusted Wi-Fi keyed on SSID only — `WiFiMonitor.swift:83`; anyone can broadcast the office/home SSID from a hotspot, and `trustedWiFiSSIDs` is editable via `defaults write`. Fix: bind trust to SSID + BSSID (or gateway MAC). EC-20. — krusty + wiggum
 - [ ] ND-082 Kill/quit watchdog — the `SMAppService` login-item path has no KeepAlive, so a single `kill` leaves the Mac unprotected until next login; on the LaunchAgent path a scripted Quit (exit 0) isn't relaunched (`MenuBarController.swift:111`). Nothing notifies the user. Fix: KeepAlive/watchdog on the login-item path + "No Donuts stopped" notification on Quit. — gordon + wiggum
-- [ ] ND-083 Single instance + one launcher — `LoginItem.swift:18-20` claims launchd coalesces the LaunchAgent and `SMAppService.mainApp`; they're separate jobs and there's no single-instance guard → two app copies can run (two cameras sessions, two menu icons). Fix: `NSRunningApplication` singleton check at launch + pick one mechanism per install. — gordon
+- [x] ND-083 Single instance + one launcher — `LoginItem.swift:18-20` claims launchd coalesces the LaunchAgent and `SMAppService.mainApp`; they're separate jobs and there's no single-instance guard → two app copies can run (two cameras sessions, two menu icons). Fix: `NSRunningApplication` singleton check at launch + pick one mechanism per install. **DONE 2026-09-24 (guard):** `SingleInstance.swift` takes a `flock` on `~/Library/Application Support/NoDonuts/instance.lock` before any camera or UI; a second copy exits 0; other errors fail open. EC-23. Choosing one launcher per install moved to ND-053/ND-111 — gordon
 - [ ] ND-084 Camera session correctness — (a) frames already queued on `sessionQueue` land after `suspend()` clears the buffer (`CameraController.swift:256-260`), so the first post-resume tick can read a pre-suspend frame as "present"; clear on `resume()` + drop frames timestamped before resume (shares ND-055 timestamps). (b) a failed `addOutput` leaves the input attached (`:164-172`), so every retry fails `canAddInput` until restart; remove the input on every failure path. — blart
 - [ ] ND-085 Face quality gate — no minimum face size/quality (`CoreMLFaceEmbedder.swift:155`); crops clipped at the frame edge are stretched non-uniformly (`:230-231`) → garbage embeddings (false-accept and false-reject). Fix: minimum face fraction of frame, keep the crop square (pad instead of stretch). — cooper
 - [ ] ND-086 Onboarding honesty — the Done step says "now watching for you and will lock" even if camera access was denied/never asked (`OnboardingView.swift:150`); "Enroll" is tappable before camera authorization (`:133`) → guaranteed failure modal. Fix: permission-conditional copy; disable Enroll until authorized. — krusty
 - [ ] ND-087 Model reproducibility & integrity — `Resources/Models/README.md:51` installs torch/facenet-pytorch/coremltools unpinned yet claims "deterministic"; no checksum, so different weights ship under the same `facenet-vggface2-v1` tag and stored embeddings get compared across models. Output dim never asserted = 512 (`CoreMLFaceEmbedder.swift:112-119`). Fix: pinned `requirements.txt`, recorded SHA-256 verified by `make-app.sh`, assert output dim at load. — gordon + cooper
 - [ ] ND-088 Location entitlement — `NoDonuts.entitlements:7` lacks `com.apple.security.personal-information.location` while `Info.plist:29` requests Location; trusted-Wi-Fi SSID reads will break under hardened runtime. Fix: add during the ND-050 entitlement audit. — gordon
 - [ ] ND-089 Model license blocks distribution — FaceNet VGGFace2 weights are non-commercial research-only (dataset withdrawn); biometric-privacy law is an added exposure. Fix: ADR choosing a permissively licensed face-embedding model before ND-051; re-run ND-056 on it. Blocks ND-051. — cooper
+- [ ] ND-111 Internal-distribution decision (ADR) — record the target: colleagues at the user's company, same hardware, not sold. Decide: (a) **channel** — Developer-ID-signed + notarized DMG vs company MDM (ND-053); (b) **signing identity** — personal Apple Developer account vs the company's. This conflicts with the current rule that the repo stays separate from work accounts and identities, so decide explicitly; (c) **approvals** — company IT/security sign-off for a camera-watching app with a private-API lock (ADR-0010); (d) **privacy obligations** — it stores face biometrics of colleagues. Check with the company privacy officer; in Québec, Law 25 and the IT framework act require declaring biometric identification systems to the CAI in advance. Add a plain-language privacy notice and consent screen to onboarding (everything on-device, embeddings in Keychain only, how to delete); (e) **supported hardware** — pin the one fleet profile (model + macOS version) and validate ND-066/ND-096 on it; (f) **support** — uninstall (ND-052), diagnostics copy (ND-044), a contact for issues. Gates ND-050/051. Depends on ND-089. — gordon + wiggum
 - [ ] ND-105 Face-photo gitignore — `.gitignore` has no rule for FaceScore photo folders; ND-056 data could be committed by accident (privacy hard requirement). Fix: ignore a conventional dir (e.g. `faces/`) and document it in FaceScore usage. Do before ND-056. — gordon
 
 **P2 — polish, power, coverage:**
@@ -254,7 +258,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetect
 - [ ] ND-103 CI — no `.github/`; EngineCheck runs on CLT so a macOS runner can gate `swift build` + `swift run EngineCheck`. — gordon
 - [ ] ND-104 Release build requires the model — `make-app.sh:93-97` silently falls back to Vision with a warning; add a `--release` mode that fails when the model is absent (complements ND-073). — gordon
 - [ ] ND-106 Docs deps lock — `docs/requirements.txt:5` pins only mkdocs-material; transitive drift churns `site/`. Fix: `pip freeze` lock. — gordon
-- [ ] ND-107 Update mechanism ADR — no updater; Sparkle needs network → must be opt-in to respect the privacy stance. — gordon
+- [ ] ND-107 Update mechanism ADR — no updater; Sparkle needs network → must be opt-in to respect the privacy stance. **Re-scoped for internal distribution:** default to no in-app updater; ship new versions as a notarized DMG or through company MDM, and show the version in the menu so people can tell if they're current. — gordon
 - [ ] ND-108 Local crash summary — no crash capture; add a local-only MetricKit summary to diagnostics (ND-044), never uploaded. — gordon
 - [ ] ND-109 Threat-model table — record the tamper paths from this audit (ND-073/075/077/080/081/082) in `docs/SECURITY_PRIVACY.md`. — wiggum
 - [ ] ND-110 EngineCheck coverage gaps — `decodeEnrollment` (legacy/empty/corrupt), `l2Normalized`, `firstMultiArrayOutput`, `updateConfig` mid-episode, manual-lock-in-flight → auto path (ND-079), cancelled tick (ND-091), time-to-lock bound for EC-10 (ND-060). — homer + cooper

@@ -826,6 +826,112 @@ func runAll() async -> Bool {
                  "descriptor threshold: no explicit threshold → descriptor.defaultMatchThreshold drives decision (0.9 → stranger, 0.5 → present) (ADR-0014)")
     }
 
+    // MARK: Identity status surfacing (ND-073) — cooper
+
+    // (s1) Pure status table: every branch, including the nil legacy version and a marker
+    // alongside a matching enrollment (still .active — the marker never downgrades).
+    do {
+        let active = FaceEmbeddingModelDescriptor.fakeTest.version
+        let t1 = identityStatus(for: .enrolled([matchV], modelVersion: active), activeVersion: active, markerVersion: nil) == .active
+        let t2 = identityStatus(for: .enrolled([matchV], modelVersion: active), activeVersion: active, markerVersion: active) == .active
+        let t3 = identityStatus(for: .enrolled([matchV], modelVersion: "old-v0"), activeVersion: active, markerVersion: "old-v0")
+            == .off(.modelMismatch(stored: "old-v0", active: active))
+        let t4 = identityStatus(for: .enrolled([matchV], modelVersion: nil), activeVersion: active, markerVersion: nil)
+            == .off(.modelMismatch(stored: nil, active: active))
+        let t5 = identityStatus(for: .notEnrolled, activeVersion: active, markerVersion: nil) == .notEnrolled
+        let t6 = identityStatus(for: .notEnrolled, activeVersion: active, markerVersion: active)
+            == .off(.enrollmentMissing(expected: active))
+        let t7 = identityStatus(for: .unavailable, activeVersion: active, markerVersion: active) == .unknown
+        c.expect(t1 && t2, "identityStatus: enrolled + matching version → .active (marker irrelevant) (ND-073)")
+        c.expect(t3, "identityStatus: enrolled + different version → .off(.modelMismatch) (ND-073)")
+        c.expect(t4, "identityStatus: legacy nil-version record → .off(.modelMismatch(stored: nil)) (ND-073)")
+        c.expect(t5, "identityStatus: not enrolled + no marker → .notEnrolled (ND-073)")
+        c.expect(t6, "identityStatus: not enrolled + marker → .off(.enrollmentMissing) (ND-073)")
+        c.expect(t7, "identityStatus: store .unavailable → .unknown (ND-073)")
+        let flags = IdentityStatus.active.hasStoredEnrollment
+            && IdentityStatus.off(.modelMismatch(stored: nil, active: active)).hasStoredEnrollment
+            && !IdentityStatus.off(.enrollmentMissing(expected: active)).hasStoredEnrollment
+            && !IdentityStatus.notEnrolled.hasStoredEnrollment && !IdentityStatus.unknown.hasStoredEnrollment
+            && IdentityStatus.off(.enrollmentMissing(expected: active)).isOff
+            && !IdentityStatus.active.isOff && !IdentityStatus.unknown.isOff
+        c.expect(flags, "IdentityStatus: isOff / hasStoredEnrollment convenience flags (ND-073)")
+    }
+
+    // (s2) Recognizer publishes status from its per-tick read; results unchanged.
+    do {
+        let active = FaceEmbeddingModelDescriptor.fakeTest.version
+        // Initial status before any tick.
+        let fresh = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: InMemoryEnrollmentStore())
+        c.expect(fresh.lastIdentityStatus == .unknown, "recognizer status: initial value .unknown (ND-073)")
+
+        // Mismatch → .off(.modelMismatch), result still presence-only.
+        let mm = IdentityRecognizer(embedder: FakeEmbedder(differentV),
+                                    store: InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: "old-model-v0"))
+        let mmRes = await mm.recognize(CapturedFrame())
+        c.expect(mm.lastIdentityStatus == .off(.modelMismatch(stored: "old-model-v0", active: active))
+                    && mmRes == .enrolledUserPresent(confidence: 1.0),
+                 "recognizer status: version mismatch → .off(.modelMismatch), result still presence-only (ND-073)")
+
+        // Match → .active.
+        let ok = IdentityRecognizer(embedder: FakeEmbedder(matchV),
+                                    store: InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: active),
+                                    marker: InMemoryEnrollmentMarker(active))
+        _ = await ok.recognize(CapturedFrame())
+        c.expect(ok.lastIdentityStatus == .active, "recognizer status: matching version → .active (ND-073)")
+
+        // Marker + empty store → .off(.enrollmentMissing), result still presence-only.
+        let missing = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: InMemoryEnrollmentStore(),
+                                         marker: InMemoryEnrollmentMarker(active))
+        let missRes = await missing.recognize(CapturedFrame())
+        c.expect(missing.lastIdentityStatus == .off(.enrollmentMissing(expected: active))
+                    && missRes == .enrolledUserPresent(confidence: 1.0),
+                 "recognizer status: marker + empty store → .off(.enrollmentMissing), result still presence-only (ND-073)")
+
+        // Status updates even when the embed yields no face (it comes from the store read).
+        let noFace = IdentityRecognizer(embedder: FakeEmbedder(nil),
+                                        store: InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: active))
+        _ = await noFace.recognize(CapturedFrame())
+        c.expect(noFace.lastIdentityStatus == .active, "recognizer status: published from store read even on .noFace (ND-073)")
+
+        // .unavailable keeps the previous status (no flapping), result still .error.
+        let flaky = InMemoryEnrollmentStore(embeddings: [matchV], modelVersion: "old-model-v0")
+        let fr = IdentityRecognizer(embedder: FakeEmbedder(matchV), store: flaky)
+        _ = await fr.recognize(CapturedFrame())
+        flaky.setSimulateUnavailable(true)
+        let frRes = await fr.recognize(CapturedFrame())
+        c.expect(fr.lastIdentityStatus == .off(.modelMismatch(stored: "old-model-v0", active: active))
+                    && frRes == .error("enrollment store unavailable"),
+                 "recognizer status: store .unavailable keeps previous status (no flap), result .error (ND-073)")
+    }
+
+    // (s3) Marker round-trip (in-memory + UserDefaults on an isolated suite).
+    do {
+        let m = InMemoryEnrollmentMarker()
+        let start = m.markerVersion == nil
+        m.setMarker("v-a")
+        let afterSet = m.markerVersion == "v-a"
+        m.setMarker("v-b")
+        let overwritten = m.markerVersion == "v-b"
+        m.clearMarker()
+        c.expect(start && afterSet && overwritten && m.markerVersion == nil,
+                 "InMemoryEnrollmentMarker: nil → set → overwrite → clear round-trip (ND-073)")
+
+        let suite = "com.nodonuts.enginecheck.marker"
+        if let d = UserDefaults(suiteName: suite) {
+            d.removePersistentDomain(forName: suite)
+            let ud = UserDefaultsEnrollmentMarker(defaults: d)
+            let s0 = ud.markerVersion == nil
+            ud.setMarker("v-x")
+            let s1 = ud.markerVersion == "v-x" && d.string(forKey: "enrollmentMarkerModelVersion") == "v-x"
+            ud.clearMarker()
+            c.expect(s0 && s1 && ud.markerVersion == nil,
+                     "UserDefaultsEnrollmentMarker: set/clear round-trip under key enrollmentMarkerModelVersion (ND-073)")
+            d.removePersistentDomain(forName: suite)
+        } else {
+            c.expect(false, "UserDefaultsEnrollmentMarker: isolated suite available")
+        }
+    }
+
     // MARK: Anti-spoofing (ND-041, EC-12) + live threshold (ND-040) — cooper/wiggum
 
     // isLikelySpoof pure-function boundaries: strictly below floor → true; at/above → live.

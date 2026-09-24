@@ -914,6 +914,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-24-identity-off-is-loud-never-silent-nd-073" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-24): identity-off is loud, never silent (ND-073)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1065,6 +1076,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-24-identity-off-is-loud-never-silent-nd-073" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-24): identity-off is loud, never silent (ND-073)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1134,6 +1156,15 @@
 <p><strong>The threshold stays un-tuned (<code>thresholdIsTuned = false</code>), by decision.</strong> Live per-tick logging can only ever produce GENUINE scores; it structurally cannot produce impostor scores, which require other people's faces on cue. Genuine-only data bounds the false-<strong>reject</strong> rate and carries no information about where false-<strong>accept</strong> begins, so it cannot justify a threshold — and <code>thresholdIsTuned = true</code> is a claim that the EC-03 look-alike margin was measured. Setting it on half the evidence would put a false assurance into a security-relevant descriptor.</p>
 <p>To unblock that measurement, Phase 2 adds <strong><code>FaceScore</code></strong> (<code>swift run FaceScore</code>), an offline harness that scores still images through the <em>real</em> <code>CoreMLFaceEmbedder</code> — same detection, crop, resize, and <code>cosineSimilarity</code> — so an impostor set becomes a folder of photos rather than a scheduling problem. It reports genuine vs impostor distributions, an FRR/FAR sweep, and a recommendation that <strong>refuses to endorse a threshold unless the two classes separate cleanly</strong>. Its statistics and that refusal live in <code>NoDonutsCore/Recognition/ThresholdAnalysis.swift</code> and are EngineCheck-covered (70/70), because the arithmetic under a shipped threshold is itself security-relevant. Tuning proper is <strong>ND-056</strong>.</p>
 <p>A second gap opened by this phase is tracked separately: the anti-spoof texture score is not computed on the Core ML path, so the ND-041 gate never trips there (<strong>ND-072</strong>, EC-12).</p>
+<h2 id="amendment-2026-09-24-identity-off-is-loud-never-silent-nd-073">Amendment (2026-09-24): identity-off is loud, never silent (ND-073)<a class="headerlink" href="#amendment-2026-09-24-identity-off-is-loud-never-silent-nd-073" title="Permanent link">&para;</a></h2>
+<p>The forced re-enrollment above falls back to <strong>presence-only</strong> (any face = present). Until now that fallback was silent: a <code>log.notice</code> while the menu still said "enrolled / watching for you". It triggers whenever the stored version differs from the active embedder, including when the Core ML model is missing and the app runs on the Vision fallback (fresh clone, CLT build without the model, a deleted <code>.mlmodelc</code> in an ad-hoc bundle).</p>
+<p><strong>Decision:</strong> keep presence-only on a mismatch, with no lockout loop and no way to get stuck locked out, but surface it loudly:</p>
+<ul>
+<li><code>IdentityRecognizer.lastIdentityStatus</code> publishes <code>IdentityStatus</code> (<code>.notEnrolled</code> / <code>.active</code> / <code>.off(.modelMismatch | .enrollmentMissing)</code> / <code>.unknown</code>), derived from the existing per-tick store read. Recognition results are unchanged.</li>
+<li>A <strong>non-secret marker</strong> in UserDefaults (<code>enrollmentMarkerModelVersion</code>, a model version string only) records "enrolled under model X". It is set on a successful enroll, cleared on an in-app Reset, and backfilled at launch for enrollments that predate it. If the store says not-enrolled while the marker is set, the status is <code>.off(.enrollmentMissing)</code>, so a Keychain item deleted outside the app is no longer indistinguishable from "never enrolled". The marker is tamperable by design; it raises the bar, and ND-077 covers tamper visibility.</li>
+<li>The app shows it everywhere: the header reads "⚠️ identity off: re-enroll needed", the present glyph becomes an orange <code>person.fill.questionmark</code>, the menu item reads "Re-enroll my face (required)…", a local notification (<code>nd.identityOff</code>) repeats every 5 min, and diagnostics carry an Identity line.</li>
+<li><code>EnrollmentStore</code> caches its first definitive read for the process lifetime. An external deletion mid-session therefore does not weaken the running app (it keeps matching the cached vectors) and is flagged at the next launch.</li>
+</ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Keep tuning the Vision feature print (ADR-0012 only):</strong> cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).</li>

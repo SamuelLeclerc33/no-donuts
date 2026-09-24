@@ -45,6 +45,18 @@ public protocol FaceRecognizing: Sendable {
 /// presence-only fallback (honest: identity re-engages once the user re-enrolls under the
 /// new model). We NEVER silently compare cross-model vectors.
 ///
+/// **Identity status (ND-073):** that presence-only fallback must never be SILENT. From
+/// the same single `enrollmentState()` read, each `recognize()` also publishes
+/// `lastIdentityStatus` (via the pure `identityStatus(for:activeVersion:markerVersion:)`)
+/// for the App to surface loudly. Recognition RESULTS are unaffected by it:
+/// - store `.enrolled`, version == active           → `.active`
+/// - store `.enrolled`, version != active (or nil)  → `.off(.modelMismatch)` (presence-only above)
+/// - store `.notEnrolled`, no marker                → `.notEnrolled`
+/// - store `.notEnrolled`, marker set               → `.off(.enrollmentMissing)` (Keychain item
+///     deleted outside the app; still presence-only — no lockout loop)
+/// - store `.unavailable`                           → status NOT overwritten (keeps the previous
+///     value, so a flaky Keychain read can't flap the UI/notifier). Initial value `.unknown`.
+///
 /// `Sendable`: the presence engine (ADR-0005, `@MainActor`) awaits `recognize()` from
 /// the main actor. No main-actor work happens here — the heavy lifting is inside the
 /// injected `FaceEmbedding`, which offloads to its own queue.
@@ -52,6 +64,18 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     private let embedder: FaceEmbedding
     private let store: EnrollmentStoring
     private let matchThreshold: Double
+    /// Optional non-secret enrollment marker (ND-073) — distinguishes "Keychain item
+    /// deleted" from "never enrolled". `nil` → a `.notEnrolled` read is `.notEnrolled`.
+    private let marker: EnrollmentMarkerStoring?
+    /// Last published identity status (ND-073). Lock-guarded; `OSAllocatedUnfairLock`
+    /// is `Sendable`, so the class stays checked-`Sendable`.
+    private let statusLock = OSAllocatedUnfairLock<IdentityStatus>(initialState: .unknown)
+
+    /// Identity status computed from the most recent `recognize()` store read (ND-073).
+    /// `.unknown` until the first successful read; never overwritten by `.unavailable`.
+    public var lastIdentityStatus: IdentityStatus {
+        statusLock.withLock { $0 }
+    }
 
     /// Match-score logging for threshold tuning (ND-024). Logs ONLY the numeric cosine
     /// score, the threshold, and the decision — never an embedding or image (privacy).
@@ -66,10 +90,14 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     ///     is model-driven; an explicit value (e.g. the App's persisted Settings value)
     ///     still overrides the base. The live `matchThreshold` UserDefaults key wins over
     ///     both, per tick.
-    public init(embedder: FaceEmbedding, store: EnrollmentStoring, matchThreshold: Double? = nil) {
+    ///   - marker: optional non-secret enrollment marker (ND-073) used only to compute
+    ///     `lastIdentityStatus`; it never changes a recognition result.
+    public init(embedder: FaceEmbedding, store: EnrollmentStoring, matchThreshold: Double? = nil,
+                marker: EnrollmentMarkerStoring? = nil) {
         self.embedder = embedder
         self.store = store
         self.matchThreshold = matchThreshold ?? embedder.descriptor.defaultMatchThreshold
+        self.marker = marker
     }
 
     public func recognize(_ frame: CapturedFrame) async -> RecognitionResult {
@@ -77,8 +105,15 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
         // presence-only), so a stranger can't pass on an enrolled machine (S1/EC-03).
         let state = store.enrollmentState()
         if case .unavailable = state {
+            // ND-073: keep the previous status — don't flap on a transient read failure.
             return .error("enrollment store unavailable")
         }
+        // ND-073: publish identity status from the SAME read (no extra Keychain access).
+        // Status only — the recognition decision below is unchanged.
+        let status = identityStatus(for: state,
+                                    activeVersion: embedder.descriptor.version,
+                                    markerVersion: marker?.markerVersion)
+        statusLock.withLock { $0 = status }
 
         // ND-040: resolve the match threshold LIVE per call from UserDefaults, using
         // the init `matchThreshold` as the safe BASE default. A Settings change to the

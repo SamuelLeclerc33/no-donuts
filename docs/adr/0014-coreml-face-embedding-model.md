@@ -47,6 +47,17 @@ To unblock that measurement, Phase 2 adds **`FaceScore`** (`swift run FaceScore`
 
 A second gap opened by this phase is tracked separately: the anti-spoof texture score is not computed on the Core ML path, so the ND-041 gate never trips there (**ND-072**, EC-12).
 
+## Amendment (2026-09-24): identity-off is loud, never silent (ND-073)
+
+The forced re-enrollment above falls back to **presence-only** (any face = present). Until now that fallback was silent: a `log.notice` while the menu still said "enrolled / watching for you". It triggers whenever the stored version differs from the active embedder, including when the Core ML model is missing and the app runs on the Vision fallback (fresh clone, CLT build without the model, a deleted `.mlmodelc` in an ad-hoc bundle).
+
+**Decision:** keep presence-only on a mismatch, with no lockout loop and no way to get stuck locked out, but surface it loudly:
+
+- `IdentityRecognizer.lastIdentityStatus` publishes `IdentityStatus` (`.notEnrolled` / `.active` / `.off(.modelMismatch | .enrollmentMissing)` / `.unknown`), derived from the existing per-tick store read. Recognition results are unchanged.
+- A **non-secret marker** in UserDefaults (`enrollmentMarkerModelVersion`, a model version string only) records "enrolled under model X". It is set on a successful enroll, cleared on an in-app Reset, and backfilled at launch for enrollments that predate it. If the store says not-enrolled while the marker is set, the status is `.off(.enrollmentMissing)`, so a Keychain item deleted outside the app is no longer indistinguishable from "never enrolled". The marker is tamperable by design; it raises the bar, and ND-077 covers tamper visibility.
+- The app shows it everywhere: the header reads "⚠️ identity off: re-enroll needed", the present glyph becomes an orange `person.fill.questionmark`, the menu item reads "Re-enroll my face (required)…", a local notification (`nd.identityOff`) repeats every 5 min, and diagnostics carry an Identity line.
+- `EnrollmentStore` caches its first definitive read for the process lifetime. An external deletion mid-session therefore does not weaken the running app (it keeps matching the cached vectors) and is flagged at the next launch.
+
 ## Alternatives considered
 
 - **Keep tuning the Vision feature print (ADR-0012 only):** cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).

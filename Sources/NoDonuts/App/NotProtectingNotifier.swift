@@ -28,6 +28,17 @@ final class NotProtectingNotifier {
     /// Repeating re-post timer, live only while unavailable. Invalidated on recovery.
     private var repeatTimer: Timer?
 
+    // ND-073: identity-off alert — fully independent of the camera-unavailable alert
+    // above (own id, own timer, own last-seen value).
+    /// Stable identifier for the identity-off alert (re-posts replace, never stack).
+    private static let identityNotificationID = "nd.identityOff"
+    /// How often to re-surface the identity-off alert while it persists.
+    private static let identityRepeatInterval: TimeInterval = 300
+    /// Current off reason, or nil when identity is not off. `.unknown` never changes it.
+    private var identityOffReason: IdentityOffReason?
+    /// Repeating identity-off re-post timer, live only while identity is off.
+    private var identityRepeatTimer: Timer?
+
     /// Request notification authorization if it hasn't been granted/denied yet.
     /// Idempotent: `requestAuthorization` no-ops after the user's first choice, so
     /// this is safe to call on every active transition. Non-blocking; result ignored
@@ -62,7 +73,65 @@ final class NotProtectingNotifier {
         }
     }
 
+    /// Feed the last KNOWN identity status (ND-073). Posts + starts the repeat timer on
+    /// entry into `.off`; re-posts (replacing) if the reason changes while off; clears
+    /// the timer + delivered AND pending alerts of the identity-off id on exit.
+    /// `.unknown` is ignored (a flaky Keychain read must not flap the alert).
+    func update(identity: IdentityStatus) {
+        if identity == .unknown { return }
+        let newReason: IdentityOffReason?
+        if case .off(let reason) = identity { newReason = reason } else { newReason = nil }
+        guard newReason != identityOffReason else { return }
+        let wasOff = identityOffReason != nil
+        identityOffReason = newReason
+
+        if newReason != nil {
+            postIdentityNotification()
+            if !wasOff { startIdentityRepeatTimer() }
+        } else {
+            stopIdentityRepeatTimer()
+            let center = UNUserNotificationCenter.current()
+            center.removeDeliveredNotifications(withIdentifiers: [Self.identityNotificationID])
+            center.removePendingNotificationRequests(withIdentifiers: [Self.identityNotificationID])
+        }
+    }
+
     // MARK: - Internals
+
+    private func postIdentityNotification() {
+        guard let reason = identityOffReason else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "No Donuts isn\u{2019}t checking that it\u{2019}s you"
+        let fix = "To fix it, click the No Donuts icon in the menu bar and choose \u{201C}Re-enroll my face (required)\u{2026}\u{201D}."
+        switch reason {
+        case .modelMismatch:
+            content.body = "The face-recognition model changed, so your saved enrollment no longer applies. Until you re-enroll, ANY face keeps your Mac unlocked. " + fix
+        case .enrollmentMissing:
+            content.body = "Your saved face enrollment is missing (it was removed from the Keychain). Until you re-enroll, ANY face keeps your Mac unlocked. " + fix
+        }
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: Self.identityNotificationID,
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    private func startIdentityRepeatTimer() {
+        stopIdentityRepeatTimer()   // never stack timers
+        let timer = Timer(timeInterval: Self.identityRepeatInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.postIdentityNotification() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        identityRepeatTimer = timer
+    }
+
+    private func stopIdentityRepeatTimer() {
+        identityRepeatTimer?.invalidate()
+        identityRepeatTimer = nil
+    }
 
     private func postNotification() {
         let content = UNMutableNotificationContent()

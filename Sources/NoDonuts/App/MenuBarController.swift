@@ -30,10 +30,16 @@ public final class MenuBarController: NSObject {
     /// Last state we actually rendered. The presence loop calls render(state:) every
     /// tick (1s); skip the NSImage rebuild + redraw when nothing changed (perf).
     private var lastRenderedState: PresenceState?
-    /// Whether the user has enrolled a face (identity mode) vs presence-only. Drives
-    /// the header wording and the visibility of "Reset enrollment". Set by the
-    /// AppDelegate via setEnrolled(_:) at launch and after enroll/reset.
-    private var isEnrolled = false
+    /// Last KNOWN identity-recognition status (ND-073). Drives the header wording, the
+    /// `.present` glyph, the enroll item title and "Reset enrollment" visibility. Set
+    /// by the AppDelegate via setIdentityStatus(_:) at launch, after enroll/reset, and
+    /// whenever the recognizer publishes a change. `.unknown` is never stored here
+    /// (a flaky Keychain read must not change what's displayed).
+    private var identity: IdentityStatus = .notEnrolled
+    /// Identity mode in effect (enrolled under the active model).
+    private var isEnrolled: Bool { identity == .active }
+    /// Identity is OFF (presence-only fallback while the user has/had an enrollment).
+    private var isIdentityOff: Bool { identity.isOff }
     /// While true, the header shows an honest "enrolling…" line regardless of the
     /// presence state (which is frozen at .paused by the gate during capture).
     private var isEnrolling = false
@@ -96,7 +102,7 @@ public final class MenuBarController: NSObject {
         enrollItem.target = self
         menu.addItem(enrollItem)
         resetEnrollmentItem.target = self
-        resetEnrollmentItem.isHidden = true   // shown only when enrolled (setEnrolled(_:))
+        resetEnrollmentItem.isHidden = true   // shown when a stored enrollment exists (setIdentityStatus(_:))
         menu.addItem(resetEnrollmentItem)
 
         // Settings… (ND-040): opens the SwiftUI settings window.
@@ -126,17 +132,25 @@ public final class MenuBarController: NSObject {
     @objc private func resetEnrollmentClicked() { onResetEnrollment() }
     @objc private func settingsClicked() { onOpenSettings() }
 
-    /// Reflect whether the user has enrolled a face (identity mode) vs presence-only.
-    /// Shows/hides "Reset enrollment", updates the header wording, and — because the
-    /// enrolled-vs-not distinction changes the header — re-renders the current state.
-    /// Called by the AppDelegate at launch and after every enroll/reset.
-    public func setEnrolled(_ enrolled: Bool) {
-        isEnrolled = enrolled
-        resetEnrollmentItem.isHidden = !enrolled
-        // Header text depends on isEnrolled; refresh it without a state change by
-        // re-deriving from the last rendered state.
+    /// Reflect the identity-recognition status (ND-073; replaces setEnrolled(_:)).
+    /// Shows/hides "Reset enrollment" (visible whenever a stored enrollment exists),
+    /// retitles the enroll item, and re-renders the current state because the header
+    /// and glyph depend on it. Called by the AppDelegate at launch, after every
+    /// enroll/reset, and when the recognizer publishes a change.
+    ///
+    /// ND-073: when identity is OFF (model mismatch / enrollment missing) the header,
+    /// the `.present` glyph and the enroll item title all say so — any face is keeping
+    /// the Mac unlocked, and the UI must never look like it's matching the user.
+    /// `.unknown` is ignored: keep showing the last known status.
+    public func setIdentityStatus(_ status: IdentityStatus) {
+        guard status != .unknown, status != identity else { return }
+        identity = status
+        resetEnrollmentItem.isHidden = !status.hasStoredEnrollment
+        enrollItem.title = status.isOff ? "Re-enroll my face (required)…" : "Enroll my face…"
+        // The glyph AND header depend on identity, so force a full redraw of the last
+        // rendered state (render(state:)'s cache would otherwise skip it).
         if let state = lastRenderedState {
-            statusItemHeader.title = headerTitle(for: state)
+            draw(state: state)
         }
     }
 
@@ -192,7 +206,13 @@ public final class MenuBarController: NSObject {
     public func render(state: PresenceState) {
         // Skip redundant work: render is called every tick (~1s) but the state
         // rarely changes. Only rebuild the glyph/header when it actually differs.
+        // Identity changes force a redraw separately via setIdentityStatus(_:).
         guard state != lastRenderedState else { return }
+        draw(state: state)
+    }
+
+    /// Unconditionally rebuild the glyph + header for `state` and record it as rendered.
+    private func draw(state: PresenceState) {
         lastRenderedState = state
         // State-driven, always-visible menu-bar glyph (ND-017). Trust rule: the
         // glyph must read honestly at a glance — warnings/locked get a tint.
@@ -274,6 +294,13 @@ public final class MenuBarController: NSObject {
             return Glyph(symbolName: "hourglass", tint: nil,
                          label: "starting", fallbackText: "…")
         case .present:
+            // ND-073: identity off → a face is present but we are NOT checking it's
+            // the user. Orange question-mark person (baked tint, EC-22), never green.
+            if isIdentityOff {
+                return Glyph(symbolName: "person.fill.questionmark", tint: .systemOrange,
+                             label: "face present — identity check off, re-enroll needed",
+                             fallbackText: "?id")
+            }
             return Glyph(symbolName: "person.fill", tint: .systemGreen,
                          label: "present", fallbackText: "ok")
         case .absent:
@@ -308,8 +335,13 @@ public final class MenuBarController: NSObject {
     /// - When `isEnrolled` (identity mode), "present"/"away" become "watching for
     ///   you"/"you're away" so the header honestly reflects that we're matching the
     ///   enrolled user specifically, not merely detecting any face.
+    /// - When identity is OFF (ND-073), "present"/"away" say so loudly instead: any
+    ///   face keeps the Mac unlocked until the user re-enrolls.
     private func headerTitle(for state: PresenceState) -> String {
         if isEnrolling { return "No Donuts — enrolling your face…" }
+        if isIdentityOff, state == .present || state == .absent {
+            return "No Donuts — ⚠️ identity off: re-enroll needed"
+        }
         switch state {
         case .unknown:            return "No Donuts — starting…"
         case .present:            return isEnrolled ? "No Donuts — watching for you" : "No Donuts — present"

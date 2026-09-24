@@ -8,6 +8,10 @@ import os.log
 // NOTE: For the real camera prompt + LSUIElement behavior, this must run as a
 // signed .app bundle built with Xcode (see ADR-0001, build-run skill).
 
+// ND-083: single-instance guard FIRST — before NSApplication, the status item or the
+// camera exist. A second copy exits(0) here; any lock-file error fails open.
+SingleInstance.acquireOrExit()
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController?
@@ -42,6 +46,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// embedder's descriptor.version, and a mismatch forces re-enroll (never cross-compared).
     private let embedder: FaceEmbedding = AppDelegate.makeEmbedder()
     private var enrollmentCoordinator: EnrollmentCoordinator?
+    private static let appLog = Logger(subsystem: Log.subsystem, category: Log.Category.app)
+    /// ND-073: non-secret "user has enrolled under model X" marker (UserDefaults; model
+    /// version string only). Shared by the recognizer (status computation) and the
+    /// enroll/reset paths (the only writers).
+    private let enrollmentMarker = UserDefaultsEnrollmentMarker()
+    /// Held so the loop can read `lastIdentityStatus` after each tick (ND-073).
+    private var recognizer: IdentityRecognizer?
+    /// Last identity status pushed to the menu + notifier (never `.unknown`).
+    private var lastPushedIdentity: IdentityStatus = .unknown
+    /// Last value the RECOGNIZER published that the loop has already acted on. The loop
+    /// only pushes when the recognizer's own publication changes — so a stale value
+    /// (e.g. ticks that never reached recognize() right after an enroll/reset) can't
+    /// overwrite the fresh store-derived status pushed by those actions.
+    private var lastSeenRecognizerIdentity: IdentityStatus = .unknown
+    /// Bumped on every store-derived identity refresh (launch, enroll, reset). A tick
+    /// that STARTED before a refresh may carry a recognizer status read before it (e.g.
+    /// Reset clicked while `recognize()` awaited the embedder) — the loop drops it.
+    private var identityGeneration = 0
 
     /// Select the launch embedder: Core ML FaceNet if its compiled model is bundled,
     /// otherwise the Vision feature-print fallback. Logs which one is active (honest —
@@ -136,8 +158,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let recognizer = IdentityRecognizer(
             embedder: embedder,
             store: enrollmentStore,
-            matchThreshold: config.matchThreshold
+            matchThreshold: config.matchThreshold,
+            marker: enrollmentMarker
         )
+        self.recognizer = recognizer
         let engine = PresenceEngine(
             camera: camera,
             recognizer: recognizer,
@@ -154,8 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store: enrollmentStore
         )
 
-        // Reflect enrolled vs presence-only in the header from launch.
-        menuBar.setEnrolled(enrollmentStore.isEnrolled)
+        // ND-073: reflect identity status (active / off / not enrolled) from launch,
+        // backfilling the marker for users enrolled before it existed.
+        refreshIdentityFromStore()
 
         // Render the initial state before the loop produces its first reading.
         menuBar.render(state: engine.state)
@@ -325,12 +350,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.isEnrolling = false
                 self.enrollmentTask = nil
                 self.menuBar?.setEnrolling(false)
-                self.menuBar?.setEnrolled(self.enrollmentStore.isEnrolled)
+                self.refreshIdentityFromStore()
                 // Re-run the gate so state is consistent whether we finished or were
                 // cancelled: restores the loop/camera and re-renders the honest state.
                 self.applyEnforcement()
             }
             let result = await coordinator.enroll()
+            // ND-073: ONLY a successful enroll records the marker (under the model that
+            // produced the vectors). Refresh now so the header clears before the alert.
+            if case .success = result {
+                self.enrollmentMarker.setMarker(self.embedder.descriptor.version)
+                self.refreshIdentityFromStore()
+            }
             // A cancelled capture already yielded to .suspended via applyEnforcement()
             // (Fix D); don't pop an alert over the lock screen for it.
             if case .cancelled = result { return }
@@ -342,10 +373,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// back to presence-only. Refresh the header (drops the "watching for you" wording)
     /// and re-run the gate. Ignored while a capture is in flight.
     func resetEnrollment() {
-        guard !isEnrolling, let menuBar else { return }
-        try? enrollmentStore.reset()
-        menuBar.setEnrolled(enrollmentStore.isEnrolled)
+        guard !isEnrolling else { return }
+        do {
+            try enrollmentStore.reset()
+            // ND-073: an in-app Reset is a deliberate "never enrolled" — drop the marker
+            // so it doesn't read as .off(.enrollmentMissing). Only on a successful reset:
+            // if the delete failed, the enrollment (and its marker) still stand.
+            enrollmentMarker.clearMarker()
+        } catch {
+            Self.appLog.error("reset enrollment failed: \(error.localizedDescription, privacy: .public)")
+        }
+        refreshIdentityFromStore()
         applyEnforcement()
+    }
+
+    /// ND-073: compute identity status from the store + marker (one Keychain read) and
+    /// push it. If the user is enrolled under the active model but the marker is
+    /// missing/stale (enrolled before ND-073), backfill it so they aren't later
+    /// misreported. `.unknown` (Keychain unavailable) pushes nothing — keep last known.
+    private func refreshIdentityFromStore() {
+        identityGeneration &+= 1
+        let active = embedder.descriptor.version
+        let status = identityStatus(for: enrollmentStore.enrollmentState(),
+                                    activeVersion: active,
+                                    markerVersion: enrollmentMarker.markerVersion)
+        if status == .active, enrollmentMarker.markerVersion != active {
+            enrollmentMarker.setMarker(active)
+        }
+        pushIdentityStatus(status)
+    }
+
+    /// Push an identity status to the menu + notifier when it actually changed.
+    /// `.unknown` is ignored (don't flap on a transient Keychain read failure).
+    private func pushIdentityStatus(_ status: IdentityStatus) {
+        guard status != .unknown, status != lastPushedIdentity else { return }
+        lastPushedIdentity = status
+        let description = DiagnosticsReporter.identityStatusDescription(status)
+        Self.appLog.notice("identity status → \(description, privacy: .public)")
+        menuBar?.setIdentityStatus(status)
+        notProtectingNotifier.update(identity: status)
     }
 
     /// Lightweight, honest NSAlert for the enrollment outcome.
@@ -513,6 +579,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             state: engine.state,
             config: config,
             store: enrollmentStore,
+            identity: identityStatus(
+                for: enrollmentStore.enrollmentState(),
+                activeVersion: embedder.descriptor.version,
+                markerVersion: enrollmentMarker.markerVersion),
             locationStatus: wifiMonitor.authorizationStatus(),
             trustedNetworkCount: trustedNetworks.all().count,
             notificationStatusDescription: nil
@@ -525,6 +595,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard loopTask == nil, let engine, let menuBar else { return }
         loopTask = Task { @MainActor in
             while !Task.isCancelled {
+                let generationAtTickStart = self.identityGeneration
                 await engine.tick(now: Date())
                 // A tick cancelled mid-flight (e.g. session suspend) must not
                 // render stale state on top of a freshly-resumed loop.
@@ -533,6 +604,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // ND-045: honest "not protecting" notification. Only fires on the
                 // active loop, so paused/suspended/enrolling states never trigger it.
                 notProtectingNotifier.update(state: engine.state)
+                // ND-073: surface identity-status changes the recognizer observed this
+                // tick. Note the store caches its first definitive read for the process
+                // lifetime, so an EXTERNAL Keychain delete is not seen here — the running
+                // recognizer keeps matching the cached vectors (identity stays enforced)
+                // and the launch-time refresh flags it as .enrollmentMissing on relaunch.
+                // Skip a status from a tick that began before a store-derived refresh.
+                if let recognizer = self.recognizer,
+                   generationAtTickStart == self.identityGeneration {
+                    let seen = recognizer.lastIdentityStatus
+                    if seen != .unknown, seen != self.lastSeenRecognizerIdentity {
+                        self.lastSeenRecognizerIdentity = seen
+                        self.pushIdentityStatus(seen)
+                    }
+                }
                 // Read the interval fresh each iteration so a Settings change to the
                 // check interval (ND-040) live-applies without restarting the loop.
                 try? await Task.sleep(for: .seconds(self.config.tickIntervalSeconds))

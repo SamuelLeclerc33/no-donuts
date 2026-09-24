@@ -15,9 +15,10 @@ import NoDonutsCore
 // MDM/enterprise deployment. THIS toggle is the in-app, user-facing switch. They
 // are complementary; for a plain user install, the Settings toggle is the
 // friendlier control. If both a LaunchAgent and this registration are active,
-// launchd/SMAppService coalesce to a single running instance at login (the app is
-// a singleton menu-bar accessory), so there's no double-launch concern in
-// practice — but installers should prefer one mechanism.
+// launchd and SMAppService do NOT coalesce them: each can start its own copy at
+// login. The app's SingleInstance guard (ND-083, SingleInstance.swift) is what
+// enforces one running instance — the second copy exits(0) at launch. Installers
+// should still pick ONE mechanism (ND-083) rather than rely on the guard.
 //
 // Privacy: registers only the app itself as a login item. No data, no network.
 
