@@ -30,6 +30,9 @@ public final class MenuBarController: NSObject {
     /// Last state we actually rendered. The presence loop calls render(state:) every
     /// tick (1s); skip the NSImage rebuild + redraw when nothing changed (perf).
     private var lastRenderedState: PresenceState?
+    /// ND-054: failed AUTO lock attempts this absence episode (from the engine). Only
+    /// affects the `.lockFailed` header (" (retrying)"); a change forces a redraw.
+    private var lockFailureCount = 0
     /// Last KNOWN identity-recognition status (ND-073). Drives the header wording, the
     /// `.present` glyph, the enroll item title and "Reset enrollment" visibility. Set
     /// by the AppDelegate via setIdentityStatus(_:) at launch, after enroll/reset, and
@@ -232,11 +235,15 @@ public final class MenuBarController: NSObject {
     }
 
     /// Update the status icon/title to reflect the current presence state.
-    public func render(state: PresenceState) {
+    /// `lockFailureCount` (ND-054) is the engine's failed auto-lock count; it only
+    /// changes the `.lockFailed` header, but a change always forces a redraw.
+    public func render(state: PresenceState, lockFailureCount: Int = 0) {
         // Skip redundant work: render is called every tick (~1s) but the state
         // rarely changes. Only rebuild the glyph/header when it actually differs.
         // Identity changes force a redraw separately via setIdentityStatus(_:).
-        guard state != lastRenderedState else { return }
+        let countChanged = lockFailureCount != self.lockFailureCount
+        self.lockFailureCount = lockFailureCount
+        guard state != lastRenderedState || countChanged else { return }
         draw(state: state)
     }
 
@@ -388,7 +395,11 @@ public final class MenuBarController: NSObject {
         case .trustedNetwork:     return "No Donuts — paused (trusted Wi-Fi)"
         case .callAssumedPresent: return "No Donuts — on a call"
         case .suspended:          return "No Donuts — locked/asleep"
-        case .lockFailed:         return "No Donuts — ⚠️ couldn't lock the screen"
+        case .lockFailed:
+            // ND-054: the engine keeps retrying auto-locks on a backoff while absent.
+            return lockFailureCount >= 1
+                ? "No Donuts — ⚠️ couldn't lock the screen (retrying)"
+                : "No Donuts — ⚠️ couldn't lock the screen"
         case .cameraUnavailable:  return "No Donuts — ⚠️ camera unavailable (grant access)"
         }
     }

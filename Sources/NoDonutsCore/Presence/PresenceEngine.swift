@@ -1,5 +1,17 @@
 import Foundation
 
+/// ND-054: backoff between automatic lock retries after the n-th consecutive
+/// failed auto-lock in one absence episode: 10s, 20s, 40s, then capped at 60s.
+/// Pure (no clock) so the retry cadence is unit-testable. `n <= 0` → 10s.
+public func lockRetryDelay(afterFailures n: Int) -> TimeInterval {
+    let base: TimeInterval = 10
+    let cap: TimeInterval = 60
+    guard n > 1 else { return base }
+    // Clamp the exponent before shifting so huge n can't overflow.
+    let exponent = min(n - 1, 3)                  // 2^3 * 10 = 80 → capped to 60
+    return min(base * TimeInterval(1 << exponent), cap)
+}
+
 // Owner: homer — the brain. State machine, grace timers, policy, orchestration.
 // Backlog: ND-015, ND-025, ND-030, ND-033, ND-034. ADR-0003.
 
@@ -17,7 +29,18 @@ public final class PresenceEngine {
     private var consecutiveAbsentTicks = 0
     private var consecutiveErrorTicks = 0
     private var absentSince: Date?
-    private var lockAttempted = false
+    // ND-054: per-absence-episode auto-lock state. Replaces the old one-shot
+    // `lockAttempted` latch (which gave up after a single failure = silent
+    // fail-open). A failed auto-lock is retried with bounded backoff
+    // (lockRetryDelay) for as long as the absence lasts; a success ends the
+    // episode's lock attempts. All three are cleared by resetAbsenceAccounting().
+    private var lockSucceeded = false
+    private var failedLockAttempts = 0
+    private var nextLockRetryAt: Date?
+    /// Bumped by every resetAbsenceAccounting(). Lets an auto-lock whose `await`
+    /// straddled a reset (e.g. sessionSuspended() fired by the very lock it caused,
+    /// or a pause mid-lock) avoid writing stale episode state into the NEXT episode.
+    private var episodeGeneration = 0
     /// True while an async `locker.lock()` is in flight. Prevents a manual
     /// `lockNow()` and the auto tick loop (or two of either) from running two
     /// overlapping `locker.lock()` calls that would clobber `state`/accounting.
@@ -27,6 +50,11 @@ public final class PresenceEngine {
     /// First tick of an unbroken busy-no-frames run; nil when not in such a run.
     /// Bounds the ADR-0003 assume-present fail-open (see handleCameraBusy).
     private var callAssumedSince: Date?
+
+    /// ND-054: failed AUTO-lock attempts in the current absence episode (0 when
+    /// none / after presence or any reset). The App re-alerts when it increases.
+    /// Manual lockNow() failures are not counted (they never start retries).
+    public var lockFailureCount: Int { failedLockAttempts }
 
     public init(camera: CameraCapturing,
                 recognizer: FaceRecognizing,
@@ -126,7 +154,10 @@ public final class PresenceEngine {
     private func resetAbsenceAccounting() {
         consecutiveAbsentTicks = 0
         absentSince = nil
-        lockAttempted = false
+        lockSucceeded = false
+        failedLockAttempts = 0
+        nextLockRetryAt = nil
+        episodeGeneration &+= 1
         consecutiveErrorTicks = 0
         callAssumedSince = nil
     }
@@ -171,7 +202,15 @@ public final class PresenceEngine {
         if isLocking { return false }   // a lock attempt is already in flight (async) — skip; don't double-fire or clobber state (NOT a failure, so leave state untouched)
         isLocking = true
         defer { isLocking = false }
-        if await locker.lock() {
+        let generation = episodeGeneration
+        let locked = await locker.lock()
+        // A pause / trusted-network / session suspend (or presence) reset the episode
+        // during the await: that path already set the honest state (.paused,
+        // .suspended, ...). Don't clobber it with a stale .lockFailed/.suspended —
+        // a stale .lockFailed would raise a false "will keep retrying" alarm while
+        // the loop is stopped.
+        guard generation == episodeGeneration else { return locked }
+        if locked {
             state = .suspended
             consecutiveAbsentTicks = 0   // reset stale absence accounting on successful lock
             absentSince = nil
@@ -185,37 +224,48 @@ public final class PresenceEngine {
     private func markAbsent(now: Date) async {
         consecutiveErrorTicks = 0    // a real (or escalated) reading clears the error streak
         consecutiveAbsentTicks += 1
-        if lockAttempted {
-            // Terminal this episode (.suspended or .lockFailed already set) — don't
-            // overwrite with .absent and don't re-attempt (no retry storm).
+        if lockSucceeded {
+            // Locked this episode (.suspended already set) — don't overwrite with
+            // .absent and don't re-lock.
             return
         }
         // Responsive, honest "away" from the first no-face tick (ND-017); the LOCK
         // below is still gated on the consensus + grace window. But do NOT clobber an
-        // unresolved lock-failure warning: a FAILED manual lockNow() sets .lockFailed
-        // without setting lockAttempted, so the next no-face tick would otherwise
-        // overwrite the "can't lock — grant Accessibility" warning with .absent and
-        // hide it. The auto-lock path below can still fire (lockAttempted is false),
-        // so a manual failure keeps the warning AND the engine still auto-attempts
-        // after grace. markPresent() still clears .lockFailed via state=.present.
+        // unresolved lock-failure warning (.lockFailed from a failed auto attempt
+        // awaiting retry, or from a failed manual lockNow()) with .absent — that would
+        // hide the "couldn't lock" status. markPresent() still clears it.
         if state != .lockFailed { state = .absent }
         if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return }
         if absentSince == nil { absentSince = now }
-        if let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds {
-            // Cooperative cancellation guard ("nothing locks mid-capture / mid-pause"):
-            // the App cancels the loop Task on pause / trusted-network / enrollment /
-            // session-suspend, but Swift does not abort an already-suspended `await`,
-            // so an in-flight tick can reach here AFTER the user hit "Enroll" or paused.
-            // Bail before locking (and before setting lockAttempted, so nothing is left
-            // half-done). This gate is placed here — NOT inside attemptLock() — precisely
-            // because the manual `lockNow()` path runs in its OWN uncancelled Task and
-            // MUST still lock; only the auto path (markAbsent → attemptLock) flows through
-            // the cancellable loop Task. All auto callers reach locking via markAbsent
-            // (the .strangerOnly/.noFace path, the error-escalation path, and the bounded
-            // busy/callAssumedPresent escalation), so this single guard covers them all.
-            guard !Task.isCancelled else { return }
-            lockAttempted = true
-            await attemptLock()
+        guard let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds else { return }
+        // ND-054: bounded-backoff retry. Attempt on first grace expiry, then only
+        // once the backoff after the last failure has elapsed (no lock storm).
+        if let retryAt = nextLockRetryAt, now < retryAt { return }
+        // Cooperative cancellation guard ("nothing locks mid-capture / mid-pause"):
+        // the App cancels the loop Task on pause / trusted-network / enrollment /
+        // session-suspend, but Swift does not abort an already-suspended `await`,
+        // so an in-flight tick can reach here AFTER the user hit "Enroll" or paused.
+        // Bail before locking (recording nothing). This gate is placed here — NOT
+        // inside attemptLock() — because the manual `lockNow()` path runs in its OWN
+        // uncancelled Task and MUST still lock. All auto callers reach locking via
+        // markAbsent (.strangerOnly/.noFace, EC-10 error escalation, and the bounded
+        // busy/callAssumedPresent escalation), so this single guard — and the retry
+        // policy below — covers them all consistently.
+        guard !Task.isCancelled else { return }
+        // ND-079: a manual lockNow() is in flight. Skip WITHOUT recording an attempt
+        // (attemptLock would return false, indistinguishable from a real failure) so
+        // the next tick re-evaluates — if the manual lock failed, we attempt then.
+        if isLocking { return }
+        let generation = episodeGeneration
+        let locked = await attemptLock()
+        // The episode was reset during the await (session suspend caused by this very
+        // lock, pause, presence...) → don't leak its lock state into the new episode.
+        guard generation == episodeGeneration else { return }
+        if locked {
+            lockSucceeded = true
+        } else {
+            failedLockAttempts += 1
+            nextLockRetryAt = now.addingTimeInterval(lockRetryDelay(afterFailures: failedLockAttempts))
         }
     }
 

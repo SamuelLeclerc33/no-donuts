@@ -105,7 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     guard let self, let engine = self.engine, let menuBar = self.menuBar else { return }
                     await engine.lockNow()
-                    menuBar.render(state: engine.state)
+                    menuBar.render(state: engine.state, lockFailureCount: engine.lockFailureCount)
+                    // ND-054: a manual lock failure (.lockFailed, count 0) must alert
+                    // now, not wait for the next loop tick (or never, if the loop is off).
+                    self.notProtectingNotifier.update(state: engine.state,
+                                                      lockFailureCount: engine.lockFailureCount)
                 }
             },
             onPause: { [weak self] seconds in
@@ -194,7 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshIdentityFromStore()
 
         // Render the initial state before the loop produces its first reading.
-        menuBar.render(state: engine.state)
+        menuBar.render(state: engine.state, lockFailureCount: engine.lockFailureCount)
 
         // ND-058/ND-074: resolve-only lock self-test (never locks). Warn loudly NOW if
         // this macOS has no usable lock mechanism, instead of at the first walk-away.
@@ -305,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Always re-render + refresh menu item state so the UI stays in sync.
-        menuBar.render(state: engine.state)
+        menuBar.render(state: engine.state, lockFailureCount: engine.lockFailureCount)
         refreshMenuItems()
 
         // ND-045: feed the gate's display state to the notifier in BOTH paths. The
@@ -315,7 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // transition OUT — its 5-min repeat timer would fire forever and the delivered
         // alert would never clear. Because update() is transition-gated on lastState,
         // calling it here and from the loop is idempotent (safe on unchanged state).
-        notProtectingNotifier.update(state: engine.state)
+        notProtectingNotifier.update(state: engine.state, lockFailureCount: engine.lockFailureCount)
     }
 
     /// Push current pause + trusted-Wi-Fi state into the menu items so labels,
@@ -645,10 +649,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // A tick cancelled mid-flight (e.g. session suspend) must not
                 // render stale state on top of a freshly-resumed loop.
                 if Task.isCancelled { break }
-                menuBar.render(state: engine.state)
+                menuBar.render(state: engine.state, lockFailureCount: engine.lockFailureCount)
                 // ND-045: honest "not protecting" notification. Only fires on the
                 // active loop, so paused/suspended/enrolling states never trigger it.
-                notProtectingNotifier.update(state: engine.state)
+                notProtectingNotifier.update(state: engine.state, lockFailureCount: engine.lockFailureCount)
                 // ND-073: surface identity-status changes the recognizer observed this
                 // tick. Note the store caches its first definitive read for the process
                 // lifetime, so an EXTERNAL Keychain delete is not seen here — the running

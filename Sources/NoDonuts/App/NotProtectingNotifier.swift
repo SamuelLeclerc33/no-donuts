@@ -50,6 +50,14 @@ final class NotProtectingNotifier {
     /// Repeating lock-unavailable re-post timer, live only while we can't lock.
     private var lockRepeatTimer: Timer?
 
+    // ND-054: lock-FAILED alert (a lock attempt was made and didn't take) — distinct
+    // from lock-UNAVAILABLE above. Own id; NO repeat timer: the engine's auto-lock
+    // retry backoff (10/20/40/60s) drives re-posts via a rising lockFailureCount.
+    /// Stable identifier for the lock-failed alert (re-posts replace, never stack).
+    private static let lockFailedNotificationID = "nd.lockFailed"
+    /// Last-seen failed auto-lock count, to re-post when a retry fails again.
+    private var lastLockFailureCount = 0
+
     /// Request notification authorization if it hasn't been granted/denied yet.
     /// Idempotent: `requestAuthorization` no-ops after the user's first choice, so
     /// this is safe to call on every active transition. Non-blocking; result ignored
@@ -62,7 +70,12 @@ final class NotProtectingNotifier {
     /// Feed the current presence state each tick. Posts + starts the repeat timer on
     /// the transition INTO `.cameraUnavailable`; clears the timer + delivered
     /// notifications on the transition OUT of it. Does nothing on steady states.
-    func update(state: PresenceState) {
+    ///
+    /// ND-054: also drives the lock-failed alert — posted on entry into `.lockFailed`,
+    /// re-posted (same id, replaces) whenever `lockFailureCount` rises while still in
+    /// `.lockFailed` (each failed auto-lock retry), cleared on leaving `.lockFailed`.
+    func update(state: PresenceState, lockFailureCount: Int = 0) {
+        updateLockFailed(state: state, lockFailureCount: lockFailureCount)
         defer { lastState = state }
 
         let wasUnavailable = lastState == .cameraUnavailable
@@ -126,6 +139,42 @@ final class NotProtectingNotifier {
     }
 
     // MARK: - Internals
+
+    /// ND-054 lock-failed path. Must run BEFORE `update(state:)` overwrites `lastState`.
+    private func updateLockFailed(state: PresenceState, lockFailureCount: Int) {
+        defer { lastLockFailureCount = lockFailureCount }
+        let wasFailed = lastState == .lockFailed
+        let isFailed = state == .lockFailed
+        if isFailed {
+            // Entry (incl. a manual lockNow failure with count 0) or another failed
+            // auto-lock retry while still failed → (re-)alert.
+            if !wasFailed || lockFailureCount > lastLockFailureCount {
+                postLockFailedNotification(retrying: lockFailureCount >= 1)
+            }
+        } else if wasFailed {
+            let center = UNUserNotificationCenter.current()
+            center.removeDeliveredNotifications(withIdentifiers: [Self.lockFailedNotificationID])
+            center.removePendingNotificationRequests(withIdentifiers: [Self.lockFailedNotificationID])
+        }
+    }
+
+    /// `retrying`: an AUTO lock failed while the user is away and the engine will retry.
+    /// false = a manual "Lock now" failed (user present, no retries scheduled).
+    private func postLockFailedNotification(retrying: Bool) {
+        let content = UNMutableNotificationContent()
+        content.title = "No Donuts couldn\u{2019}t lock your Mac"
+        content.body = retrying
+            ? "You seem to be away, but locking failed. It will keep retrying. Lock manually with Control-Command-Q."
+            : "Locking the screen failed. Lock manually with Control-Command-Q."
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: Self.lockFailedNotificationID,
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
 
     private func postLockNotification() {
         let content = UNMutableNotificationContent()
