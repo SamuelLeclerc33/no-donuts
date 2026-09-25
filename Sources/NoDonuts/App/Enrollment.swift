@@ -106,7 +106,14 @@ public final class EnrollmentCoordinator {
         do {
             // ADR-0014: stamp the vectors with the active model's version so a later model
             // swap forces re-enrollment (the recognizer never cross-compares model spaces).
-            try store.enroll(embeddings: vectors, modelVersion: embedder.descriptor.version)
+            // ND-102: the Keychain write (and its existence check) can block on an ACL
+            // prompt — run it off the main actor so the menu stays responsive.
+            let store = self.store
+            let version = embedder.descriptor.version
+            let toStore = vectors
+            try await Task.detached(priority: .userInitiated) {
+                try store.enroll(embeddings: toStore, modelVersion: version)
+            }.value
             return .success(count: vectors.count)
         } catch {
             // A genuine store failure (e.g. Keychain write error). This is NOT a

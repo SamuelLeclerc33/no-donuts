@@ -110,14 +110,18 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     /// per-tick recognizer doesn't hammer the Keychain (see `cached`). Falls through to
     /// a single Keychain read on a cache miss; caches only definitive results.
     public func enrollmentState() -> EnrollmentState {
+        // ND-102: hold the lock ACROSS the Keychain read so concurrent first reads
+        // (launch refresh + the loop's first tick) collapse into ONE SecItemCopyMatching
+        // — i.e. at most one ACL prompt. Callers are all off the main actor, so a
+        // caller waiting here while a prompt is up blocks only its own task.
         cacheLock.lock()
-        if let cached { cacheLock.unlock(); return cached }
-        cacheLock.unlock()
+        defer { cacheLock.unlock() }
+        if let cached { return cached }
 
         let state = readEnrollmentStateFromKeychain()
         switch state {
         case .enrolled, .notEnrolled:
-            cacheLock.lock(); cached = state; cacheLock.unlock()
+            cached = state
         case .unavailable:
             break   // don't cache a transient failure — allow a later tick to recover
         }

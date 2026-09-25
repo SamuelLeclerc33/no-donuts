@@ -29,3 +29,7 @@ This script is the **canonical local build path** for a runnable bundle.
 
 - **Xcode `.xcodeproj` app target** — the conventional packaging route, but requires full Xcode (unavailable in the CLT-only baseline) and adds a project file to keep in sync with `Package.swift`. Rejected for local dev; revisit only if a distribution pipeline (ND-050) makes an Xcode target worthwhile.
 - **Bare `swift run NoDonuts`** — no bundle, so no camera prompt and no `LSUIElement` behavior. Insufficient for the testing ND-018 needs to unblock.
+
+## Amendment (2026-09-25): optional stable dev signing identity (ND-102)
+
+Ad-hoc signing gives every build a new cdhash, so the login-keychain ACL and the TCC camera grant no longer match, and each rebuild re-prompts ("NoDonuts wants to use your confidential information"). `scripts/make-dev-cert.sh` creates a local self-signed code-signing certificate, "No Donuts Dev" (user trust, code signing only), without an Apple account. When that identity exists, `make-app.sh` signs with it by SHA-1, giving a certificate-based designated requirement that stays stable across rebuilds. Otherwise it falls back to ad-hoc. The build still needs only CLT; hardened runtime and Developer ID stay with ND-050.

@@ -265,17 +265,28 @@ public final class MenuBarController: NSObject {
     /// whether it's already trusted with a checkmark. When unknown (Location not
     /// granted or no Wi-Fi), disable the item with an explanatory title so the
     /// status stays honest — we never imply we can trust a network we can't name.
-    public func refreshTrustItem(ssid: String?, isTrusted: Bool, locationGranted: Bool) {
+    ///
+    /// `locationNotDetermined`: Location has never been asked. Reading the SSID needs
+    /// Location, and the ONLY path that requests it is clicking this item
+    /// (`requestTrustCurrentNetwork` defers the trust until auth is granted) — so it
+    /// must stay clickable then, or the user can never get to a trusted network
+    /// (regression from ND-057 turning off autoenablesItems).
+    public func refreshTrustItem(ssid: String?, isTrusted: Bool, locationGranted: Bool,
+                                 locationNotDetermined: Bool = false) {
         if let ssid, !ssid.isEmpty {
             trustItem.isEnabled = true
             trustItem.title = "Trust this Wi-Fi network (\"\(ssid)\")"
             trustItem.state = isTrusted ? .on : .off
+        } else if locationNotDetermined {
+            trustItem.isEnabled = true
+            trustItem.state = .off
+            trustItem.title = "Trust this Wi-Fi network… (asks for Location)"
         } else {
             trustItem.isEnabled = false
             trustItem.state = .off
             trustItem.title = locationGranted
                 ? "Wi-Fi network unknown"
-                : "Wi-Fi network unknown (grant Location)"
+                : "Wi-Fi network unknown (grant Location in System Settings)"
         }
     }
 

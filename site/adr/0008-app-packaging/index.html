@@ -745,6 +745,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-25): optional stable dev signing identity (ND-102)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1109,6 +1120,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-25): optional stable dev signing identity (ND-102)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1154,6 +1176,8 @@
 <li><strong>Xcode <code>.xcodeproj</code> app target</strong> — the conventional packaging route, but requires full Xcode (unavailable in the CLT-only baseline) and adds a project file to keep in sync with <code>Package.swift</code>. Rejected for local dev; revisit only if a distribution pipeline (ND-050) makes an Xcode target worthwhile.</li>
 <li><strong>Bare <code>swift run NoDonuts</code></strong> — no bundle, so no camera prompt and no <code>LSUIElement</code> behavior. Insufficient for the testing ND-018 needs to unblock.</li>
 </ul>
+<h2 id="amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102">Amendment (2026-09-25): optional stable dev signing identity (ND-102)<a class="headerlink" href="#amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102" title="Permanent link">&para;</a></h2>
+<p>Ad-hoc signing gives every build a new cdhash, so the login-keychain ACL and the TCC camera grant no longer match, and each rebuild re-prompts ("NoDonuts wants to use your confidential information"). <code>scripts/make-dev-cert.sh</code> creates a local self-signed code-signing certificate, "No Donuts Dev" (user trust, code signing only), without an Apple account. When that identity exists, <code>make-app.sh</code> signs with it by SHA-1, giving a certificate-based designated requirement that stays stable across rebuilds. Otherwise it falls back to ad-hoc. The build still needs only CLT; hardened runtime and Developer ID stay with ND-050.</p>
 
 
 

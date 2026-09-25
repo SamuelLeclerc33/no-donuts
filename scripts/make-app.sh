@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# No Donuts — assemble and ad-hoc-sign a runnable .app bundle from the SPM build.
+# No Donuts — assemble and sign a runnable .app bundle from the SPM build.
 #
 # CLT-friendly: needs only Command Line Tools + `codesign` (no full Xcode,
-# no .xcodeproj). Ad-hoc signing (`--sign -`) is enough to get the camera
-# permission prompt and LSUIElement behavior for LOCAL runs. Developer-ID
-# signing + notarization for distribution is a separate step (ND-050, ADR-0008).
+# no .xcodeproj). Signs with the stable self-signed "No Donuts Dev" identity if
+# present (create it once with scripts/make-dev-cert.sh), else ad-hoc (`--sign -`).
+# Either is enough to get the camera permission prompt and LSUIElement behavior
+# for LOCAL runs; the dev identity additionally stops Keychain/TCC re-prompts on
+# every rebuild. Developer-ID signing + notarization for distribution is a
+# separate step (ND-050, ADR-0008).
 #
 # Usage:
 #   scripts/make-app.sh            # release build (default)
@@ -96,11 +99,29 @@ else
     echo "         model, see Resources/Models/README.md (convert_facenet.py). (ND-021 Phase 2)" >&2
 fi
 
-# --- ad-hoc codesign (local dev) --------------------------------------------
-# Ad-hoc identity "-" works without a Developer ID for local runs. The camera
-# entitlement is embedded so the TCC prompt fires correctly.
-echo "==> ad-hoc codesign"
-codesign --force --sign - \
+# --- codesign (local dev) ---------------------------------------------------
+# Prefer the stable self-signed "No Donuts Dev" identity (scripts/make-dev-cert.sh):
+# its designated requirement survives rebuilds, so the login-keychain ACL and the
+# TCC camera grant keep matching and macOS stops re-prompting after every build.
+# Otherwise fall back to ad-hoc ("-"), whose DR is the cdhash (changes every build).
+# Either way the camera entitlement is embedded so the TCC prompt fires correctly.
+# Hardened runtime is intentionally NOT enabled here (that's ND-050 distribution).
+DEV_IDENTITY_NAME="No Donuts Dev"
+# Sign by SHA-1 hash (not name) so a duplicate cert can't make codesign ambiguous.
+DEV_IDENTITY_HASH="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk -v name="\"${DEV_IDENTITY_NAME}\"" 'index($0, name) && $2 ~ /^[0-9A-F]{40}$/ { print $2; exit }' \
+    || true)"
+
+if [ -n "${DEV_IDENTITY_HASH}" ]; then
+    echo "==> codesign with stable dev identity \"${DEV_IDENTITY_NAME}\" (${DEV_IDENTITY_HASH})"
+    SIGN_IDENTITY="${DEV_IDENTITY_HASH}"
+else
+    echo "==> ad-hoc codesign (no \"${DEV_IDENTITY_NAME}\" identity found)"
+    echo "    hint: run scripts/make-dev-cert.sh once so rebuilds stop re-prompting for"
+    echo "          Keychain access and the camera permission."
+    SIGN_IDENTITY="-"
+fi
+codesign --force --sign "${SIGN_IDENTITY}" \
     --entitlements "${ENTITLEMENTS}" \
     --timestamp=none \
     "${APP_DIR}"

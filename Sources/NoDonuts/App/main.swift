@@ -88,6 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so nothing can lock the screen mid-capture. Priority in the gate sits just
     /// below a real session suspend and above pause / trusted Wi-Fi.
     private var isEnrolling = false
+    /// ND-102: a Reset's off-main Keychain delete is in flight. Blocks a concurrent
+    /// enroll/reset so the delete can't land on top of a fresh enrollment.
+    private var isResettingEnrollment = false
     /// The in-flight enrollment capture task (code-review #6). Held so it can be
     /// cancelled when the session suspends or the app terminates mid-capture, and so
     /// `isEnrolling` can never get stuck true (enforcement disabled, camera up).
@@ -335,7 +338,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let ssid = wifiMonitor.currentSSID()
         menuBar.refreshTrustItem(ssid: ssid,
                                  isTrusted: trustedNetworks.isTrusted(ssid),
-                                 locationGranted: wifiMonitor.isLocationGranted)
+                                 locationGranted: wifiMonitor.isLocationGranted,
+                                 locationNotDetermined: wifiMonitor.authorizationStatus() == .notDetermined)
         refreshProtectionAudit()
     }
 
@@ -354,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// Guards against concurrent enrollment: a second click while capturing is a no-op.
     func startEnrollment() {
-        guard !isEnrolling, let coordinator = enrollmentCoordinator,
+        guard !isEnrolling, !isResettingEnrollment, let coordinator = enrollmentCoordinator,
               let camera, let menuBar else { return }
 
         // One-time Keychain explainer (macOS's Keychain-access prompt has no custom-text
@@ -400,6 +404,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A cancelled capture already yielded to .suspended via applyEnforcement()
             // (Fix D); don't pop an alert over the lock screen for it.
             if case .cancelled = result { return }
+            // ND-102: the Keychain write runs in a detached task that cancellation can't
+            // interrupt; if the session suspended/locked meanwhile, keep the stored
+            // enrollment but don't pop a modal over the lock screen.
+            if Task.isCancelled { return }
             self.showEnrollmentResult(result)
         }
     }
@@ -408,28 +416,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// back to presence-only. Refresh the header (drops the "watching for you" wording)
     /// and re-run the gate. Ignored while a capture is in flight.
     func resetEnrollment() {
-        guard !isEnrolling else { return }
-        do {
-            try enrollmentStore.reset()
-            // ND-073: an in-app Reset is a deliberate "never enrolled" — drop the marker
-            // so it doesn't read as .off(.enrollmentMissing). Only on a successful reset:
-            // if the delete failed, the enrollment (and its marker) still stand.
-            enrollmentMarker.clearMarker()
-        } catch {
-            Self.appLog.error("reset enrollment failed: \(error.localizedDescription, privacy: .public)")
+        guard !isEnrolling, !isResettingEnrollment else { return }
+        isResettingEnrollment = true
+        // ND-102: the Keychain delete can block on an ACL prompt too — run it off main.
+        let store = enrollmentStore
+        Task { @MainActor [weak self] in
+            let result: Result<Void, Error> = await Task.detached(priority: .userInitiated) {
+                Result { try store.reset() }
+            }.value
+            guard let self else { return }
+            self.isResettingEnrollment = false
+            switch result {
+            case .success:
+                // ND-073: an in-app Reset is a deliberate "never enrolled" — drop the
+                // marker so it doesn't read as .off(.enrollmentMissing). Only on a
+                // successful reset: if the delete failed, the enrollment (and its
+                // marker) still stand.
+                self.enrollmentMarker.clearMarker()
+            case .failure(let error):
+                Self.appLog.error("reset enrollment failed: \(error.localizedDescription, privacy: .public)")
+            }
+            self.refreshIdentityFromStore()
+            self.applyEnforcement()
         }
-        refreshIdentityFromStore()
-        applyEnforcement()
     }
 
     /// ND-073: compute identity status from the store + marker (one Keychain read) and
     /// push it. If the user is enrolled under the active model but the marker is
     /// missing/stale (enrolled before ND-073), backfill it so they aren't later
     /// misreported. `.unknown` (Keychain unavailable) pushes nothing — keep last known.
+    ///
+    /// ND-102: the Keychain read runs OFF the main actor. On an ad-hoc-signed build the
+    /// read can block on the SecurityAgent ACL prompt ("NoDonuts wants to use your
+    /// confidential information"); on main that froze the menu and the loop until the
+    /// user clicked. While the read is pending the identity display stays at whatever it
+    /// was (initially unknown) — we never claim "watching for you" / "identity off" early.
+    ///
+    /// Generation semantics (ND-073) are kept: the generation is bumped when the refresh
+    /// STARTS (so an in-flight tick's recognizer status is dropped), and this refresh's
+    /// result is itself dropped if a newer refresh started while it was pending.
     private func refreshIdentityFromStore() {
         identityGeneration &+= 1
+        let generation = identityGeneration
+        let store = enrollmentStore
+        Task { @MainActor [weak self] in
+            let state = await Task.detached(priority: .userInitiated) {
+                store.enrollmentState()
+            }.value
+            guard let self, generation == self.identityGeneration else { return }
+            self.applyStoreIdentity(state)
+        }
+    }
+
+    /// Main-actor half of `refreshIdentityFromStore()`: map a store read to an identity
+    /// status, backfill the marker ONLY on a real `.active` result, and push it.
+    private func applyStoreIdentity(_ state: EnrollmentState) {
         let active = embedder.descriptor.version
-        let status = identityStatus(for: enrollmentStore.enrollmentState(),
+        let status = identityStatus(for: state,
                                     activeVersion: active,
                                     markerVersion: enrollmentMarker.markerVersion)
         if status == .active, enrollmentMarker.markerVersion != active {
@@ -635,22 +678,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pasteboard (ND-044). Notification status isn't exposed by the notifier, so it's
     /// omitted (the reporter treats a nil description as absent).
     private func copyDiagnostics() {
-        guard let engine, let wifiMonitor else { return }
-        DiagnosticsReporter().copyToPasteboard(
-            state: engine.state,
-            config: config,
-            descriptor: embedder.descriptor,
-            store: enrollmentStore,
-            identity: identityStatus(
-                for: enrollmentStore.enrollmentState(),
-                activeVersion: embedder.descriptor.version,
-                markerVersion: enrollmentMarker.markerVersion),
-            locationStatus: wifiMonitor.authorizationStatus(),
-            trustedNetworkCount: trustedNetworks.all().count,
-            notificationStatusDescription: nil,
-            lockCapability: locker.selfTest(),   // resolve-only; reports the REAL result
-            cameraUnavailableReason: camera?.lastUnavailableReason
-        )
+        guard engine != nil, wifiMonitor != nil else { return }
+        // ND-102: fetch the enrollment state off main (a Keychain read can block on an
+        // ACL prompt), then gather the rest and copy on the main actor.
+        let store = enrollmentStore
+        Task { @MainActor [weak self] in
+            let enrollment = await Task.detached(priority: .userInitiated) {
+                store.enrollmentState()
+            }.value
+            guard let self, let engine = self.engine, let wifiMonitor = self.wifiMonitor else { return }
+            DiagnosticsReporter().copyToPasteboard(
+                state: engine.state,
+                config: self.config,
+                descriptor: self.embedder.descriptor,
+                enrollment: enrollment,
+                identity: identityStatus(
+                    for: enrollment,
+                    activeVersion: self.embedder.descriptor.version,
+                    markerVersion: self.enrollmentMarker.markerVersion),
+                locationStatus: wifiMonitor.authorizationStatus(),
+                trustedNetworkCount: self.trustedNetworks.all().count,
+                notificationStatusDescription: nil,
+                lockCapability: self.locker.selfTest(),   // resolve-only; reports the REAL result
+                cameraUnavailableReason: self.camera?.lastUnavailableReason
+            )
+        }
     }
 
     /// Start the presence loop if it isn't already running. A single cancellable

@@ -28,7 +28,9 @@ struct DiagnosticsReporter {
     /// - Parameters:
     ///   - state: the current presence state (from the engine).
     ///   - config: the effective tunable config (tick / grace / threshold / …).
-    ///   - store: enrollment store — only its `isEnrolled` flag is read.
+    ///   - enrollment: enrollment state, pre-fetched by the caller OFF the main actor
+    ///     (ND-102: a Keychain read can block on an ACL prompt). Only yes/no/unknown is
+    ///     reported — never the embeddings.
     ///   - identity: identity-recognition status (ND-073) — model version strings only.
     ///   - locationStatus: the current `CLAuthorizationStatus` (status label only).
     ///   - trustedNetworkCount: number of trusted Wi-Fi SSIDs — a COUNT, never names.
@@ -43,7 +45,7 @@ struct DiagnosticsReporter {
         state: PresenceState,
         config: Config,
         descriptor: FaceEmbeddingModelDescriptor,
-        store: EnrollmentStoring,
+        enrollment: EnrollmentState,
         identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
@@ -81,7 +83,13 @@ struct DiagnosticsReporter {
 
         // --- Enrollment (yes/no only — never the embeddings) ---
         lines.append("[Enrollment]")
-        lines.append("  Enrolled: \(store.isEnrolled ? "yes" : "no")")
+        let enrolledLabel: String
+        switch enrollment {
+        case .enrolled:    enrolledLabel = "yes"
+        case .notEnrolled: enrolledLabel = "no"
+        case .unavailable: enrolledLabel = "unknown (enrollment store unreadable)"
+        }
+        lines.append("  Enrolled: \(enrolledLabel)")
         lines.append("  Identity: \(Self.identityStatusDescription(identity))")
         lines.append("")
 
@@ -160,7 +168,7 @@ struct DiagnosticsReporter {
         state: PresenceState,
         config: Config,
         descriptor: FaceEmbeddingModelDescriptor,
-        store: EnrollmentStoring,
+        enrollment: EnrollmentState,
         identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
@@ -173,7 +181,7 @@ struct DiagnosticsReporter {
             state: state,
             config: config,
             descriptor: descriptor,
-            store: store,
+            enrollment: enrollment,
             identity: identity,
             locationStatus: locationStatus,
             trustedNetworkCount: trustedNetworkCount,

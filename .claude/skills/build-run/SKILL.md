@@ -29,13 +29,27 @@ SPM is fine for compiling/logic, but the camera permission prompt and `LSUIEleme
 scripts/make-app.sh            # release; --debug for a faster compile
 open build/NoDonuts.app        # launch it
 ```
-`scripts/make-app.sh` is the **canonical local build path** (ADR-0008): it runs `swift build`, assembles `build/NoDonuts.app`, and **ad-hoc-signs** it (`codesign --sign -`) with the camera entitlement so the TCC prompt fires. No Xcode, no `.xcodeproj`.
+`scripts/make-app.sh` is the **canonical local build path** (ADR-0008): it runs `swift build`, assembles `build/NoDonuts.app`, and signs it (with the stable "No Donuts Dev" identity if present, else **ad-hoc** `codesign --sign -`) with the camera entitlement so the TCC prompt fires. No Xcode, no `.xcodeproj`.
 
 ## App bundle, signing, entitlements
 
 - `Resources/Info.plist` must include `NSCameraUsageDescription` and `LSUIElement = true` (plus `CFBundleExecutable = NoDonuts`).
 - `Resources/NoDonuts.entitlements` carries the camera entitlement; `make-app.sh` embeds it at sign time.
-- Ad-hoc signing (`--sign -`) is fine for local runs. **Distribution** needs Developer-ID signing + notarization (ND-050) — ad-hoc bundles aren't Gatekeeper-distributable and TCC grants don't transfer to other machines.
+- Ad-hoc signing (`--sign -`) works for local runs, but see **Stable dev signing** below to stop re-prompts. **Distribution** needs Developer-ID signing + notarization (ND-050) — ad-hoc bundles aren't Gatekeeper-distributable and TCC grants don't transfer to other machines.
+
+## Stable dev signing (stops Keychain / camera re-prompts)
+
+An ad-hoc signature's designated requirement is its **cdhash**, which changes on every rebuild, so macOS re-asks "NoDonuts wants to use your confidential information" (login-keychain ACL) and re-requests Camera (TCC) after each build. Fix, once per machine (no Apple account, no network):
+```bash
+scripts/make-dev-cert.sh           # self-signed "No Donuts Dev" code-signing cert -> login keychain
+scripts/make-app.sh                # now prints: codesign with stable dev identity "No Donuts Dev" (...)
+codesign -d -r- build/NoDonuts.app # DR is now certificate-based, not cdhash
+```
+- The script is idempotent (no-op if the identity already exists). It asks for your **login password / Touch ID** once, to trust the cert for code signing in your user trust settings. Key material is only kept in the keychain; temp files are deleted.
+- `make-app.sh` auto-detects the identity (`security find-identity -v -p codesigning`) and falls back to ad-hoc with a hint if it's missing. Same entitlements/flags either way; **no hardened runtime** (that's ND-050).
+- **One last round of prompts** on the first launch after switching identity: Keychain → **Always Allow**; Camera → allow again. After that, rebuilds keep matching.
+- Remove it: `scripts/make-dev-cert.sh --remove` (may ask for your password to drop the trust setting).
+- Local dev only. It is not a Developer ID and does not make the bundle Gatekeeper-distributable.
 
 ## Core ML face model (ND-021 / ADR-0014)
 
