@@ -294,32 +294,17 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         // Extent of the ORIENTED image — the space the bbox and mapping live in.
         let orientedExtent = ciImage.extent
-        let width = Int(orientedExtent.width)
-        let height = Int(orientedExtent.height)
 
-        // Vision bounding boxes are normalized with origin bottom-left. Convert to
-        // pixel coordinates in the oriented image's space.
-        let bb = largest.boundingBox
-        let padX = bb.width * paddingFraction
-        let padY = bb.height * paddingFraction
-        var normRect = CGRect(
-            x: bb.origin.x - padX,
-            y: bb.origin.y - padY,
-            width: bb.width + 2 * padX,
-            height: bb.height + 2 * padY
-        )
-        // Clamp to [0,1] so padding can't push us off the buffer.
-        normRect = normRect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        // Crop geometry failure → error, not "no face" (EC-10).
-        guard !normRect.isNull, normRect.width > 0, normRect.height > 0 else { return .failure }
-
-        // VNImageRectForNormalizedRect maps a normalized rect (bottom-left origin) to
+        // Vision bounding boxes are normalized with origin bottom-left. The shared
+        // `paddedFaceCropRect` pads by `paddingFraction`, clamps to [0,1], and maps to
         // pixel coordinates (also bottom-left origin) using the ORIENTED image's
-        // dimensions — which matches the oriented CIImage's coordinate space, so we can
-        // crop the oriented image directly.
-        let pixelRect = VNImageRectForNormalizedRect(normRect, width, height)
-        let cropRect = pixelRect.integral.intersection(orientedExtent)
-        guard !cropRect.isNull, cropRect.width >= 1, cropRect.height >= 1 else { return .failure }
+        // dimensions — matching the oriented CIImage's coordinate space, so we can crop
+        // the oriented image directly. Shared with CoreMLFaceEmbedder + the liveness
+        // helper so all three use identical geometry (ND-072).
+        // Crop geometry failure → error, not "no face" (EC-10).
+        guard let cropRect = paddedFaceCropRect(faceBoundingBox: largest.boundingBox,
+                                                paddingFraction: paddingFraction,
+                                                orientedExtent: orientedExtent) else { return .failure }
 
         let cropped = ciImage.cropped(to: cropRect)
         // Render into a concrete CGImage so the feature-print handler operates on the
@@ -348,12 +333,13 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         // background under modest light collapses the average), risking a false
         // spoof-lock of the real user. The EMBEDDING keeps the padded crop (context
         // helps the feature print's separation); only the LIVENESS score uses the
-        // face-only central region. We recover that region by cropping the central
-        // portion of the already-rendered crop back to (approximately) the un-padded
-        // Vision face box before scoring.
+        // face-only central region. The shared `faceCoreTextureScore` (FaceLiveness.swift,
+        // ND-072 — same implementation the Core ML path uses) cuts the central portion of
+        // the already-rendered crop back to (approximately) the un-padded Vision face box
+        // before scoring.
         let textureScore: Double
         if resolvedAntiSpoofEnabled() {
-            textureScore = luminanceTextureScore(faceCoreRegion(of: cgCrop)) ?? .infinity
+            textureScore = faceCoreTextureScore(paddedCrop: cgCrop, paddingFraction: paddingFraction) ?? .infinity
         } else {
             textureScore = .infinity   // anti-spoof off → skip the render+Laplacian entirely
         }
@@ -390,78 +376,5 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
             for i in 0..<count { vector[i] = base[i] }
         }
         return .embedding(vector, textureScore: textureScore)
-    }
-
-    /// Crop the central "face core" out of the padded embedding crop for the LIVENESS
-    /// texture score (FIX #5). The embedding crop was built by expanding the Vision
-    /// face box by `paddingFraction` on each side, so the un-padded face box occupies
-    /// the central `1 / (1 + 2·paddingFraction)` fraction of the crop, centered. We cut
-    /// that central window back out so the texture score sees face-only detail (skin,
-    /// eyes, pores) rather than hair / jaw edges / background — which are high-frequency
-    /// but identity-irrelevant and can dilute a live face's score below the floor.
-    ///
-    /// Note: the crop may have been clamped at the buffer edge (padding can't push off
-    /// the image), so the real padded fraction is sometimes less than `paddingFraction`.
-    /// Cutting the theoretical central window is still a strictly TIGHTER-or-equal region
-    /// than the full crop, which is exactly the conservative direction we want here (it
-    /// never enlarges the scored area, only shrinks toward the face). Returns the
-    /// original image if the geometry degenerates (tiny crops) so we never lose the
-    /// signal entirely.
-    private func faceCoreRegion(of cgImage: CGImage) -> CGImage {
-        let w = cgImage.width
-        let h = cgImage.height
-        // Fraction of the crop occupied by the un-padded face box on each axis.
-        let coreFraction = 1.0 / (1.0 + 2.0 * Double(paddingFraction))
-        // Guard against a nonsensical (non-positive) padding making this a no-op or worse.
-        guard coreFraction > 0, coreFraction < 1 else { return cgImage }
-        let coreW = Int((Double(w) * coreFraction).rounded())
-        let coreH = Int((Double(h) * coreFraction).rounded())
-        // Need at least a 3x3 for the Laplacian; if the core is too small, keep the
-        // full crop rather than return something un-scoreable (→ .infinity = live).
-        guard coreW >= 3, coreH >= 3 else { return cgImage }
-        let originX = (w - coreW) / 2
-        let originY = (h - coreH) / 2
-        let rect = CGRect(x: originX, y: originY, width: coreW, height: coreH)
-        return cgImage.cropping(to: rect) ?? cgImage
-    }
-
-    /// Render `cgImage` to an 8-bit grayscale luminance buffer and return its
-    /// variance-of-Laplacian texture score (see `faceTextureScore`). Returns `nil`
-    /// if the grayscale draw fails — the caller then treats the frame as LIVE
-    /// (conservative, never a spoof flag on our own failure). Runs on `queue`.
-    private func luminanceTextureScore(_ cgImage: CGImage) -> Double? {
-        let width = cgImage.width
-        let height = cgImage.height
-        guard width >= 3, height >= 3 else { return nil }
-
-        // Downsize huge crops so the metric is cheap and roughly scale-stable; a
-        // ~128px working size keeps enough high-frequency detail to separate flat
-        // reproductions from live faces without per-pixel cost exploding.
-        let maxDim = 128
-        let scale = min(1.0, Double(maxDim) / Double(max(width, height)))
-        let w = max(3, Int((Double(width) * scale).rounded()))
-        let h = max(3, Int((Double(height) * scale).rounded()))
-
-        let colorSpace = CGColorSpaceCreateDeviceGray()
-        var pixels = [UInt8](repeating: 0, count: w * h)
-        let ok: Bool = pixels.withUnsafeMutableBytes { raw -> Bool in
-            guard let base = raw.baseAddress,
-                  let ctx = CGContext(
-                    data: base,
-                    width: w,
-                    height: h,
-                    bitsPerComponent: 8,
-                    bytesPerRow: w,
-                    space: colorSpace,
-                    bitmapInfo: CGImageAlphaInfo.none.rawValue
-                  ) else { return false }
-            ctx.interpolationQuality = .high
-            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
-            return true
-        }
-        guard ok else { return nil }
-
-        let luminance = pixels.map(Double.init)
-        return faceTextureScore(luminance: luminance, width: w, height: h)
     }
 }

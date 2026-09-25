@@ -149,8 +149,10 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 let present = maxSim >= threshold
                 // ND-024 tuning: log the score/threshold/decision (numbers only — no
                 // embedding, no image — privacy). Enrolled branch only; the presence-only
-                // (not-enrolled) path is not logged.
-                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public)")
+                // (not-enrolled) path is not logged. ND-072: the liveness texture score is
+                // appended (a number; `inf` = anti-spoof off or not extractable) so the
+                // spoof floor can be sanity-checked live against the real user's scores.
+                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public); texture \(textureScore, privacy: .public)")
                 guard present else { return .strangerOnly }
 
                 // ND-041 anti-spoof (EC-12): only when the face MATCHES do we apply the

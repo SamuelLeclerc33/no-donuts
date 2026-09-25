@@ -16,13 +16,15 @@ import os
 ///
 /// Pipeline (all on-device, in memory):
 /// 1. `VNDetectFaceRectanglesRequest` → largest face (shared with the Vision embedder).
-/// 2. Crop the padded face box (same crop path as the Vision embedder).
+/// 2. Crop the padded face box (shared `paddedFaceCropRect`, same as the Vision embedder).
 /// 3. Resize the crop to the model's `inputSize`×`inputSize` and feed it as an image
 ///    input. Preprocessing (`(x-127.5)/128` for FaceNet) is **folded into the Core ML
 ///    model** at conversion time (`ct.ImageType(scale:1/128, bias:-127.5/128)`), so we
 ///    hand the model raw 0–255 RGB pixels and it normalizes internally.
 /// 4. Read the model's float output, L2-normalize DEFENSIVELY (FaceNet already
 ///    normalizes; a permissive-model swap might not), return the vector.
+/// 5. Liveness (ND-072, EC-12): the shared `innerFaceTextureScore` on the ORIGINAL frame's
+///    inner face region, gated by `resolvedAntiSpoofEnabled()`; failure → `.infinity`.
 ///
 /// **Model-file independence (CRITICAL, ND-021 Phase 1).** The Core ML model is NOT in
 /// the repo and CANNOT be downloaded/converted in the build environment. So this type is
@@ -135,9 +137,8 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
     /// Synchronous pipeline — only ever called on `queue`. Same tri-state contract as
     /// `VisionFeaturePrintEmbedder`: `.noFace` only when detection ran and found zero
     /// faces; `.failure` for any error (EC-10); `.embedding` on success. Never crashes,
-    /// never blocks the main actor. Liveness texture score is left as the `.infinity`
-    /// "live/unknown" sentinel here (anti-spoof scoring stays with the Vision path for
-    /// now; wiring texture scoring into this model is a follow-up with wiggum).
+    /// never blocks the main actor. The liveness texture score (ND-072) comes from the
+    /// shared `innerFaceTextureScore` when anti-spoof is enabled, else `.infinity`.
     private func computeEmbedding(_ frame: CapturedFrame) -> FaceEmbeddingResult {
         guard let pixelBuffer = frame.pixelBuffer else { return .failure }
 
@@ -162,24 +163,9 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         // Vision embedder — see its computeEmbedding for the orientation rationale).
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         let orientedExtent = ciImage.extent
-        let width = Int(orientedExtent.width)
-        let height = Int(orientedExtent.height)
-
-        let bb = largest.boundingBox
-        let padX = bb.width * paddingFraction
-        let padY = bb.height * paddingFraction
-        var normRect = CGRect(
-            x: bb.origin.x - padX,
-            y: bb.origin.y - padY,
-            width: bb.width + 2 * padX,
-            height: bb.height + 2 * padY
-        )
-        normRect = normRect.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
-        guard !normRect.isNull, normRect.width > 0, normRect.height > 0 else { return .failure }
-
-        let pixelRect = VNImageRectForNormalizedRect(normRect, width, height)
-        let cropRect = pixelRect.integral.intersection(orientedExtent)
-        guard !cropRect.isNull, cropRect.width >= 1, cropRect.height >= 1 else { return .failure }
+        guard let cropRect = paddedFaceCropRect(faceBoundingBox: largest.boundingBox,
+                                                paddingFraction: paddingFraction,
+                                                orientedExtent: orientedExtent) else { return .failure }
 
         let cropped = ciImage.cropped(to: cropRect)
 
@@ -210,7 +196,25 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         // Defensive L2-normalize (FaceNet already normalizes; a swapped model may not).
         let normalized = l2Normalized(vector)
         guard !normalized.isEmpty else { return .failure }
-        return .embedding(normalized, textureScore: .infinity)
+
+        // ND-072 / ND-041 liveness (EC-12): score the INNER face region of the ORIGINAL
+        // frame via the shared helper — the SAME pixels, crop geometry, and ≤128px
+        // grayscale working scale as the Vision path, so `spoofTextureFloor` means the
+        // same thing on both embedders. Deliberately NOT computed from `inputBuffer`: that
+        // is the padded crop stretched (non-uniformly) to 160×160, a different scale.
+        // Gated behind the cheap toggle check (skip the render when anti-spoof is off).
+        // Any extraction failure inside the helper → `.infinity` (LIVE), never a spoof.
+        let textureScore: Double
+        if resolvedAntiSpoofEnabled() {
+            textureScore = innerFaceTextureScore(frame: pixelBuffer,
+                                                 faceBoundingBox: largest.boundingBox,
+                                                 orientation: orientation,
+                                                 paddingFraction: paddingFraction,
+                                                 ciContext: ciContext)
+        } else {
+            textureScore = .infinity
+        }
+        return .embedding(normalized, textureScore: textureScore)
     }
 
     /// Render `image` (cropped to `cropRect`) into a `side`×`side` 32-bit BGRA

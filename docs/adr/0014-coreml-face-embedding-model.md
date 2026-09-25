@@ -68,6 +68,10 @@ The descriptor's `defaultMatchThreshold` was supposed to be the base default, bu
 - The legacy global `matchThreshold` key is deleted once at launch, so a value tuned for another model never leaks.
 - The Settings slider is limited to the active model's range, shows the model default and whether it is tuned, and has a Reset button that removes the override.
 
+## Amendment (2026-09-25): anti-spoof on the Core ML path (ND-072)
+
+The Core ML embedder returned the `.infinity` "live" sentinel, so the ND-041 texture gate never tripped with FaceNet active. Both embedders now call one shared `innerFaceTextureScore(frame:faceBoundingBox:orientation:)`. It scores the inner face region of the **original camera frame**, not the 160×160 model input, so the score is on the same scale as the Vision path and the existing `spoofTextureFloor` (12) carries over. Any extraction failure returns `.infinity` (err live; never false-lock). Live genuine texture on the dev Mac: 12.3–51 (median ~37). A spoof-only measurement is still needed before the floor counts as tuned.
+
 ## Alternatives considered
 
 - **Keep tuning the Vision feature print (ADR-0012 only):** cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).

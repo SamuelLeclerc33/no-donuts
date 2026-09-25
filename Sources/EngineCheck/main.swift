@@ -1,4 +1,6 @@
 import Foundation
+import CoreImage
+import CoreVideo
 import ImageIO
 import IOKit.audio
 import NoDonutsCore
@@ -82,6 +84,29 @@ extension FaceEmbeddingModelDescriptor {
                                      defaultMatchThreshold: t, matchThresholdRange: 0.40...0.90,
                                      thresholdIsTuned: false)
     }
+}
+
+/// Synthetic 32-bit BGRA camera-style frame for the shared liveness helper (ND-072):
+/// every channel of pixel (x, y) is `luma(x, y)`, so luminance == that value.
+func makeGrayBGRAFrame(width: Int, height: Int, luma: (Int, Int) -> UInt8) -> CVPixelBuffer? {
+    let attrs: [CFString: Any] = [kCVPixelBufferCGImageCompatibilityKey: true,
+                                  kCVPixelBufferCGBitmapContextCompatibilityKey: true]
+    var pb: CVPixelBuffer?
+    guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
+                              attrs as CFDictionary, &pb) == kCVReturnSuccess, let buffer = pb else { return nil }
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+    guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+    let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+    let bytes = base.assumingMemoryBound(to: UInt8.self)
+    for y in 0..<height {
+        for x in 0..<width {
+            let v = luma(x, y)
+            let o = y * rowBytes + x * 4
+            bytes[o] = v; bytes[o + 1] = v; bytes[o + 2] = v; bytes[o + 3] = 255
+        }
+    }
+    return buffer
 }
 
 // EnrollmentState isn't Equatable (associated value), so tiny matchers for the checks.
@@ -1612,6 +1637,107 @@ func runAll() async -> Bool {
         var present = false
         if case .enrolledUserPresent = result { present = true }
         c.expect(present, "anti-spoof: flagged but toggle OFF → present (ignores anti-spoof) (ND-041)")
+    }
+
+    // MARK: Shared inner-face liveness helper (ND-072, EC-12) — cooper/wiggum
+    //
+    // Both embedders now score liveness through ONE helper on the ORIGINAL frame's inner
+    // face region. Synthetic BGRA frames (160×160, face box = central half → 120px padded
+    // crop, 80px core: below the 128px working size, so no resample blurs the pattern).
+    do {
+        let side = 160
+        let face = CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)
+        let ctx = CIContext(options: nil)
+        var seed: UInt32 = 0x9E37_79B9
+        func noise() -> UInt8 { seed = seed &* 1_664_525 &+ 1_013_904_223; return UInt8(truncatingIfNeeded: seed >> 24) }
+        let flat = makeGrayBGRAFrame(width: side, height: side) { _, _ in 128 }
+        let checker = makeGrayBGRAFrame(width: side, height: side) { x, y in ((x / 3 + y / 3) % 2 == 0) ? 30 : 220 }
+        let noisy = makeGrayBGRAFrame(width: side, height: side) { _, _ in noise() }
+
+        if let flat, let checker, let noisy {
+            let flatScore = innerFaceTextureScore(frame: flat, faceBoundingBox: face, orientation: .up, ciContext: ctx)
+            let checkerScore = innerFaceTextureScore(frame: checker, faceBoundingBox: face, orientation: .up, ciContext: ctx)
+            let noiseScore = innerFaceTextureScore(frame: noisy, faceBoundingBox: face, orientation: .up, ciContext: ctx)
+            c.expect(flatScore.isFinite && isLikelySpoof(textureScore: flatScore),
+                     "innerFaceTextureScore: flat frame → low finite score (\(flatScore)) → spoof at default floor (ND-072)")
+            c.expect(checkerScore.isFinite && checkerScore > defaultSpoofTextureFloor * 10,
+                     "innerFaceTextureScore: checkerboard frame → high score (\(checkerScore)) → live (ND-072)")
+            c.expect(noiseScore.isFinite && noiseScore > defaultSpoofTextureFloor * 10,
+                     "innerFaceTextureScore: noise frame → high score (\(noiseScore)) → live (ND-072)")
+
+            // Rotated source orientation (same one detection used) still extracts + scores.
+            let rotated = innerFaceTextureScore(frame: checker, faceBoundingBox: face, orientation: .right, ciContext: ctx)
+            c.expect(rotated.isFinite && rotated > defaultSpoofTextureFloor,
+                     "innerFaceTextureScore: non-.up orientation → still scores the face region (ND-072)")
+
+            // Same pixels as the Vision path: the frame-based helper == the Vision
+            // embedder's call (faceCoreTextureScore on its rendered padded crop). This is
+            // what keeps the floor on one scale across both embedders.
+            var samePixels = false
+            let ci = CIImage(cvPixelBuffer: noisy).oriented(.up)
+            if let rect = paddedFaceCropRect(faceBoundingBox: face, paddingFraction: 0.25, orientedExtent: ci.extent),
+               let cg = ctx.createCGImage(ci.cropped(to: rect), from: rect),
+               let visionPath = faceCoreTextureScore(paddedCrop: cg, paddingFraction: 0.25) {
+                samePixels = visionPath == noiseScore
+            }
+            c.expect(samePixels, "innerFaceTextureScore == Vision-path faceCoreTextureScore on the same frame (one scale, ND-072)")
+
+            // Extraction failures / ambiguity → .infinity (LIVE), never a spoof (EC-12).
+            let zeroBox = innerFaceTextureScore(frame: flat, faceBoundingBox: .zero, orientation: .up, ciContext: ctx)
+            let nanBox = innerFaceTextureScore(frame: flat, faceBoundingBox: CGRect(x: .nan, y: 0.2, width: 0.5, height: 0.5),
+                                               orientation: .up, ciContext: ctx)
+            let offFrame = innerFaceTextureScore(frame: flat, faceBoundingBox: CGRect(x: 2, y: 2, width: 0.5, height: 0.5),
+                                                 orientation: .up, ciContext: ctx)
+            let tiny = innerFaceTextureScore(frame: flat, faceBoundingBox: CGRect(x: 0.5, y: 0.5, width: 0.004, height: 0.004),
+                                             orientation: .up, ciContext: ctx)
+            let badPad = innerFaceTextureScore(frame: flat, faceBoundingBox: face, orientation: .up,
+                                               paddingFraction: -1, ciContext: ctx)
+            c.expect(zeroBox == .infinity && nanBox == .infinity && offFrame == .infinity && tiny == .infinity && badPad == .infinity,
+                     "innerFaceTextureScore: empty/NaN/off-frame/tiny box or bad padding → .infinity (live, never spoof) (ND-072/EC-12)")
+
+            // Core-ML-style outcome into the REAL recognizer gate at the DEFAULT floor (12):
+            // the helper's flat-frame score trips it (→ .strangerOnly); its textured score
+            // and the .infinity failure sentinel do not (→ present).
+            let key = "antiSpoofEnabled", floorKey = "spoofTextureFloor"
+            let prior = UserDefaults.standard.object(forKey: key)
+            let priorFloor = UserDefaults.standard.object(forKey: floorKey)
+            UserDefaults.standard.set(true, forKey: key)
+            UserDefaults.standard.removeObject(forKey: floorKey)   // → defaultSpoofTextureFloor
+            defer {
+                if let prior { UserDefaults.standard.set(prior, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+                if let priorFloor { UserDefaults.standard.set(priorFloor, forKey: floorKey) }
+            }
+            let desc = FaceEmbeddingModelDescriptor.uniqueFake()
+            let store = InMemoryEnrollmentStore()
+            try? store.enroll(embeddings: [matchV], modelVersion: desc.version)
+            func gate(_ score: Double) async -> RecognitionResult {
+                await IdentityRecognizer(embedder: FakeEmbedder(result: .embedding(matchV, textureScore: score), descriptor: desc),
+                                         store: store).recognize(CapturedFrame())
+            }
+            let flatResult = await gate(flatScore)
+            var texturedPresent = false, failurePresent = false
+            if case .enrolledUserPresent = await gate(noiseScore) { texturedPresent = true }
+            if case .enrolledUserPresent = await gate(zeroBox) { failurePresent = true }
+            c.expect(flatResult == .strangerOnly && texturedPresent && failurePresent,
+                     "anti-spoof gate on Core-ML-style scores (default floor): flat → .strangerOnly; textured / .infinity → present (ND-072)")
+        } else {
+            c.expect(false, "innerFaceTextureScore: could not allocate synthetic CVPixelBuffers")
+        }
+    }
+
+    // Shared padded-crop geometry (both embedders' crop + the liveness helper): the exact
+    // arithmetic the embedders used inline before ND-072 (regression guard).
+    do {
+        let extent = CGRect(x: 0, y: 0, width: 160, height: 160)
+        let centered = paddedFaceCropRect(faceBoundingBox: CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5),
+                                          paddingFraction: 0.25, orientedExtent: extent)
+        let edge = paddedFaceCropRect(faceBoundingBox: CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
+                                      paddingFraction: 0.25, orientedExtent: extent)
+        let off = paddedFaceCropRect(faceBoundingBox: CGRect(x: 2, y: 2, width: 0.1, height: 0.1),
+                                     paddingFraction: 0.25, orientedExtent: extent)
+        c.expect(centered == CGRect(x: 20, y: 20, width: 120, height: 120)
+                 && edge == CGRect(x: 0, y: 0, width: 100, height: 100) && off == nil,
+                 "paddedFaceCropRect: 0.25 padding, [0,1] clamp at the edge, off-frame → nil (ND-072 regression)")
     }
 
     // (k) resolvedAntiSpoofEnabled default: absent key → true (ON by default); explicit
