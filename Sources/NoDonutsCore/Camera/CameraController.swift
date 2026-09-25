@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import IOKit.audio
 import os
 import ObjCExceptionCatcher
 
@@ -16,7 +17,8 @@ private func hostNow() -> TimeInterval {
 
 // Owner: blart — camera capture, camera-in-use monitoring, display/session state.
 // Backlog: ND-011 (permission), ND-012 (single-frame capture), ND-013 (suspend/resume),
-//          ND-031 (busy fallback), ND-055 (stale-frame guard), ND-084 (session fixes).
+//          ND-031 (busy fallback), ND-055 (stale-frame guard), ND-084 (session fixes),
+//          ND-075 (trust only the built-in camera; see CameraTrustPolicy).
 
 /// Captures frames for the presence loop. Pulls a single frame per tick (not a
 /// continuous stream) to save power, and reports when the camera is busy or the
@@ -57,6 +59,11 @@ public protocol CameraCapturing: Sendable {
 /// wedged session (no fresh frame for `FrameFreshness.wedgedAfter`) tears the
 /// session down so the next tick reconfigures. Interruptions (e.g. another app
 /// taking the camera for a call) are logged only — never torn down (ADR-0003).
+///
+/// Camera trust (ND-075): only the Mac's built-in camera is ever opened or
+/// probed (`trustedDevice()`, filtered by `CameraTrustPolicy`). External USB,
+/// Continuity, and virtual cameras are ignored (logged once); with no trusted
+/// device `capture()` reports `.unavailable(CameraTrustPolicy.noTrustedCameraReason)`.
 ///
 /// Privacy: frames live in memory only. We hand the `CVPixelBuffer` to the
 /// recognizer and never write it to disk or off-device.
@@ -110,6 +117,24 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         case failed(String)
     }
 
+    /// Signature of the last device set logged by `logDeviceInventory`, so
+    /// the ignored-camera notice is emitted once per change, not every tick.
+    /// Guarded by `sessionQueue`.
+    private var loggedInventory: String?
+
+    /// Guards `_lastUnavailableReason`.
+    private let reasonLock = NSLock()
+    private var _lastUnavailableReason: String?
+
+    /// Reason from the most recent `.unavailable` outcome; nil after a
+    /// successful `.frame` (and before the first capture). Thread-safe. For
+    /// the UI (e.g. to explain "no trusted built-in camera").
+    public var lastUnavailableReason: String? {
+        reasonLock.lock()
+        defer { reasonLock.unlock() }
+        return _lastUnavailableReason
+    }
+
     /// NotificationCenter tokens; removed in `deinit`.
     private var observers: [NSObjectProtocol] = []
 
@@ -137,6 +162,16 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     }
 
     public func capture() async -> CaptureOutcome {
+        let outcome = await captureOutcome()
+        switch outcome {
+        case .unavailable(let reason): reasonLock.withLock { _lastUnavailableReason = reason }
+        case .frame: reasonLock.withLock { _lastUnavailableReason = nil }
+        default: break
+        }
+        return outcome
+    }
+
+    private func captureOutcome() async -> CaptureOutcome {
         // 1. Permission. Resolve before touching any AV hardware. Never fail open.
         //    Do NOT request access here: prompting from the per-tick loop would
         //    block the @MainActor presence loop until the user answers the TCC
@@ -166,7 +201,9 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
             // A (re)configure can fail precisely because another app holds the
             // device (e.g. a call started after a tear-down). Keep the bounded
             // busy/assume-present path (ADR-0003) instead of a plain unavailable.
-            if AVCaptureDevice.default(for: .video)?.isInUseByAnotherApplication == true {
+            // Only the trusted device is probed (ND-075): an untrusted camera
+            // being busy must not buy an assume-present window.
+            if await trustedDeviceInUseByAnotherApp() {
                 return .cameraBusyNoFrames
             }
             return .unavailable(reason)
@@ -205,7 +242,8 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         // The bounded assume-present policy (e.g. a max-duration guard so we don't
         // stay unlocked forever behind a stuck call) lives in the engine (homer), not
         // here; this controller only reports the raw outcome.
-        if AVCaptureDevice.default(for: .video)?.isInUseByAnotherApplication == true {
+        // ND-066b: probe the device we actually configured, not the system default.
+        if await trustedDeviceInUseByAnotherApp() {
             return .cameraBusyNoFrames   // ND-031/ADR-0003: busy + no frames
         }
         return .unavailable("no fresh frame")
@@ -244,8 +282,9 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         // ND-013 invariant: only resume() starts a suspended session.
         if suspended { return .suspended }
 
-        guard let device = AVCaptureDevice.default(for: .video) else {
-            return .failed("no camera device")
+        logDeviceInventory()
+        guard let device = trustedDevice() else {
+            return .failed(CameraTrustPolicy.noTrustedCameraReason)
         }
 
         // Defensive: a previous partial attempt/tear-down should have left the
@@ -369,7 +408,60 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         activeDevice = device
         interruptedSince = nil
         configured = true
+        cameraLog.notice("Camera: using \(device.localizedName, privacy: .public) (transport \(CameraTrustPolicy.fourCC(device.transportType), privacy: .public))")
         return .ready
+    }
+
+    // MARK: - Device trust (ND-075)
+
+    /// The single source of capture devices: the first built-in wide-angle
+    /// camera that `CameraTrustPolicy` accepts, or nil. Never falls back to
+    /// `AVCaptureDevice.default(for:)`, which may be an external/virtual camera.
+    private func trustedDevice() -> AVCaptureDevice? {
+        AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera],
+                                         mediaType: .video,
+                                         position: .unspecified)
+            .devices
+            .first(where: Self.isTrusted)
+    }
+
+    private static func isTrusted(_ device: AVCaptureDevice) -> Bool {
+        CameraTrustPolicy.isTrusted(
+            deviceTypeIsBuiltIn: device.deviceType == .builtInWideAngleCamera,
+            transportIsBuiltIn: device.transportType == Int32(kIOAudioDeviceTransportTypeBuiltIn))
+    }
+
+    /// Busy probe on the configured device, else the trusted one (ND-066b).
+    /// Hops onto `sessionQueue` because `activeDevice` lives there. False when
+    /// no trusted camera exists, so the caller reports `.unavailable`.
+    private func trustedDeviceInUseByAnotherApp() async -> Bool {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                let device = self.activeDevice ?? self.trustedDevice()
+                continuation.resume(returning: device?.isInUseByAnotherApplication == true)
+            }
+        }
+    }
+
+    /// Log every untrusted video device once (per change of the device set) at
+    /// `.notice`, so it's visible why a plugged-in webcam or virtual camera is
+    /// not used. Names + transport only; no image data. Must be called on
+    /// `sessionQueue`.
+    private func logDeviceInventory() {
+        let all = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera, .deskViewCamera],
+            mediaType: .video,
+            position: .unspecified).devices
+        let signature = all.map(\.uniqueID).sorted().joined(separator: "|")
+        guard signature != loggedInventory else { return }
+        loggedInventory = signature
+        let untrusted = all.filter { !Self.isTrusted($0) }
+        for device in untrusted {
+            cameraLog.notice("Camera: ignored untrusted camera: \(device.localizedName, privacy: .public) (transport \(CameraTrustPolicy.fourCC(device.transportType), privacy: .public))")
+        }
+        if !all.contains(where: Self.isTrusted) {
+            cameraLog.notice("Camera: \(CameraTrustPolicy.noTrustedCameraReason, privacy: .public)")
+        }
     }
 
     // MARK: - Tear-down (ND-055)
@@ -425,7 +517,7 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
                 guard wedged else { return }
                 // Re-derive "in a call" from the device itself rather than
                 // trusting the interruption notification alone.
-                let inUse = (self.activeDevice ?? AVCaptureDevice.default(for: .video))?
+                let inUse = (self.activeDevice ?? self.trustedDevice())?
                     .isInUseByAnotherApplication == true
                 guard FrameFreshness.shouldTearDownWedged(isWedged: wedged,
                                                           deviceInUseByAnotherApp: inUse,

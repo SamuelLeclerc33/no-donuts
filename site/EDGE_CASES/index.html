@@ -827,6 +827,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0015-camera-trust-built-in-only/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0015 — Camera trust: built-in only
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1059,7 +1087,7 @@
 <tr>
 <td>EC-07</td>
 <td><strong>External monitor, lid closed (clamshell)</strong></td>
-<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A "not protecting" local notification now fires on entry + repeats ~5 min while unavailable, clearing on recovery (ND-045, <code>NotProtectingNotifier</code>).</td>
+<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A "not protecting" local notification now fires on entry + repeats ~5 min while unavailable, clearing on recovery (ND-045, <code>NotProtectingNotifier</code>). <strong>ND-075 (2026-09-25, ADR-0015):</strong> only the built-in camera is trusted, so an external webcam in clamshell is NOT used. The app shows "camera unavailable (no built-in camera)" rather than capturing from an untrusted device.</td>
 <td>IMPLEMENTED</td>
 <td>blart/homer/krusty</td>
 </tr>
@@ -1094,7 +1122,7 @@
 <tr>
 <td>EC-12</td>
 <td><strong>Photo / phone screen held up to spoof</strong></td>
-<td>Basic anti-spoofing shipped (ND-041): a variance-of-Laplacian texture/liveness score on the face crop (<code>FaceLiveness.swift</code>) flags clearly flat reproductions. CONSERVATIVE by design — only checked on the ENROLLED path AFTER a threshold match, only flags when the score is strictly below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12.0) → <code>.strangerOnly</code> (locks). The score is measured on the INNER face region (not the padded embedding crop), so a live user against a plain background isn't diluted below the floor; it errs toward LIVE on any ambiguity/extraction failure and never false-locks the real user. ON by default (toggle <code>antiSpoofEnabled</code>); texture compute is skipped entirely when the toggle is off. <strong>v1 is NOT hardened:</strong> a sharp high-resolution print or a high-DPI screen at the right size can still pass; the floor needs on-device tuning; motion/blink liveness is future work. <strong>KNOWN GAP (ND-072):</strong> anti-spoofing is currently INACTIVE on the Core ML face-embedder path (ADR-0014) — <code>CoreMLFaceEmbedder</code> returns the <code>.infinity</code> live/unknown sentinel instead of a real texture score, so the gate never trips there; the check only runs on the Vision fallback path. With the Core ML embedder active, a flat photo of the enrolled user is accepted. Tracked as ND-072 (wire the shared texture score into the Core ML path + re-tune the floor for that crop pipeline).</td>
+<td>Basic anti-spoofing shipped (ND-041): a variance-of-Laplacian texture/liveness score on the face crop (<code>FaceLiveness.swift</code>) flags clearly flat reproductions. CONSERVATIVE by design — only checked on the ENROLLED path AFTER a threshold match, only flags when the score is strictly below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12.0) → <code>.strangerOnly</code> (locks). The score is measured on the INNER face region (not the padded embedding crop), so a live user against a plain background isn't diluted below the floor; it errs toward LIVE on any ambiguity/extraction failure and never false-locks the real user. ON by default (toggle <code>antiSpoofEnabled</code>); texture compute is skipped entirely when the toggle is off. <strong>v1 is NOT hardened:</strong> a sharp high-resolution print or a high-DPI screen at the right size can still pass; the floor needs on-device tuning; motion/blink liveness is future work. <strong>KNOWN GAP (ND-072):</strong> anti-spoofing is currently INACTIVE on the Core ML face-embedder path (ADR-0014) — <code>CoreMLFaceEmbedder</code> returns the <code>.infinity</code> live/unknown sentinel instead of a real texture score, so the gate never trips there; the check only runs on the Vision fallback path. With the Core ML embedder active, a flat photo of the enrolled user is accepted. Tracked as ND-072 (wire the shared texture score into the Core ML path + re-tune the floor for that crop pipeline). <strong>Virtual cameras (ND-075, ADR-0015):</strong> OBS and other CMIO virtual cameras, which could replay a video of the user, are rejected. Only the built-in camera (built-in device type AND built-in transport) is used.</td>
 <td>PARTIAL</td>
 <td>wiggum/cooper</td>
 </tr>

@@ -479,7 +479,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .cameraUnavailable:
             alert.alertStyle = .warning
             alert.messageText = "Camera unavailable"
-            alert.informativeText = "No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again."
+            // ND-075: only the built-in camera is trusted (ADR-0015) — say so when that's why.
+            alert.informativeText = camera?.lastUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
+                ? "No Donuts only uses the Mac\u{2019}s built-in camera (external and virtual cameras aren\u{2019}t trusted), and none is available. Open the lid, then try again."
+                : "No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again."
         case .saveFailed:
             alert.alertStyle = .warning
             alert.messageText = "Couldn't save your enrollment"
@@ -634,7 +637,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             locationStatus: wifiMonitor.authorizationStatus(),
             trustedNetworkCount: trustedNetworks.all().count,
             notificationStatusDescription: nil,
-            lockCapability: locker.selfTest()   // resolve-only; reports the REAL result
+            lockCapability: locker.selfTest(),   // resolve-only; reports the REAL result
+            cameraUnavailableReason: camera?.lastUnavailableReason
         )
     }
 
@@ -649,6 +653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // A tick cancelled mid-flight (e.g. session suspend) must not
                 // render stale state on top of a freshly-resumed loop.
                 if Task.isCancelled { break }
+                menuBar.setCameraUnavailableReason(self.camera?.lastUnavailableReason)
                 menuBar.render(state: engine.state, lockFailureCount: engine.lockFailureCount)
                 // ND-045: honest "not protecting" notification. Only fires on the
                 // active loop, so paused/suspended/enrolling states never trigger it.

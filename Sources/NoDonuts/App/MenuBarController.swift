@@ -51,6 +51,9 @@ public final class MenuBarController: NSObject {
     /// must never look protecting when walking away won't lock. Starts optimistic (the
     /// AppDelegate pushes the real result at launch, right after creating the menu).
     private var lockCapability = LockCapability(available: LockMechanism.allCases)
+    /// ND-075: why the camera is unavailable (from `CameraController.lastUnavailableReason`),
+    /// so the header can say "no built-in camera" instead of the generic "grant access".
+    private var cameraUnavailableReason: String?
 
     // Pause items shown when NOT paused; hidden and replaced by `resumeItem` when paused.
     private let pause15Item = NSMenuItem(title: "Pause for 15 minutes", action: #selector(pause15Clicked), keyEquivalent: "")
@@ -158,6 +161,15 @@ public final class MenuBarController: NSObject {
         // The glyph AND header depend on identity, so force a full redraw of the last
         // rendered state (render(state:)'s cache would otherwise skip it).
         if let state = lastRenderedState {
+            draw(state: state)
+        }
+    }
+
+    /// ND-075: feed the camera's last unavailable reason; redraws only on change.
+    public func setCameraUnavailableReason(_ reason: String?) {
+        guard reason != cameraUnavailableReason else { return }
+        cameraUnavailableReason = reason
+        if let state = lastRenderedState, state == .cameraUnavailable {
             draw(state: state)
         }
     }
@@ -359,7 +371,10 @@ public final class MenuBarController: NSObject {
                          label: "couldn't lock the screen", fallbackText: "!lock")
         case .cameraUnavailable:
             return Glyph(symbolName: "video.slash.fill", tint: .systemOrange,
-                         label: "camera unavailable — grant access", fallbackText: "!cam")
+                         label: cameraUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
+                             ? "camera unavailable — no built-in camera"
+                             : "camera unavailable — grant access",
+                         fallbackText: "!cam")
         case .paused:
             return Glyph(symbolName: "pause.circle.fill", tint: .systemGray,
                          label: "paused", fallbackText: "||")
@@ -400,7 +415,12 @@ public final class MenuBarController: NSObject {
             return lockFailureCount >= 1
                 ? "No Donuts — ⚠️ couldn't lock the screen (retrying)"
                 : "No Donuts — ⚠️ couldn't lock the screen"
-        case .cameraUnavailable:  return "No Donuts — ⚠️ camera unavailable (grant access)"
+        case .cameraUnavailable:
+            // ND-075 (ADR-0015): only the built-in camera is trusted — say so instead
+            // of sending the user to camera permissions.
+            return cameraUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
+                ? "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren\u{2019}t trusted)"
+                : "No Donuts — ⚠️ camera unavailable (grant access)"
         }
     }
 }

@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0004-app-identity/">
+        <link rel="prev" href="../0014-coreml-face-embedding-model/">
       
       
-        <link rel="next" href="../0005-docs-site/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0005 — Presence loop concurrency - No Donuts</title>
+        <title>ADR-0015 — Camera trust: built-in only - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0005-presence-loop-concurrency-main-actor-driven-loop" class="md-skip">
+        <a href="#adr-0015-camera-trust-use-the-built-in-camera-only" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0005 — Presence loop concurrency
+              ADR-0015 — Camera trust: built-in only
             
           </span>
         </div>
@@ -527,37 +527,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0005 — Presence loop concurrency
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0005-presence-loop-concurrency/" class="md-nav__link">
         
   
   
@@ -573,70 +546,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -926,10 +835,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0015-camera-trust-built-in-only/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0015 — Camera trust: built-in only
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -945,6 +881,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1098,72 +1098,33 @@
 
 
 
-<h1 id="adr-0005-presence-loop-concurrency-main-actor-driven-loop">ADR-0005 — Presence loop concurrency: main-actor-driven loop<a class="headerlink" href="#adr-0005-presence-loop-concurrency-main-actor-driven-loop" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0015-camera-trust-use-the-built-in-camera-only">ADR-0015 — Camera trust: use the built-in camera only<a class="headerlink" href="#adr-0015-camera-trust-use-the-built-in-camera-only" title="Permanent link">&para;</a></h1>
 <ul>
 <li>Status: Accepted</li>
-<li>Date: 2026-06-30</li>
-<li>Owner: homer</li>
+<li>Date: 2026-09-25</li>
+<li>Owner: blart (with wiggum)</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>The presence loop runs <code>capture -&gt; recognize -&gt; decide -&gt; render</code> on a fixed
-interval and updates UI (the menu-bar status) each tick. The original scaffold
-drove this with a repeating <code>Timer.scheduledTimer</code> whose closure spun up a
-detached <code>Task</code> and hopped to <code>MainActor.run</code> to render. Under Swift 6 strict
-concurrency this failed to compile: the engine's mutable state and the
-non-<code>Sendable</code> capture of <code>self</code>/<code>menuBar</code> across the detached <code>Task</code> boundary
-produced data-race / Sendable errors, and the loop's isolation was unclear.</p>
+<p><code>CameraController</code> captured from <code>AVCaptureDevice.default(for: .video)</code>, which is whatever camera macOS picks. That includes <strong>virtual cameras</strong>: OBS, Snap Camera, and any CMIO camera extension. They feed arbitrary video. A looped clip of the enrolled user would match every tick and keep the Mac unlocked indefinitely. That is a trivial, repeatable spoof, much stronger than the flat-photo case EC-12 addresses. Virtual cameras usually present as device type <code>.external</code>, the same as physical USB webcams. The reliable difference is their transport type.</p>
+<p>The app is meant for internal distribution to colleagues on essentially the same laptop hardware (ND-111), all of which have a built-in camera.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>The presence loop is <strong>main-actor-driven</strong>.</p>
+<p><strong>Trust only the Mac's built-in camera.</strong></p>
 <ul>
-<li><code>PresenceEngine</code> is annotated <code>@MainActor</code>. It holds the only mutable presence
-  state, so isolating it to the main actor makes its decision logic free of data
-  races without locks. <code>AppDelegate</code> is also <code>@MainActor</code>.</li>
-<li>The loop is a <strong>single cancellable <code>Task { @MainActor in ... }</code></strong> stored on the
-  delegate (<code>loopTask</code>), using <code>try? await Task.sleep(for:)</code> for the interval
-  instead of a <code>Timer</code>. It is cancelled in <code>applicationWillTerminate</code>.</li>
-<li>The async protocol methods <code>CameraCapturing.capture()</code> and
-  <code>FaceRecognizing.recognize(_:)</code> are <strong>awaited from the main actor</strong>. <code>await</code>
-  suspends the main actor at the suspension point; it does not block the run
-  loop. The main thread remains responsive to UI/menu events while the work is
-  in flight.</li>
+<li>Select the device through <code>AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], …)</code>, and require <strong>both</strong> the built-in device type <strong>and</strong> a built-in transport (<code>transportType == kIOAudioDeviceTransportTypeBuiltIn</code>). Requiring both is defense in depth: a virtual device claiming a built-in type is still rejected. The pure rule lives in <code>CameraTrustPolicy</code> and is covered by EngineCheck.</li>
+<li>External USB webcams, iPhone Continuity Camera and virtual cameras are <strong>never used</strong>. They are logged once as "ignored untrusted camera".</li>
+<li>If no trusted camera is present, <code>capture()</code> returns <code>.unavailable("no trusted built-in camera …")</code>. The app shows the honest "camera unavailable" state with that reason, plus the existing not-protecting notification (EC-07/08/09 policy). It never falls back to an untrusted device.</li>
+<li>The busy probe and the wedged in-use check query the same trusted device, not <code>.default</code> (discharges ND-066b).</li>
 </ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Compiles cleanly under Swift 6 strict concurrency; no <code>Sendable</code> warnings and
-  no detached tasks capturing main-actor state.</li>
-<li>The loop has a single, obvious lifecycle (one task, cancellable) rather than a
-  timer plus ad-hoc tasks.</li>
-<li><strong>Important for cooper/blart:</strong> because <code>capture()</code>/<code>recognize()</code> are awaited
-  from the main actor, any heavy Vision/CoreML/AVFoundation work inside those
-  implementations MUST be offloaded off the main actor (e.g. a <code>nonisolated</code>
-  body, a background actor, or <code>Task.detached</code>/<code>await</code> onto a dedicated queue)
-  and only the result returned. The protocol contract is <code>async</code> precisely so
-  implementations can suspend during compute; they must not run heavy work
-  synchronously on the main actor.</li>
-<li>The async service protocols (<code>CameraCapturing</code>, <code>FaceRecognizing</code>, and
-  transitively <code>EnrollmentStoring</code>) are declared <code>Sendable</code> so the <code>@MainActor</code>
-  engine can <code>await</code> them across isolation boundaries without a
-  <code>#SendingRisksDataRace</code> diagnostic. Real implementations MUST preserve
-  <code>Sendable</code> — via immutable stored state, by being an <code>actor</code>, or with a
-  carefully guarded <code>@unchecked Sendable</code> — and must still offload heavy work
-  off the main actor (see the cooper/blart note above).</li>
-<li>If meaningful compute later migrates onto the engine itself, <code>PresenceEngine</code>
-  can be promoted from <code>@MainActor</code> to an <code>actor</code> (see Alternatives). Callers
-  already <code>await</code> its <code>tick</code>, so that change would be largely source-compatible.</li>
+<li>A virtual-camera replay can no longer drive identity. A physical attacker would need to present a spoof to the real lens, which ND-041/ND-072 anti-spoofing covers.</li>
+<li><strong>Clamshell with an external webcam is unprotected.</strong> With the lid closed there is no built-in camera, so the app reports "camera unavailable" and doesn't lock (EC-07). This is accepted for a laptop fleet. It can be revisited, for example with an allowlist of physical USB transports, if a colleague needs it.</li>
+<li>ND-096's "follow <code>systemPreferredCamera</code>" becomes moot: the preferred camera is never followed.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Keep the <code>Timer</code> + detached <code>Task</code>:</strong> rejected — this is exactly what broke
-  under strict concurrency and obscured isolation/cancellation.</li>
-<li><strong>Make <code>PresenceEngine</code> an <code>actor</code> now:</strong> defers nicely if compute moves onto
-  the engine, but today the engine does no heavy work itself (it delegates to
-  camera/recognizer) and it must touch main-actor UI state each tick. A
-  <code>@MainActor</code> class is simpler for the walking skeleton; promote to <code>actor</code>
-  later only if needed.</li>
-<li><strong>Background queue/thread for the loop with manual hops to the main actor for
-  rendering:</strong> more moving parts and more hop boilerplate than awaiting async
-  protocol methods from the main actor, with no benefit while the engine itself
-  is light.</li>
+<li><strong>Built-in + physical USB + Continuity; reject only virtual transports.</strong> Broader hardware support, but it relies on third-party drivers reporting their transport honestly, and it trusts an iPhone stream. It was the recommended option in the interview; the user chose the strict one.</li>
+<li><strong>Keep <code>.default</code> and detect virtual cameras by name or manufacturer.</strong> Brittle and trivially evaded. Rejected.</li>
 </ul>
 
 

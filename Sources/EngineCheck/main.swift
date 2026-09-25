@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import IOKit.audio
 import NoDonutsCore
 
 // Owner: homer — framework-free verification of the presence engine's decision
@@ -1739,6 +1740,22 @@ func runAll() async -> Bool {
         c.expect(FrameFreshness.shouldTearDownWedged(isWedged: true, deviceInUseByAnotherApp: false,
                                                      interruptedSince: now - wedged, now: now),
                  "wedged tear-down: stale interruption flag (no interruptionEnded) can't block recovery forever")
+    }
+
+    print("\nCameraTrustPolicy checks (ND-075):")
+    do {
+        c.expect(CameraTrustPolicy.isTrusted(deviceTypeIsBuiltIn: true, transportIsBuiltIn: true),
+                 "trust: built-in type + built-in transport → trusted")
+        c.expect(!CameraTrustPolicy.isTrusted(deviceTypeIsBuiltIn: true, transportIsBuiltIn: false),
+                 "trust: built-in type on a non-built-in transport (spoofing virtual device) → untrusted")
+        c.expect(!CameraTrustPolicy.isTrusted(deviceTypeIsBuiltIn: false, transportIsBuiltIn: true),
+                 "trust: built-in transport but not a built-in wide-angle type (e.g. Desk View) → untrusted")
+        c.expect(!CameraTrustPolicy.isTrusted(deviceTypeIsBuiltIn: false, transportIsBuiltIn: false),
+                 "trust: external/virtual camera → untrusted")
+        c.expect(CameraTrustPolicy.builtInTransportType == Int32(kIOAudioDeviceTransportTypeBuiltIn),
+                 "trust: policy built-in transport matches kIOAudioDeviceTransportTypeBuiltIn")
+        c.expect(CameraTrustPolicy.fourCC(CameraTrustPolicy.builtInTransportType) == "bltn",
+                 "trust: built-in transport renders as 'bltn'")
     }
 
     print("\n\(c.passed) passed, \(c.failed) failed")

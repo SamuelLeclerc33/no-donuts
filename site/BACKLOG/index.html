@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0014-coreml-face-embedding-model/">
+        <link rel="prev" href="../adr/0015-camera-trust-built-in-only/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -829,6 +829,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0015-camera-trust-built-in-only/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0015 — Camera trust: built-in only
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1237,7 +1265,7 @@
 3. ✅ ND-058 + ND-074 — lock self-test at launch + dead CGSession fallback (binary absent on macOS 27 → only the private SAC path locks) — wiggum
 4. ✅ ND-054 + ND-079 — lock-failed alarm + retry w/ backoff; manual lock in flight swallows the auto-lock — wiggum + homer + krusty
 5. ✅ ND-055 — stale-frame guard (dead frame source serves the last good frame forever) — blart
-6. ND-075 — virtual camera accepted (looped video of the user keeps the Mac unlocked) — blart
+6. ✅ ND-075 — virtual camera accepted (looped video of the user keeps the Mac unlocked) — blart
 7. ND-078 — bounded camera-unavailable policy (unplugged/wedged camera never locks; needs ADR) — homer
 8. ND-072 — anti-spoof inactive on the Core ML path — wiggum + cooper
 9. ND-077 — tamper-visible tunables (<code>defaults write</code> can silently weaken threshold/anti-spoof) — krusty + wiggum
@@ -1408,7 +1436,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <li>[ ] ND-063 Enrollment quality — two halves: (a) <strong>distinct frames</strong> (blart): the coordinator samples every 200ms but the camera delivers ~1fps, so "10 frames" ≈ 2–3 distinct images and <code>minimumVectors=3</code> can be met by one frame embedded thrice — expose frame identity/timestamp (or raise fps during the enrollment window) and require N distinct; (b) <strong>consistency gate</strong> (cooper): reject vector sets (or outliers) whose pairwise cosine falls below a floor, so a photobombed/blurry capture can't silently poison the reference set — honest <code>notEnoughFaces</code>-style retry, guidance wording with krusty. — blart + cooper + krusty</li>
 <li>[ ] ND-064 Shared CGSession reader — one defensive AppKit-free <code>NoDonutsCore/Support</code> helper (Bool <strong>and</strong> NSNumber bridging; locked / on-console / display-asleep) consumed by both <code>ScreenLocker.isScreenLockedNow()</code> and <code>SessionStateMonitor.currentlyActive()</code>. The feared drift already exists: the locker bridges NSNumber defensively, the monitor uses bare <code>as? Bool</code> only. Enables EngineCheck coverage of the parsing. Absorbs the "Dedupe CGSession lock-detection" follow-up. — wiggum + homer</li>
 <li>[ ] ND-065 Identity constants + Keychain migration plan — extract one shared constant for the 7+ hardcoded <code>"com.nodonuts.app"</code> Logger subsystems (ADR-0004), and decide (note in ADR-0004 or mini-ADR) whether the <strong>Keychain service string</strong> (<code>EnrollmentStore</code>, same literal) tracks the bundle id or stays fixed at the ND-050 rename — as-is it's a silent enrollment-loss trap. Gates ND-050 and ND-044. Absorbs the "Log subsystem constant" follow-up. — gordon + wiggum + cooper</li>
-<li>[ ] ND-066 On-device multi-client validation — live test with FaceTime/Photo Booth/Zoom holding the camera: (a) confirm our session still receives frames (the ADR-0003/ND-032 design rationale), and (b) when it doesn't, confirm <code>isInUseByAnotherApplication</code> actually fires within the 1.5s window — else the fallback lands on <code>.unavailable</code> and an on-a-call user gets "not protecting" nags instead of "in a meeting". Also fix the busy probe to query the <em>configured</em> input device rather than re-resolving <code>.default</code>. Discharges the explicit reopen-clause caveat on ND-032. — blart</li>
+<li>[ ] ND-066 On-device multi-client validation — live test with FaceTime/Photo Booth/Zoom holding the camera: (a) confirm our session still receives frames (the ADR-0003/ND-032 design rationale), and (b) when it doesn't, confirm <code>isInUseByAnotherApplication</code> actually fires within the 1.5s window — else the fallback lands on <code>.unavailable</code> and an on-a-call user gets "not protecting" nags instead of "in a meeting". Also fix the busy probe to query the <em>configured</em> input device rather than re-resolving <code>.default</code>. Discharges the explicit reopen-clause caveat on ND-032. <strong>(b) DONE with ND-075:</strong> the busy probe now queries the configured/trusted device — blart</li>
 </ul>
 <p><strong>Hygiene (cheap, batchable):</strong></p>
 <ul>
@@ -1427,7 +1455,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <ul>
 <li>[x] ND-073 Identity-off state — a stored enrollment whose model version ≠ the active embedder (model missing/unloadable → Vision fallback at <code>main.swift:51-60</code>; fresh clone; CLT build without the model; someone deletes the <code>.mlmodelc</code> from the ad-hoc-signed bundle) makes <code>IdentityRecognizer</code> return present for ANY face (<code>FaceRecognizer.swift:109-111</code>), logged only as <code>log.notice</code>, while the menu still says "enrolled" (<code>main.swift:158</code>, <code>EnrollmentStore.isEnrolled</code> ignores version). Deleting the Keychain item gives the same result via <code>.notEnrolled</code>. Fix: expose stored-vs-active version from the store, add a distinct "Re-enroll needed / identity off" state in the menu header + <code>NotProtectingNotifier</code> (on entry + repeat), EngineCheck the mismatch path. EC-03.. <strong>DONE 2026-09-24:</strong> <code>IdentityStatus</code> + <code>lastIdentityStatus</code> (Core, EngineCheck +15 → 85/85); UserDefaults marker (set on enroll, cleared on Reset, backfilled at launch); orange <code>person.fill.questionmark</code> glyph, "identity off" header, "Re-enroll my face (required)…", repeating <code>nd.identityOff</code> notification, Identity line in diagnostics. ADR-0014 amended. Note: <code>EnrollmentStore</code> caches its first read, so an external delete mid-session is flagged at next launch (the running app keeps matching cached vectors) — cooper + krusty</li>
 <li>[x] ND-074 Dead CGSession fallback — <code>ScreenLocker.swift:116</code> launches <code>/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession</code>, which does NOT exist on macOS 27 (verified 2026-09-24). Only the private <code>SACLockScreenImmediate</code> path can lock; if it breaks there is no second mechanism. Fix: find a working public fallback (or remove the dead one and say so in ADR-0010 amendment), and have ND-058's self-test report mechanism availability. EC-19. — wiggum <strong>DONE 2026-09-24:</strong> the dead <code>CGSession -suspend</code> spawn is replaced by <code>SACSwitchToLoginWindow</code> (same framework, same off-console verification); the primary mechanism gets 80% of the shared ~3s budget so a slow lock doesn't trigger the login-window fallback. ADR-0010 amended. EngineCheck +14 (111/111), using fake resolvers/invokers only.</li>
-<li>[ ] ND-075 Virtual camera accepted — <code>AVCaptureDevice.default(for: .video)</code> (<code>CameraController.swift:151</code>) accepts any device incl. virtual cams (OBS etc.), so a looped video of the enrolled user keeps the Mac unlocked indefinitely. Fix: select via <code>AVCaptureDevice.DiscoverySession</code> limited to physical device types (built-in / external / Continuity), log the active camera, warn in the menu when it isn't a known physical camera. EC-12. — blart</li>
+<li>[x] ND-075 Virtual camera accepted — <code>AVCaptureDevice.default(for: .video)</code> (<code>CameraController.swift:151</code>) accepts any device incl. virtual cams (OBS etc.), so a looped video of the enrolled user keeps the Mac unlocked indefinitely. Fix: select via <code>AVCaptureDevice.DiscoverySession</code> limited to physical device types (built-in / external / Continuity), log the active camera, warn in the menu when it isn't a known physical camera. EC-12. <strong>DONE 2026-09-25 (ADR-0015, user decision: built-in only):</strong> <code>CameraTrustPolicy</code> requires both the built-in device type AND the 'bltn' transport; every <code>.default(for:)</code> call is replaced by a single <code>trustedDevice()</code>; no trusted camera → <code>.unavailable</code> with a visible reason (header, glyph label, enrollment alert, diagnostics); the busy probe only ever queries the trusted device. Verified live: uses "MacBook Pro Camera" and ignores "HD Web Camera (usb)" and "Desk View (bltn, wrong type)". EngineCheck 150/150 — blart</li>
 </ul>
 <p><strong>P1 — correctness &amp; tamper resistance:</strong></p>
 <ul>
@@ -1456,7 +1484,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <li>[ ] ND-093 Enrollment store hardening — <code>enroll()</code> accepts empty or wrong-dim vectors (<code>EnrollmentStore.swift:188</code>); empty reads back as not-enrolled → presence-only. Update path doesn't re-set <code>kSecAttrAccessible</code> (<code>:196-202</code>); doc at <code>:70-72</code> claims device-only, which the login keychain ignores (data-protection keychain → with ND-050). Fix: throw on bad input, fix doc + update attrs. — cooper</li>
 <li>[ ] ND-094 Threshold-study rigor — <code>ThresholdAnalysis.swift:126</code> endorses "clean separation" from 1 genuine + 1 impostor sample; FaceScore ignores EXIF orientation (<code>FaceScore/main.swift:133</code>) and reads its own defaults domain instead of <code>com.nodonuts.app</code> for <code>visionOrientation</code>. Fix: minimum sample counts + margin; apply EXIF; read the app's key. Before ND-056. — cooper</li>
 <li>[ ] ND-095 Model load off main — the 45 MB model loads synchronously on the main thread at launch (<code>main.swift:44</code> → <code>CoreMLFaceEmbedder.swift:108</code>), compute units left default. Fix: background load + explicit <code>MLModelConfiguration.computeUnits</code>. — cooper</li>
-<li>[ ] ND-096 Capture power &amp; device switching — no <code>sessionPreset</code> (full-res capture), 1 fps only checks the first frame-rate range and may be reset by <code>startRunning</code> (<code>CameraController.swift:156, 213-240</code>); <code>systemPreferredCamera</code> changes (Continuity/external) are ignored. Fix: 640×480 preset, lowest supported range, keep device locked across <code>startRunning</code>, observe <code>systemPreferredCamera</code> and rebuild. Also: <code>suspend()</code> while not yet running doesn't prevent a later <code>ensureConfigured</code> from starting the camera behind the lock screen (<code>:240</code>) — add a sticky <code>suspended</code> flag. EC-18. — blart</li>
+<li>[ ] ND-096 Capture power &amp; device switching — no <code>sessionPreset</code> (full-res capture), 1 fps only checks the first frame-rate range and may be reset by <code>startRunning</code> (<code>CameraController.swift:156, 213-240</code>); <code>systemPreferredCamera</code> changes (Continuity/external) are ignored. Fix: 640×480 preset, lowest supported range, keep device locked across <code>startRunning</code>, observe <code>systemPreferredCamera</code> and rebuild. Also: <code>suspend()</code> while not yet running doesn't prevent a later <code>ensureConfigured</code> from starting the camera behind the lock screen (<code>:240</code>) — add a sticky <code>suspended</code> flag. EC-18. <strong>Update 2026-09-25:</strong> following <code>systemPreferredCamera</code> is moot (ADR-0015 is built-in only), and the camera-behind-lock-screen gap is closed by ND-084's sticky <code>suspended</code> flag — blart</li>
 <li>[ ] ND-097 ObjC exception ARC flag — <code>ObjCExceptionCatcher.m:4-15</code> leaks objects on throw without <code>-fobjc-arc-exceptions</code>. Fix: add the flag in <code>Package.swift</code>. — gordon</li>
 <li>[ ] ND-098 Busy-camera cap is generous — opening Photo Booth gives 30 min unlocked (<code>maxCallAssumedPresentSeconds=1800</code>). Fix: surface busy state in the notifier and/or lower the cap. EC-01. — homer + krusty</li>
 <li>[ ] ND-099 Recognition transparency — no UI showing active model, tuned y/n, stored-vs-active version (<code>SettingsView.swift:58</code>); diagnostics omit them (<code>DiagnosticsReporter.swift:80-100</code>). Mark "Reject photos of me" as inactive on Core ML until ND-072 lands (<code>SettingsView.swift:118</code>). — krusty + gordon</li>

@@ -36,6 +36,7 @@ struct DiagnosticsReporter {
     ///     authorization label (that API is async; the caller fetches it and
     ///     passes it in). `nil` → omitted.
     ///   - lockCapability: lock self-test result (ND-058) — mechanism names only.
+    ///   - cameraUnavailableReason: last camera unavailable reason (ND-075), a fixed string.
     ///   - now: injectable clock for the timestamp (defaults to `Date()`).
     /// - Returns: a multi-line plaintext report with no PII.
     func diagnosticsSummary(
@@ -48,6 +49,7 @@ struct DiagnosticsReporter {
         trustedNetworkCount: Int,
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
+        cameraUnavailableReason: String? = nil,
         now: Date = Date()
     ) -> String {
         var lines: [String] = []
@@ -87,6 +89,7 @@ struct DiagnosticsReporter {
         lines.append("[Presence]")
         lines.append("  State: \(presenceStateDescription(state))")
         lines.append("  Lock mechanisms: \(Self.lockCapabilityDescription(lockCapability))")
+        lines.append("  Camera: built-in only (ADR-0015); last unavailable reason: \(cameraUnavailableReason ?? "none")")
         lines.append("")
         lines.append("[Config (raw base values from store)]")
         lines.append("  tickIntervalSeconds:            \(config.tickIntervalSeconds)")
@@ -153,6 +156,7 @@ struct DiagnosticsReporter {
         trustedNetworkCount: Int,
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
+        cameraUnavailableReason: String? = nil,
         now: Date = Date()
     ) -> String {
         let summary = diagnosticsSummary(
@@ -165,6 +169,7 @@ struct DiagnosticsReporter {
             trustedNetworkCount: trustedNetworkCount,
             notificationStatusDescription: notificationStatusDescription,
             lockCapability: lockCapability,
+            cameraUnavailableReason: cameraUnavailableReason,
             now: now
         )
         let pasteboard = NSPasteboard.general
