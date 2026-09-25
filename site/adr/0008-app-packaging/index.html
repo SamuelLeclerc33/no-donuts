@@ -1178,6 +1178,7 @@
 </ul>
 <h2 id="amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102">Amendment (2026-09-25): optional stable dev signing identity (ND-102)<a class="headerlink" href="#amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102" title="Permanent link">&para;</a></h2>
 <p>Ad-hoc signing gives every build a new cdhash, so the login-keychain ACL and the TCC camera grant no longer match, and each rebuild re-prompts ("NoDonuts wants to use your confidential information"). <code>scripts/make-dev-cert.sh</code> creates a local self-signed code-signing certificate, "No Donuts Dev" (user trust, code signing only), without an Apple account. When that identity exists, <code>make-app.sh</code> signs with it by SHA-1, giving a certificate-based designated requirement that stays stable across rebuilds. Otherwise it falls back to ad-hoc. The build still needs only CLT; hardened runtime and Developer ID stay with ND-050.</p>
+<p><strong>Correction (2026-09-25):</strong> the stable identity fixes TCC (Camera permission survives rebuilds), but <strong>not</strong> the Keychain prompt. The legacy login keychain partitions items by Team ID, and a self-signed certificate has none, so the partition falls back to the binary's cdhash (<code>user approved XARA access for 'cdhash:…'</code>). Every rebuild that changes the binary therefore re-prompts once. Since ND-102 the prompt no longer blocks the app. Only a Developer ID with a Team ID removes it (ND-050).</p>
 
 
 

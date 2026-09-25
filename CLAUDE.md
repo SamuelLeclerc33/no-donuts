@@ -39,7 +39,7 @@ Each part of the app has a dedicated sub-agent (in `.claude/agents/`), named aft
 
 ## Build
 
-A runnable local `.app` is built with `scripts/make-app.sh` (`swift build` + bundle assembly + **ad-hoc codesign**), using only **Command Line Tools** — no full Xcode needed for local dev ([ADR-0008](docs/adr/0008-app-packaging.md)). Distribution (Developer-ID + notarization) needs more (ND-050). For local dev, run `scripts/make-dev-cert.sh` once: it creates a self-signed "No Donuts Dev" identity, and `make-app.sh` then signs with it instead of ad-hoc, so rebuilds stop re-prompting for Keychain and Camera access. See the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
+A runnable local `.app` is built with `scripts/make-app.sh` (`swift build` + bundle assembly + **ad-hoc codesign**), using only **Command Line Tools** — no full Xcode needed for local dev ([ADR-0008](docs/adr/0008-app-packaging.md)). Distribution (Developer-ID + notarization) needs more (ND-050). For local dev, run `scripts/make-dev-cert.sh` once: it creates a self-signed "No Donuts Dev" identity, and `make-app.sh` then signs with it instead of ad-hoc, so the Camera permission survives rebuilds. The Keychain still re-prompts once per rebuild that changes the binary: without an Apple Team ID the legacy keychain partitions items by cdhash. Only a Developer ID removes that prompt (ND-050). See the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
 The package is split into `NoDonutsCore` (AppKit-free, testable logic), the `NoDonuts` app, and `EngineCheck` (see [ADR-0007](docs/adr/0007-package-layout-testable-core.md)).
 
