@@ -72,6 +72,12 @@ The descriptor's `defaultMatchThreshold` was supposed to be the base default, bu
 
 The Core ML embedder returned the `.infinity` "live" sentinel, so the ND-041 texture gate never tripped with FaceNet active. Both embedders now call one shared `innerFaceTextureScore(frame:faceBoundingBox:orientation:)`. It scores the inner face region of the **original camera frame**, not the 160×160 model input, so the score is on the same scale as the Vision path and the existing `spoofTextureFloor` (12) carries over. Any extraction failure returns `.infinity` (err live; never false-lock). Live genuine texture on the dev Mac: 12.3–51 (median ~37). A spoof-only measurement is still needed before the floor counts as tuned.
 
+## Amendment (2026-09-25): square crop + minimum face size → `facenet-vggface2-v2` (ND-085)
+
+- **Minimum face size:** if the largest face's shorter side is under 12% of the frame's shorter side, it is treated as `.noFace`. That means absence: such a face is neither present nor a stranger. At 12% (~86 px at 720p) FaceNet would have to upscale ~1.9×, which is unreliable. A seated user fills 25–60% of the frame.
+- **Square crop:** the padded box is squared around the face centre, out-of-frame areas are filled black, and it is scaled uniformly to 160×160. The old crop stretched with different horizontal and vertical scales. Anti-spoof texture still scores the original frame (ND-072).
+- The crop change alters the embedding space, so the version is bumped to **`facenet-vggface2-v2`**. Existing enrollments show the loud ND-073 "identity off: re-enroll needed" state, and per-model threshold overrides move to the new key. The Vision fallback keeps its crop and version.
+
 ## Alternatives considered
 
 - **Keep tuning the Vision feature print (ADR-0012 only):** cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).

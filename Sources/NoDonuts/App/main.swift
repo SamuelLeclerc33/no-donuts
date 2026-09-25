@@ -529,7 +529,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .notEnoughFaces:
             alert.alertStyle = .warning
             alert.messageText = "Couldn't see your face"
-            alert.informativeText = "No Donuts didn't get enough clear looks at your face. Face the camera in good light and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
+            alert.informativeText = "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
+        case .inconsistent:
+            // ND-063: enough faces, but they didn't agree with each other.
+            alert.alertStyle = .warning
+            alert.messageText = "Couldn't get a consistent capture"
+            alert.informativeText = "The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
         case .cameraUnavailable:
             alert.alertStyle = .warning
             alert.messageText = "Camera unavailable"

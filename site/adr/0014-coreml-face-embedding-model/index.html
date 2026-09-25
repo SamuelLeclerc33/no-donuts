@@ -947,6 +947,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-25-square-crop-minimum-face-size-facenet-vggface2-v2-nd-085" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-25): square crop + minimum face size → facenet-vggface2-v2 (ND-085)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1187,6 +1198,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#amendment-2026-09-25-square-crop-minimum-face-size-facenet-vggface2-v2-nd-085" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-25): square crop + minimum face size → facenet-vggface2-v2 (ND-085)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1274,6 +1296,12 @@
 - The Settings slider is limited to the active model's range, shows the model default and whether it is tuned, and has a Reset button that removes the override.</p>
 <h2 id="amendment-2026-09-25-anti-spoof-on-the-core-ml-path-nd-072">Amendment (2026-09-25): anti-spoof on the Core ML path (ND-072)<a class="headerlink" href="#amendment-2026-09-25-anti-spoof-on-the-core-ml-path-nd-072" title="Permanent link">&para;</a></h2>
 <p>The Core ML embedder returned the <code>.infinity</code> "live" sentinel, so the ND-041 texture gate never tripped with FaceNet active. Both embedders now call one shared <code>innerFaceTextureScore(frame:faceBoundingBox:orientation:)</code>. It scores the inner face region of the <strong>original camera frame</strong>, not the 160×160 model input, so the score is on the same scale as the Vision path and the existing <code>spoofTextureFloor</code> (12) carries over. Any extraction failure returns <code>.infinity</code> (err live; never false-lock). Live genuine texture on the dev Mac: 12.3–51 (median ~37). A spoof-only measurement is still needed before the floor counts as tuned.</p>
+<h2 id="amendment-2026-09-25-square-crop-minimum-face-size-facenet-vggface2-v2-nd-085">Amendment (2026-09-25): square crop + minimum face size → <code>facenet-vggface2-v2</code> (ND-085)<a class="headerlink" href="#amendment-2026-09-25-square-crop-minimum-face-size-facenet-vggface2-v2-nd-085" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Minimum face size:</strong> if the largest face's shorter side is under 12% of the frame's shorter side, it is treated as <code>.noFace</code>. That means absence: such a face is neither present nor a stranger. At 12% (~86 px at 720p) FaceNet would have to upscale ~1.9×, which is unreliable. A seated user fills 25–60% of the frame.</li>
+<li><strong>Square crop:</strong> the padded box is squared around the face centre, out-of-frame areas are filled black, and it is scaled uniformly to 160×160. The old crop stretched with different horizontal and vertical scales. Anti-spoof texture still scores the original frame (ND-072).</li>
+<li>The crop change alters the embedding space, so the version is bumped to <strong><code>facenet-vggface2-v2</code></strong>. Existing enrollments show the loud ND-073 "identity off: re-enroll needed" state, and per-model threshold overrides move to the new key. The Vision fallback keeps its crop and version.</li>
+</ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Keep tuning the Vision feature print (ADR-0012 only):</strong> cannot fix EC-03 — it encodes image, not identity, similarity. Rejected as the durable fix (kept only as the fallback embedder).</li>

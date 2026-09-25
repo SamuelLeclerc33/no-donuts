@@ -225,10 +225,10 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         //    frame is never served. If none yet (session just started), wait
         //    briefly for a fresh delivery before giving up.
         if let buffer = delegate.latestFreshBuffer(now: hostNow()) {
-            return .frame(CapturedFrame(pixelBuffer: buffer))
+            return .frame(CapturedFrame(pixelBuffer: buffer, captureTime: delegate.lastFrameTime()))
         }
         if let buffer = await waitForFreshFrame(timeout: 1.5) {
-            return .frame(CapturedFrame(pixelBuffer: buffer))
+            return .frame(CapturedFrame(pixelBuffer: buffer, captureTime: delegate.lastFrameTime()))
         }
 
         // 4. No fresh frame. If the session has been running without delivering

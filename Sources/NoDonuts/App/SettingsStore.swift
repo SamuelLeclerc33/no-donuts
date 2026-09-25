@@ -50,7 +50,7 @@ final class SettingsStore: ObservableObject {
     /// The ACTIVE embedder's descriptor (ND-076). Owns the threshold key, range and default.
     private let descriptor: FaceEmbeddingModelDescriptor
 
-    /// Per-model override key, e.g. `matchThreshold.facenet-vggface2-v1`.
+    /// Per-model override key, e.g. `matchThreshold.facenet-vggface2-v2`.
     private var thresholdKey: String { descriptor.thresholdOverrideKey }
 
     // MARK: - Model threshold facts (read-only, for the Settings caption / slider)

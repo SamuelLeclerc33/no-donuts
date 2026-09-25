@@ -30,7 +30,7 @@ import Foundation
 /// (ADR-0007), and safe to pass across actors.
 public struct FaceEmbeddingModelDescriptor: Sendable, Equatable {
     /// Stable model id + version tag, e.g. `"vision-featureprint-v1"` or
-    /// `"facenet-vggface2-v1"`. Stamped onto stored enrollments and compared on load to
+    /// `"facenet-vggface2-v2"`. Stamped onto stored enrollments and compared on load to
     /// force re-enrollment when the model changes. BUMP this whenever the produced
     /// embedding space changes in a way that invalidates existing enrollments (new model,
     /// new preprocessing, new output layout) — a bump is the trigger for re-enroll.
@@ -70,6 +70,20 @@ public struct FaceEmbeddingModelDescriptor: Sendable, Equatable {
     /// validated for this model.
     public let thresholdIsTuned: Bool
 
+    /// Enrollment outlier floor (ND-063). A captured reference vector whose MEAN cosine
+    /// to the other captured vectors is below this is dropped as an outlier (photobomb,
+    /// blur, a different face briefly the largest). On the model's own score scale, so it
+    /// travels with the model. Defaults to `defaultMatchThreshold`: a reference that
+    /// would not match the other references is not a good reference.
+    public let enrollmentOutlierFloor: Double
+
+    /// Enrollment consistency floor (ND-063). After outliers are dropped, the MEDIAN
+    /// pairwise cosine of the kept vectors must reach this, or the capture is rejected as
+    /// `.inconsistent` and the stored enrollment is left alone. Defaults to
+    /// `defaultMatchThreshold + 0.1`: frames seconds apart of one still face should agree
+    /// more closely than a live match has to.
+    public let enrollmentConsistencyFloor: Double
+
     public init(
         version: String,
         displayName: String,
@@ -77,7 +91,9 @@ public struct FaceEmbeddingModelDescriptor: Sendable, Equatable {
         outputDimension: Int,
         defaultMatchThreshold: Double,
         matchThresholdRange: ClosedRange<Double>,
-        thresholdIsTuned: Bool
+        thresholdIsTuned: Bool,
+        enrollmentOutlierFloor: Double? = nil,
+        enrollmentConsistencyFloor: Double? = nil
     ) {
         precondition(matchThresholdRange.contains(defaultMatchThreshold),
                      "defaultMatchThreshold \(defaultMatchThreshold) outside matchThresholdRange \(matchThresholdRange)")
@@ -88,10 +104,16 @@ public struct FaceEmbeddingModelDescriptor: Sendable, Equatable {
         self.defaultMatchThreshold = defaultMatchThreshold
         self.matchThresholdRange = matchThresholdRange
         self.thresholdIsTuned = thresholdIsTuned
+        let outlier = enrollmentOutlierFloor ?? defaultMatchThreshold
+        let consistency = enrollmentConsistencyFloor ?? min(defaultMatchThreshold + 0.1, 0.99)
+        precondition(outlier > -1 && outlier < 1 && consistency >= outlier && consistency < 1,
+                     "enrollment floors out of range: outlier \(outlier), consistency \(consistency)")
+        self.enrollmentOutlierFloor = outlier
+        self.enrollmentConsistencyFloor = consistency
     }
 
     /// Per-model UserDefaults key for a threshold override (ND-076), e.g.
-    /// `"matchThreshold.facenet-vggface2-v1"`. Keyed on `version` so a value tuned for one
+    /// `"matchThreshold.facenet-vggface2-v2"`. Keyed on `version` so a value tuned for one
     /// model never carries over to another (their score scales are unrelated).
     public var thresholdOverrideKey: String { "matchThreshold.\(version)" }
 }
@@ -106,7 +128,12 @@ public extension FaceEmbeddingModelDescriptor {
     /// Version tag `"vision-featureprint-v1"` is the tag legacy (untagged) enrollments are
     /// treated as belonging to (see `EnrollmentStore`), so shipping this descriptor does
     /// NOT force a re-enroll of users already enrolled under the Vision embedder — only a
-    /// genuine model SWAP (e.g. to FaceNet) does.
+    /// genuine model SWAP (e.g. to FaceNet) does. ND-085 did not change this tag: on the
+    /// Vision path it only added the minimum-face-size gate (which rejects frames but
+    /// does not change the embedding); the crop there is unchanged.
+    ///
+    /// Enrollment floors (ND-063): outlier 0.6 (= the match threshold), consistency 0.7.
+    /// Not measured on Vision prints; set by the same rule as FaceNet.
     static let visionFeaturePrint = FaceEmbeddingModelDescriptor(
         version: "vision-featureprint-v1",
         displayName: "Apple Vision feature print",
@@ -114,7 +141,9 @@ public extension FaceEmbeddingModelDescriptor {
         outputDimension: 0,
         defaultMatchThreshold: 0.6,
         matchThresholdRange: 0.40...0.95,
-        thresholdIsTuned: false
+        thresholdIsTuned: false,
+        enrollmentOutlierFloor: 0.6,
+        enrollmentConsistencyFloor: 0.7
     )
 
     /// Descriptor for the internal-use FaceNet model (ADR-0014): `facenet-pytorch`
@@ -130,16 +159,30 @@ public extension FaceEmbeddingModelDescriptor {
     /// is therefore `false`. Override range `0.40...0.90` (ND-076): the measured genuine
     /// p5 is ~0.66, and below 0.40 near-any face would clear on this scale.
     ///
-    /// Version tag `"facenet-vggface2-v1"` — distinct from the Vision tag, so activating
+    /// Version tag `"facenet-vggface2-v2"` — distinct from the Vision tag, so activating
     /// this embedder forces a one-time re-enroll (stored Vision vectors are never
     /// cross-compared against FaceNet's space).
+    ///
+    /// v1 → v2 (ND-085): the model input changed from a clipped crop stretched to
+    /// 160×160 (distorted near the frame edge) to an undistorted, black-padded square.
+    /// That changes the embedding, so v1 enrollments read as `.off(.modelMismatch)` and
+    /// the ND-073 "re-enroll" state asks the user to enroll again. The per-model threshold
+    /// override key moved with it (`matchThreshold.facenet-vggface2-v2`), so a v1 override
+    /// no longer applies. Re-tune under v2 (ND-056).
+    ///
+    /// Enrollment floors (ND-063), FaceNet-specific: outlier 0.5 (= the match
+    /// threshold), consistency (median pairwise) 0.6. Same-session frames of one person on
+    /// FaceNet usually score well above 0.6 (measured live genuine p5 ~0.66 is across
+    /// sessions and lighting, a harder case). Different people usually score under 0.4.
     static let facenetVGGFace2 = FaceEmbeddingModelDescriptor(
-        version: "facenet-vggface2-v1",
+        version: "facenet-vggface2-v2",
         displayName: "FaceNet (InceptionResnetV1, VGGFace2)",
         inputSize: 160,
         outputDimension: 512,
         defaultMatchThreshold: 0.5,
         matchThresholdRange: 0.40...0.90,
-        thresholdIsTuned: false
+        thresholdIsTuned: false,
+        enrollmentOutlierFloor: 0.5,
+        enrollmentConsistencyFloor: 0.6
     )
 }

@@ -126,7 +126,7 @@ public let legacyMatchThresholdKey = "matchThreshold"
 /// given model, validating any user override before trusting it (ND-076).
 ///
 /// Reads ONLY the model's own per-model key (`descriptor.thresholdOverrideKey`, e.g.
-/// `matchThreshold.facenet-vggface2-v1`), so an override tuned for one model never bleeds
+/// `matchThreshold.facenet-vggface2-v2`), so an override tuned for one model never bleeds
 /// into another. The override is accepted ONLY if it is a number inside
 /// `descriptor.matchThresholdRange`. Anything else — absent, non-numeric, or OUT OF RANGE
 /// — falls back to `descriptor.defaultMatchThreshold`. Out-of-range is REJECTED, never
@@ -294,6 +294,15 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         // Extent of the ORIENTED image — the space the bbox and mapping live in.
         let orientedExtent = ciImage.extent
+
+        // ND-085 quality gate (shared with the Core ML path): a face too small in frame
+        // (user ~2 m+ away) counts as `.noFace` (absence), never as a stranger or a
+        // match. This only rejects frames, so the Vision embedding space is unchanged
+        // and its version tag stays `vision-featureprint-v1`. The Vision path keeps its
+        // clipped, non-square crop: the feature print takes any aspect ratio, and
+        // changing the crop would force a re-enroll for no measured gain.
+        guard faceIsLargeEnough(faceBoundingBox: largest.boundingBox,
+                                orientedExtent: orientedExtent) else { return .noFace }
 
         // Vision bounding boxes are normalized with origin bottom-left. The shared
         // `paddedFaceCropRect` pads by `paddingFraction`, clamps to [0,1], and maps to

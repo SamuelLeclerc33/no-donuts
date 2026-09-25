@@ -16,10 +16,13 @@ import os
 ///
 /// Pipeline (all on-device, in memory):
 /// 1. `VNDetectFaceRectanglesRequest` → largest face (shared with the Vision embedder).
-/// 2. Crop the padded face box (shared `paddedFaceCropRect`, same as the Vision embedder).
-/// 3. Resize the crop to the model's `inputSize`×`inputSize` and feed it as an image
-///    input. Preprocessing (`(x-127.5)/128` for FaceNet) is **folded into the Core ML
-///    model** at conversion time (`ct.ImageType(scale:1/128, bias:-127.5/128)`), so we
+/// 2. Quality gate (ND-085): a largest face whose shorter side is under
+///    `minimumFaceSideFraction` of the frame is reported as `.noFace` (too far away).
+/// 3. Take an undistorted SQUARE crop (`squareFaceCrop`, ND-085) around the padded face.
+///    Any part outside the frame is black-padded, never stretched. Scale it uniformly
+///    to the model's `inputSize`×`inputSize` and feed it as an image input.
+///    Preprocessing (`(x-127.5)/128` for FaceNet) is **folded into the Core ML model**
+///    at conversion time (`ct.ImageType(scale:1/128, bias:-127.5/128)`), so we
 ///    hand the model raw 0–255 RGB pixels and it normalizes internally.
 /// 4. Read the model's float output, L2-normalize DEFENSIVELY (FaceNet already
 ///    normalizes; a permissive-model swap might not), return the vector.
@@ -159,20 +162,27 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
             return .noFace
         }
 
-        // Crop to the padded face box in the ORIENTED image space (same approach as the
-        // Vision embedder — see its computeEmbedding for the orientation rationale).
+        // Work in the ORIENTED image space (same approach as the Vision embedder — see
+        // its computeEmbedding for the orientation rationale).
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         let orientedExtent = ciImage.extent
-        guard let cropRect = paddedFaceCropRect(faceBoundingBox: largest.boundingBox,
-                                                paddingFraction: paddingFraction,
-                                                orientedExtent: orientedExtent) else { return .failure }
 
-        let cropped = ciImage.cropped(to: cropRect)
+        // ND-085 quality gate: a face too small in frame (user ~2 m+ away) is not
+        // embedded. It counts as `.noFace` (absence), not as a stranger.
+        guard faceIsLargeEnough(faceBoundingBox: largest.boundingBox,
+                                orientedExtent: orientedExtent) else { return .noFace }
 
-        // Resize the crop to the model's expected square input. The model folds its own
-        // normalization ((x-127.5)/128 for FaceNet), so we render plain 0–255 RGB pixels.
+        // ND-085 undistorted crop: a square around the padded face, black-padded where
+        // it leaves the frame, scaled uniformly to the model's input size. The model
+        // folds its own normalization ((x-127.5)/128 for FaceNet), so we render plain
+        // 0–255 RGB pixels. Changing this crop changed the embedding space, so the
+        // descriptor version was bumped (facenet-vggface2-v2).
+        guard let crop = squareFaceCrop(faceBoundingBox: largest.boundingBox,
+                                        paddingFraction: paddingFraction,
+                                        orientedExtent: orientedExtent) else { return .failure }
         let side = descriptor.inputSize > 0 ? descriptor.inputSize : 160
-        guard let inputBuffer = resizedRGBBuffer(from: cropped, cropRect: cropRect, side: side) else {
+        guard let inputBuffer = renderRGBBuffer(squareFaceInputImage(from: ciImage, crop: crop, side: side),
+                                                side: side) else {
             return .failure
         }
 
@@ -201,7 +211,7 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         // frame via the shared helper — the SAME pixels, crop geometry, and ≤128px
         // grayscale working scale as the Vision path, so `spoofTextureFloor` means the
         // same thing on both embedders. Deliberately NOT computed from `inputBuffer`: that
-        // is the padded crop stretched (non-uniformly) to 160×160, a different scale.
+        // is the black-padded square scaled to 160×160, a different scale and region.
         // Gated behind the cheap toggle check (skip the render when anti-spoof is off).
         // Any extraction failure inside the helper → `.infinity` (LIVE), never a spoof.
         let textureScore: Double
@@ -217,9 +227,10 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         return .embedding(normalized, textureScore: textureScore)
     }
 
-    /// Render `image` (cropped to `cropRect`) into a `side`×`side` 32-bit BGRA
-    /// CVPixelBuffer suitable as a Core ML image input. Core Image handles the resize.
-    private func resizedRGBBuffer(from image: CIImage, cropRect: CGRect, side: Int) -> CVPixelBuffer? {
+    /// Render `image` (already placed at the origin and scaled to `side`×`side` by
+    /// `squareFaceInputImage`) into a `side`×`side` 32-bit BGRA CVPixelBuffer suitable
+    /// as a Core ML image input.
+    private func renderRGBBuffer(_ image: CIImage, side: Int) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true,
@@ -229,14 +240,7 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
             kCFAllocatorDefault, side, side, kCVPixelFormatType_32BGRA, attrs as CFDictionary, &pb
         )
         guard status == kCVReturnSuccess, let buffer = pb else { return nil }
-
-        // Scale the crop's extent to fill side×side (translate to origin, then scale).
-        let sx = CGFloat(side) / cropRect.width
-        let sy = CGFloat(side) / cropRect.height
-        let transformed = image
-            .transformed(by: CGAffineTransform(translationX: -cropRect.origin.x, y: -cropRect.origin.y))
-            .transformed(by: CGAffineTransform(scaleX: sx, y: sy))
-        ciContext.render(transformed, to: buffer)
+        ciContext.render(image, to: buffer)
         return buffer
     }
 

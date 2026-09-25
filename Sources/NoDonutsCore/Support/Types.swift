@@ -38,5 +38,13 @@ public enum CaptureOutcome: Sendable {
 /// across the boundary (ADR-0005).
 public struct CapturedFrame: @unchecked Sendable {
     public let pixelBuffer: CVPixelBuffer?
-    public init(pixelBuffer: CVPixelBuffer? = nil) { self.pixelBuffer = pixelBuffer }
+    /// Host-clock capture time of this frame (seconds, comparable with `hostNow()`),
+    /// as stamped by the camera delegate (ND-055). `nil` for fakes / image files.
+    /// Enrollment uses it to tell distinct camera frames from the same frame served
+    /// twice (ND-063): the camera runs at ~1 fps while enrollment polls faster.
+    public let captureTime: TimeInterval?
+    public init(pixelBuffer: CVPixelBuffer? = nil, captureTime: TimeInterval? = nil) {
+        self.pixelBuffer = pixelBuffer
+        self.captureTime = captureTime
+    }
 }
