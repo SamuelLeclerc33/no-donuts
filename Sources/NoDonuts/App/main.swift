@@ -133,6 +133,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onOpenSettings: { [weak self] in self?.openSettings() }
         )
         self.menuBar = menuBar
+        // ND-057: refresh dynamic labels (pause remaining, trust item, protection audit)
+        // every time the menu opens, not only at the last gate pass.
+        menuBar.onMenuWillOpen = { [weak self] in self?.refreshMenuItems() }
 
         // Wiring: real camera (ND-012) + identity recognizer (M2/ND-021, ADR-0012).
         // The IdentityRecognizer falls back to presence-only while the store is empty,
@@ -167,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, let engine = self.engine, let store = self.settingsStore else { return }
             self.applyStoreToConfig(store)
             engine.updateConfig(self.config)
+            self.refreshProtectionAudit()   // ND-077: a Settings change may weaken/restore protection
         }
         // Log the effective matchThreshold once at launch (pairs with cooper's per-tick
         // score logging for tuning via `log stream`).
@@ -332,6 +336,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar.refreshTrustItem(ssid: ssid,
                                  isTrusted: trustedNetworks.isTrusted(ssid),
                                  locationGranted: wifiMonitor.isLocationGranted)
+        refreshProtectionAudit()
+    }
+
+    /// ND-077: surface any security tunable weaker than its default in the menu. Reads
+    /// the same live resolvers the recognizer uses (cheap UserDefaults reads).
+    private func refreshProtectionAudit() {
+        menuBar?.setProtectionReducedReasons(reducedProtectionReasons(descriptor: embedder.descriptor))
     }
 
     /// Begin an enrollment capture (ND-022). Treats "enrolling" as an

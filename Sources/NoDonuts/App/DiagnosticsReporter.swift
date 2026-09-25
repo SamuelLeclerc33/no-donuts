@@ -121,6 +121,9 @@ struct DiagnosticsReporter {
         lines.append("  matchThreshold override (\(descriptor.thresholdOverrideKey)): \(thresholdOverrideDescription(descriptor))")
         lines.append("  antiSpoofEnabled: \(resolvedAntiSpoofEnabled())")
         lines.append("  spoofTextureFloor: \(resolvedSpoofTextureFloor(default: defaultSpoofTextureFloor))")
+        // ND-077: same audit the menu shows — any security tunable weaker than its default.
+        let reduced = reducedProtectionReasons(descriptor: descriptor)
+        lines.append("  protection reduced: \(reduced.isEmpty ? "no" : reduced.joined(separator: "; "))")
         lines.append("")
 
         // --- Trusted networks: COUNT only, never SSID strings ---

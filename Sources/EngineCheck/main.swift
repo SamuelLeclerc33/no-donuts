@@ -2207,6 +2207,71 @@ func runAll() async -> Bool {
                  "trust: built-in transport renders as 'bltn'")
     }
 
+    print("\nProtectionAudit checks (ND-077):")
+    do {
+        let suiteName = "com.nodonuts.enginecheck.protectionaudit"
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        if let d = UserDefaults(suiteName: suiteName) {
+            let fn = FaceEmbeddingModelDescriptor.facenetVGGFace2
+            let key = fn.thresholdOverrideKey
+            func reset() { d.removePersistentDomain(forName: suiteName) }
+
+            reset()
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: all defaults → no reasons")
+
+            reset(); d.set(0.45, forKey: key)
+            let lowT = reducedProtectionReasons(descriptor: fn, defaults: d)
+            c.expect(lowT.count == 1 && lowT[0].contains("match threshold"),
+                     "audit: in-range threshold below default → flagged")
+
+            reset(); d.set(0.01, forKey: key)
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: out-of-range threshold (rejected → default) → not flagged")
+
+            reset(); d.set(0.7, forKey: key)
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: stricter threshold → not flagged")
+
+            reset(); d.set(false, forKey: "antiSpoofEnabled")
+            let off = reducedProtectionReasons(descriptor: fn, defaults: d)
+            c.expect(off == ["anti-spoof off"], "audit: anti-spoof disabled → flagged")
+
+            reset(); d.set(true, forKey: "antiSpoofEnabled")
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: anti-spoof explicitly enabled → not flagged")
+
+            reset(); d.set(0.0001, forKey: "spoofTextureFloor")
+            let lowF = reducedProtectionReasons(descriptor: fn, defaults: d)
+            c.expect(lowF.count == 1 && lowF[0].contains("floor"),
+                     "audit: tiny positive spoof floor → flagged")
+
+            reset(); d.set(0.0, forKey: "spoofTextureFloor")
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: invalid 0 floor (rejected → default) → not flagged")
+
+            reset(); d.set(40.0, forKey: "spoofTextureFloor")
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: stricter spoof floor → not flagged")
+
+            reset(); d.set(0.45, forKey: key); d.set(false, forKey: "antiSpoofEnabled")
+            d.set(0.0001, forKey: "spoofTextureFloor")
+            let all = reducedProtectionReasons(descriptor: fn, defaults: d)
+            c.expect(all.count == 2 && all.contains("anti-spoof off"),
+                     "audit: threshold + anti-spoof off → both; floor folded into anti-spoof off")
+
+            reset(); d.set(0.55, forKey: FaceEmbeddingModelDescriptor.visionFeaturePrint.thresholdOverrideKey)
+            c.expect(reducedProtectionReasons(descriptor: fn, defaults: d).isEmpty,
+                     "audit: another model's lowered override doesn't flag the active model")
+            c.expect(reducedProtectionReasons(descriptor: .visionFeaturePrint, defaults: d).count == 1,
+                     "audit: lowered override flags its own model")
+            reset()
+        } else {
+            c.expect(false, "audit: could not create isolated UserDefaults suite")
+        }
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+    }
+
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0
 }

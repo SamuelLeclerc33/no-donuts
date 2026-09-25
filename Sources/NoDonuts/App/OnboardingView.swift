@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Combine
 
 // Owner: krusty — guided first-run onboarding (ND-043). A native SwiftUI stepper hosted
 // in an NSWindow (via AppWindows, the same host as Settings), shown at most once on the
@@ -41,6 +42,18 @@ struct OnboardingView: View {
     @State private var step: Step = .welcome
     /// Reflected camera state after the user taps "Enable camera" (best-effort nicety).
     @State private var cameraRequested = false
+    /// ND-086: live camera authorization. `AVCaptureDevice.authorizationStatus` isn't
+    /// observable and the request is fire-and-forget, so poll it cheaply while the window
+    /// is up; the Enroll button and the Done copy key off this, never off assumptions.
+    @State private var cameraAuth: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+    private let authPoll = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    private var cameraAuthorized: Bool { cameraAuth == .authorized }
+
+    private func refreshCameraAuth() {
+        let now = AVCaptureDevice.authorizationStatus(for: .video)
+        if now != cameraAuth { cameraAuth = now }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -56,6 +69,9 @@ struct OnboardingView: View {
         }
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear { refreshCameraAuth() }
+        .onChange(of: step) { _, _ in refreshCameraAuth() }
+        .onReceive(authPoll) { _ in refreshCameraAuth() }
     }
 
     // MARK: - Step content
@@ -91,6 +107,7 @@ struct OnboardingView: View {
                 Button("Enable camera\u{2026}") {
                     actions.onRequestCamera()
                     cameraRequested = true
+                    refreshCameraAuth()
                 }
                 .buttonStyle(.borderedProminent)
                 cameraStatusLabel
@@ -105,7 +122,7 @@ struct OnboardingView: View {
     @ViewBuilder
     private var cameraStatusLabel: some View {
         if cameraRequested {
-            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            switch cameraAuth {
             case .authorized:
                 Label("Camera enabled", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green).font(.callout)
@@ -135,19 +152,35 @@ struct OnboardingView: View {
                     step = .done
                 }
                 .buttonStyle(.borderedProminent)
+                // ND-086: enrollment needs frames — without camera access it can only fail.
+                .disabled(!cameraAuthorized)
                 Button("Skip for now") { step = .done }
                     .buttonStyle(.bordered)
             }
             .padding(.top, 2)
+            if !cameraAuthorized {
+                Label(cameraAuth == .notDetermined
+                        ? "Enrolling needs camera access first — go Back and tap Enable camera."
+                        : "Enrolling needs camera access — allow it in System Settings \u{203A} Privacy & Security \u{203A} Camera.",
+                      systemImage: "info.circle")
+                    .foregroundStyle(.secondary).font(.caption)
+            }
         }
     }
 
     private var doneStep: some View {
         stepScaffold(
-            symbol: "checkmark.seal",
-            title: "You\u{2019}re all set"
+            symbol: cameraAuthorized ? "checkmark.seal" : "exclamationmark.triangle",
+            title: cameraAuthorized ? "You\u{2019}re all set" : "Almost there — camera access needed"
         ) {
-            Text("No Donuts is now watching for you and will lock your Mac when you step away.")
+            // ND-086: never claim protection we don't have. Without camera access the app
+            // can't see anyone, so it isn't protecting the Mac — say so plainly.
+            if cameraAuthorized {
+                Text("No Donuts is now watching for you and will lock your Mac when you step away.")
+            } else {
+                Text("No Donuts is not protecting your Mac until you allow camera access in System Settings \u{203A} Privacy & Security \u{203A} Camera.")
+                    .foregroundStyle(.orange)
+            }
             Text("Look for the No Donuts icon in your menu bar — that\u{2019}s where you\u{2019}ll find Pause, Enroll my face, Settings, and Lock now.")
                 .foregroundStyle(.secondary)
         }

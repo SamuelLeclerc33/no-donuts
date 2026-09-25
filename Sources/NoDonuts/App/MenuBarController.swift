@@ -10,6 +10,12 @@ public final class MenuBarController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     /// Disabled menu header that surfaces the live presence state honestly (ND-015).
     private let statusItemHeader = NSMenuItem(title: "No Donuts", action: nil, keyEquivalent: "")
+    /// ND-077: disabled line under the header, shown only when a security tunable is
+    /// weaker than its default ("⚠️ Protection reduced: …"). Hidden when protection is full.
+    private let protectionReducedItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    /// ND-057: called from `menuWillOpen` so the AppDelegate can push fresh dynamic state
+    /// (pause remaining time, trust item, protection audit) right before the menu shows.
+    public var onMenuWillOpen: (@MainActor () -> Void)?
     /// Injected lock action — the UI never owns lock policy (decision lives with homer/wiggum).
     private let onLockNow: @MainActor () -> Void
     /// Injected pause actions (ND-035). The UI never owns PauseController; it just
@@ -90,42 +96,60 @@ public final class MenuBarController: NSObject {
 
     private func configureMenu() {
         let menu = NSMenu()
+        // ND-057: NSMenu auto-enablement would force-enable every item with a valid
+        // target/action, overriding the explicit `isEnabled = false` we set (enroll during
+        // capture, trust with unknown SSID). Off → `isEnabled` is authoritative, so every
+        // clickable item below is explicitly enabled.
+        menu.autoenablesItems = false
+        menu.delegate = self
         // Menu order (ND-010/015/035/036): [status header] [sep]
         //   [Pause items / Resume] [Trust this Wi-Fi network] [sep] [Lock now] [Quit].
         statusItemHeader.isEnabled = false
         menu.addItem(statusItemHeader)
+        protectionReducedItem.isEnabled = false
+        protectionReducedItem.isHidden = true
+        menu.addItem(protectionReducedItem)
         menu.addItem(.separator())
 
         // Pause (ND-035). All four items live in the menu; visibility is toggled in
         // refreshPauseItem(): the three "Pause for…" items OR the single "Resume".
         for item in [pause15Item, pause1hItem, pauseIndefiniteItem, resumeItem] {
             item.target = self
+            item.isEnabled = true
             menu.addItem(item)
         }
         resumeItem.isHidden = true
 
         // Trust this Wi-Fi network (ND-036). State/title refreshed via refreshTrustItem().
         trustItem.target = self
+        trustItem.isEnabled = false   // until refreshTrustItem() confirms a known SSID
         menu.addItem(trustItem)
 
         // Enrollment (ND-022): [sep] Enroll my face… [Reset enrollment (if enrolled)].
         menu.addItem(.separator())
         enrollItem.target = self
+        enrollItem.isEnabled = true
         menu.addItem(enrollItem)
         resetEnrollmentItem.target = self
+        resetEnrollmentItem.isEnabled = true
         resetEnrollmentItem.isHidden = true   // shown when a stored enrollment exists (setIdentityStatus(_:))
         menu.addItem(resetEnrollmentItem)
 
         // Settings… (ND-040): opens the SwiftUI settings window.
         menu.addItem(.separator())
         settingsItem.target = self
+        settingsItem.isEnabled = true
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
         let lockNowItem = NSMenuItem(title: "Lock now", action: #selector(lockNowClicked), keyEquivalent: "l")
         lockNowItem.target = self
+        lockNowItem.isEnabled = true
         menu.addItem(lockNowItem)
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
+        quitItem.isEnabled = true
+        menu.addItem(quitItem)
         statusItem.menu = menu
     }
 
@@ -142,6 +166,15 @@ public final class MenuBarController: NSObject {
     @objc private func enrollClicked() { onEnroll() }
     @objc private func resetEnrollmentClicked() { onResetEnrollment() }
     @objc private func settingsClicked() { onOpenSettings() }
+
+    /// ND-077: show/hide the "Protection reduced" line. `reasons` comes from Core's
+    /// `reducedProtectionReasons(descriptor:defaults:)`; empty → hidden.
+    public func setProtectionReducedReasons(_ reasons: [String]) {
+        protectionReducedItem.isHidden = reasons.isEmpty
+        protectionReducedItem.title = reasons.isEmpty
+            ? ""
+            : "⚠️ Protection reduced: " + reasons.joined(separator: "; ")
+    }
 
     /// Reflect the identity-recognition status (ND-073; replaces setEnrolled(_:)).
     /// Shows/hides "Reset enrollment" (visible whenever a stored enrollment exists),
@@ -422,5 +455,16 @@ public final class MenuBarController: NSObject {
                 ? "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren\u{2019}t trusted)"
                 : "No Donuts — ⚠️ camera unavailable (grant access)"
         }
+    }
+}
+
+// MARK: - NSMenuDelegate (ND-057)
+
+extension MenuBarController: NSMenuDelegate {
+    /// Refresh dynamic labels on open — "Resume (N min left)" was otherwise computed at
+    /// the last gate pass and could be minutes stale; the protection audit and trust item
+    /// likewise reflect `defaults write` / network changes made since.
+    public func menuWillOpen(_ menu: NSMenu) {
+        onMenuWillOpen?()
     }
 }
