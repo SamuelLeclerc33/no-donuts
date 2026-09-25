@@ -37,3 +37,10 @@ Resources/Models/*.mlmodelc
 __pycache__/
 # NOTE: site/ is intentionally NOT ignored — the generated docs site is committed
 # so it can be read offline with no build step (see ADR-0005).
+
+# Face photos for FaceScore threshold studies (ND-105 / ND-056). Other people's faces
+# must NEVER be committed (privacy hard requirement). Convention: put photos in
+# face-data/<person>/ at the repo root; faces/ is ignored as an alias. Scoped to these
+# directories on purpose — docs/ images are NOT blanket-ignored.
+/face-data/
+/faces/

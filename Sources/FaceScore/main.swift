@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CoreImage
 import CoreVideo
 import ImageIO
 import NoDonutsCore
@@ -25,13 +26,21 @@ import NoDonutsCore
 // different pipeline.
 //
 // Usage:
-//   swift run FaceScore --model <path/to/FaceNetVGGFace2.mlmodelc> <imageDir>
-//   swift run FaceScore --model <...> --enrolled <label> <imageDir>
+//   swift run FaceScore --model <path/to/FaceNetVGGFace2.mlmodelc> face-data
+//   swift run FaceScore --model <...> --enrolled <label> face-data
 //
-// Layout — one subdirectory per person, any number of images each:
-//   <imageDir>/sam/*.jpg        <- the enrolled user
-//   <imageDir>/marco/*.jpg      <- the EC-03 look-alike
-//   <imageDir>/stranger-1/*.jpg
+// Layout — one subdirectory per person, any number of images each. Keep photos in
+// `face-data/` at the repo root: it is GIT-IGNORED (ND-105), so other people's faces
+// can't be committed by accident (`faces/` is ignored too, as an alias):
+//   face-data/sam/*.jpg        <- the enrolled user
+//   face-data/marco/*.jpg      <- the EC-03 look-alike
+//   face-data/stranger-1/*.jpg
+//
+// Parity with the app (ND-094): each file's EXIF orientation is baked in at decode so
+// the buffer is upright, then the embedder applies the APP's `visionOrientation`
+// (read from the `com.nodonuts.app` defaults domain, not FaceScore's own), exactly as
+// it does to a raw camera frame. The "current threshold" reported is the app's
+// effective one (`resolvedMatchThreshold(for:)`, per-model override validated, ND-076).
 //
 // Modes:
 //   pairwise (default) — every image vs every other. GENUINE = same label, IMPOSTOR =
@@ -86,8 +95,15 @@ func printUsage() {
       --references <n>     reference vectors for --enrolled mode (default 5)
       --verbose            per-image and per-pair detail
 
-    <imageDir> holds ONE SUBDIRECTORY PER PERSON:
-      <imageDir>/sam/*.jpg  <imageDir>/marco/*.jpg  <imageDir>/stranger-1/*.jpg
+    <imageDir> holds ONE SUBDIRECTORY PER PERSON. Use face-data/ at the repo root —
+    it is git-ignored (ND-105; faces/ is ignored too), so photos are never committed:
+      face-data/sam/*.jpg  face-data/marco/*.jpg  face-data/stranger-1/*.jpg
+
+    A threshold is endorsed only with >= \(ThresholdStudyRequirements.defaultMinimumGenuineSamples) genuine and >= \(ThresholdStudyRequirements.defaultMinimumImpostorSamples) impostor scores,
+    >= \(ThresholdStudyRequirements.defaultMinimumImpostorIdentities) distinct impostor people, and a gap (genuine min - impostor max) >= \(ThresholdStudyRequirements.defaultMinimumSeparationMargin).
+
+    EXIF orientation is applied per file; the app's visionOrientation and per-model
+    threshold override are read from the com.nodonuts.app defaults domain.
     """)
 }
 
@@ -114,34 +130,56 @@ func runBlocking<T: Sendable>(_ operation: @escaping @Sendable () async -> T) ->
 
 // MARK: - Image loading
 
+/// The shared Core Image context used to render decoded files into pixel buffers.
+/// Purely local rendering; intermediates are not cached (no image data lingers).
+let renderContext = CIContext(options: [.cacheIntermediates: false])
+
+/// A decoded, upright image file plus the EXIF orientation that was applied to it.
+struct LoadedImage {
+    let buffer: CVPixelBuffer
+    let exifOrientation: CGImagePropertyOrientation
+}
+
 /// Decode an image file to a `CVPixelBuffer` in the SAME 32BGRA format the camera
 /// delivers (`CameraController`), so the embedder's Core Image path behaves identically
 /// on a file and on a live frame. Anything ImageIO can read works (jpg/png/heic/tiff).
 ///
+/// EXIF orientation (ND-094): `CGImageSourceCreateImageAtIndex` returns the SENSOR
+/// pixels, ignoring `kCGImagePropertyOrientation` — a portrait phone photo arrives
+/// sideways, Vision finds no face (or a rotated one), and the study silently measures
+/// a different pipeline from the app. So the orientation is read from the file's
+/// properties and baked into the buffer, which comes out upright. The embedder then
+/// applies the app's `visionOrientation` on top, as it does to a raw camera frame.
+///
 /// Returns `nil` on an unreadable/undecodable file — the caller reports and skips it
 /// rather than silently scoring fewer images than you think.
-func loadPixelBuffer(_ url: URL) -> CVPixelBuffer? {
+func loadPixelBuffer(_ url: URL) -> LoadedImage? {
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-    // Apply the file's EXIF orientation at decode time so a phone photo shot in
-    // portrait is upright before Vision sees it. The embedder resolves its own
-    // orientation for RAW CAMERA buffers (`visionOrientation`, default .up); handing it
-    // an already-upright buffer keeps those two conventions from fighting.
-    let options: [CFString: Any] = [
-        kCGImageSourceCreateThumbnailFromImageAlways: false,
-        kCGImageSourceShouldCache: false,
-    ]
+    let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
     guard let cgImage = CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary) else {
         return nil
     }
 
-    let width = cgImage.width
-    let height = cgImage.height
+    var exif = CGImagePropertyOrientation.up
+    if let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+       let raw = (properties[kCGImagePropertyOrientation] as? NSNumber)?.uint32Value,
+       let parsed = CGImagePropertyOrientation(rawValue: raw) {
+        exif = parsed
+    }
+
+    var image = CIImage(cgImage: cgImage).oriented(exif)
+    // Normalize the extent to the origin so rendering covers the buffer exactly.
+    image = image.transformed(by: CGAffineTransform(translationX: -image.extent.minX,
+                                                    y: -image.extent.minY))
+    let width = Int(image.extent.width.rounded())
+    let height = Int(image.extent.height.rounded())
     guard width > 0, height > 0 else { return nil }
 
     var pixelBuffer: CVPixelBuffer?
     let attributes: [CFString: Any] = [
         kCVPixelBufferCGImageCompatibilityKey: true,
         kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+        kCVPixelBufferIOSurfacePropertiesKey: [:] as [CFString: Any],
     ]
     let status = CVPixelBufferCreate(
         kCFAllocatorDefault,
@@ -153,25 +191,9 @@ func loadPixelBuffer(_ url: URL) -> CVPixelBuffer? {
     )
     guard status == kCVReturnSuccess, let buffer = pixelBuffer else { return nil }
 
-    CVPixelBufferLockBaseAddress(buffer, [])
-    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-    guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
-
-    // 32BGRA == little-endian 32-bit with premultiplied-first alpha.
-    let bitmapInfo = CGBitmapInfo.byteOrder32Little.rawValue
-        | CGImageAlphaInfo.premultipliedFirst.rawValue
-    guard let context = CGContext(
-        data: base,
-        width: width,
-        height: height,
-        bitsPerComponent: 8,
-        bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-        space: CGColorSpaceCreateDeviceRGB(),
-        bitmapInfo: bitmapInfo
-    ) else { return nil }
-
-    context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-    return buffer
+    renderContext.render(image, to: buffer, bounds: CGRect(x: 0, y: 0, width: width, height: height),
+                         colorSpace: CGColorSpaceCreateDeviceRGB())
+    return LoadedImage(buffer: buffer, exifOrientation: exif)
 }
 
 let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "bmp"]
@@ -224,26 +246,42 @@ func printSweep(genuine: ScoreDistribution, impostor: ScoreDistribution) {
     }
 }
 
-func report(_ recommendation: ThresholdRecommendation, descriptor: FaceEmbeddingModelDescriptor) {
+func report(
+    _ recommendation: ThresholdRecommendation,
+    descriptor: FaceEmbeddingModelDescriptor,
+    effectiveThreshold: Double
+) {
     print("\n  recommendation")
+    let current = String(format: "    App's current threshold: %.2f effective (model default %.2f, tuned=%@)",
+                         effectiveThreshold, descriptor.defaultMatchThreshold,
+                         descriptor.thresholdIsTuned ? "yes" : "no")
     switch recommendation {
-    case let .insufficientData(reason):
-        print("    INSUFFICIENT DATA — \(reason).")
-        print("    Add photos of at least one more person and re-run.")
+    case let .insufficientData(_, shortfalls):
+        print("    ================================================================")
+        print("    REFUSED — NO THRESHOLD ENDORSED (insufficient evidence)")
+        print("    ================================================================")
+        if shortfalls.isEmpty, let reason = recommendation.refusalReason {
+            print("    - \(reason)")
+        }
+        for shortfall in shortfalls { print("    - \(shortfall)") }
+        print(current)
+        print("    DO NOT set `thresholdIsTuned = true`. Fix every item above and re-run.")
 
     case let .cleanSeparation(threshold, margin, impostorMaximum, genuineMinimum):
         print(String(format: "    CLEAN SEPARATION — impostor max %.4f < genuine min %.4f (margin %.4f)",
                      impostorMaximum, genuineMinimum, margin))
         print(String(format: "    Suggested matchThreshold: %.2f  (midpoint of the gap)", threshold))
-        print(String(format: "    Current descriptor default: %.2f (tuned=%@)",
-                     descriptor.defaultMatchThreshold, descriptor.thresholdIsTuned ? "yes" : "no"))
+        print(current)
         print("    This DOES justify `thresholdIsTuned = true` — provided the image set")
         print("    covers your real conditions: lighting, glasses on/off, angle, distance,")
         print("    and the closest look-alike you can get hold of (EC-03).")
 
-    case let .overlap(equalErrorThreshold, frr, far):
-        print(String(format: "    OVERLAP — the distributions touch. Equal-error point ~%.2f (FRR %.2f%%, FAR %.2f%%).",
-                     equalErrorThreshold, frr * 100, far * 100))
+    case .overlap:
+        print("    ================================================================")
+        print("    REFUSED — NO THRESHOLD ENDORSED (distributions overlap)")
+        print("    ================================================================")
+        if let reason = recommendation.refusalReason { print("    - \(reason)") }
+        print(current)
         print("    DO NOT set `thresholdIsTuned = true` on this. Overlap means no scalar")
         print("    threshold separates the two classes: every value trades a false lock")
         print("    against a stranger being accepted. Improve the data first — more images")
@@ -273,10 +311,40 @@ guard let embedder = CoreMLFaceEmbedder(compiledModelURL: modelURL) else {
     exit(1)
 }
 
+// Read tunables from the APP's defaults domain (ND-094): FaceScore's own domain is not
+// what the running app sees, so measuring with it would measure a different pipeline.
+let appDefaultsDomain = "com.nodonuts.app"
+guard let appDefaults = UserDefaults(suiteName: appDefaultsDomain) else {
+    print("error: cannot open the \(appDefaultsDomain) defaults domain")
+    exit(1)
+}
+let appOrientation = resolvedVisionOrientation(defaults: appDefaults)
+// The embedder resolves orientation from `UserDefaults.standard`. Seed FaceScore's
+// registration domain with the app's value (in memory only, nothing written), then
+// verify the embedder will actually see it — a stray `defaults write FaceScore
+// visionOrientation …` or `-visionOrientation` argument would outrank it.
+UserDefaults.standard.register(defaults: ["visionOrientation": Int(appOrientation.rawValue)])
+guard resolvedVisionOrientation() == appOrientation else {
+    print("error: FaceScore's own defaults override visionOrientation "
+          + "(\(resolvedVisionOrientation().rawValue)) and disagree with the app's "
+          + "(\(appOrientation.rawValue)). Remove it: defaults delete FaceScore visionOrientation")
+    exit(1)
+}
+let effectiveThreshold = resolvedMatchThreshold(for: embedder.descriptor, defaults: appDefaults)
+
 print("FaceScore — model \(embedder.descriptor.displayName)")
 print("  version \(embedder.descriptor.version), \(embedder.descriptor.outputDimension)-d, "
       + "default threshold \(embedder.descriptor.defaultMatchThreshold) "
       + "(tuned=\(embedder.descriptor.thresholdIsTuned ? "yes" : "no"))")
+print("  app (\(appDefaultsDomain)): effective threshold " + String(format: "%.2f", effectiveThreshold)
+      + (effectiveThreshold != embedder.descriptor.defaultMatchThreshold
+         ? " (per-model override \(embedder.descriptor.thresholdOverrideKey))" : " (model default)")
+      + ", visionOrientation \(appOrientation.rawValue)")
+if appOrientation != .up {
+    print("  WARNING: the app's visionOrientation is \(appOrientation.rawValue), not 1 (.up). It is applied")
+    print("  on top of each file's EXIF orientation, as for a raw camera frame. That is right for")
+    print("  frames saved raw from the Mac's camera and WRONG for already-upright phone photos.")
+}
 
 // Discover <imageDir>/<label>/<image files>.
 let rootURL = URL(fileURLWithPath: imageDir)
@@ -300,6 +368,10 @@ guard !labelDirectories.isEmpty else {
 // smaller sample, and the whole point here is knowing what the numbers rest on.
 var samples: [Sample] = []
 var skipped: [(String, String)] = []
+var undecodableCount = 0
+var noFaceCount = 0
+var failedCount = 0
+var reorientedCount = 0
 
 for directory in labelDirectories {
     let label = directory.lastPathComponent
@@ -308,11 +380,13 @@ for directory in labelDirectories {
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
     for file in files {
-        guard let buffer = loadPixelBuffer(file) else {
-            skipped.append((file.lastPathComponent, "undecodable"))
+        guard let loaded = loadPixelBuffer(file) else {
+            skipped.append((label + "/" + file.lastPathComponent, "undecodable"))
+            undecodableCount += 1
             continue
         }
-        let frame = CapturedFrame(pixelBuffer: buffer)
+        if loaded.exifOrientation != .up { reorientedCount += 1 }
+        let frame = CapturedFrame(pixelBuffer: loaded.buffer)
         // The embedder is async; this tool is a straight-line script, so block on each.
         let outcome = runBlocking { await embedder.embedding(for: frame) }
         switch outcome {
@@ -320,9 +394,12 @@ for directory in labelDirectories {
             samples.append(Sample(label: label, path: file.path, vector: vector))
             if opts.verbose { print("  embedded \(label)/\(file.lastPathComponent) (\(vector.count)-d)") }
         case .noFace:
-            skipped.append((label + "/" + file.lastPathComponent, "no face detected"))
+            // Includes faces the embedder's quality gate rejects (e.g. too small, ND-085).
+            skipped.append((label + "/" + file.lastPathComponent, "no usable face"))
+            noFaceCount += 1
         case .failure:
             skipped.append((label + "/" + file.lastPathComponent, "embedding failed"))
+            failedCount += 1
         }
     }
 }
@@ -332,10 +409,14 @@ for label in labelDirectories.map(\.lastPathComponent) {
     let n = samples.filter { $0.label == label }.count
     print("  \(label): \(n)")
 }
-if !skipped.isEmpty {
-    print("\nskipped \(skipped.count):")
-    for (name, reason) in skipped { print("  \(name) — \(reason)") }
+print("  EXIF-reoriented: \(reorientedCount)")
+print("skipped \(skipped.count): no usable face \(noFaceCount), undecodable \(undecodableCount), "
+      + "embedding failed \(failedCount)")
+if noFaceCount > 0 {
+    print("  (\"no usable face\" = none detected, or rejected by the embedder's face-quality gate,")
+    print("   e.g. a face too small in frame — ND-085. Those images are NOT in the statistics.)")
 }
+for (name, reason) in skipped { print("  \(name) — \(reason)") }
 
 guard samples.count >= 2 else {
     print("\nerror: need at least 2 embedded images.")
@@ -400,8 +481,13 @@ if let enrolledLabel = opts.enrolledLabel {
               + " mean=" + format(dist.mean) + "  max=" + format(dist.maximum))
     }
 
+    // Distinct OTHER people who produced impostor scores against the enrolled references.
+    let impostorIdentities = Set(probes.map(\.label).filter { $0 != enrolledLabel }).count
+
     printSweep(genuine: genuine, impostor: impostor)
-    report(recommendThreshold(genuine: genuine, impostor: impostor), descriptor: embedder.descriptor)
+    report(recommendThreshold(genuine: genuine, impostor: impostor,
+                              impostorIdentityCount: impostorIdentities),
+           descriptor: embedder.descriptor, effectiveThreshold: effectiveThreshold)
 
 } else {
     print("\n=== pairwise run ===")
@@ -438,8 +524,16 @@ if let enrolledLabel = opts.enrolledLabel {
         }
     }
 
+    // Pairwise: relative to any one person, every OTHER embedded label is an impostor
+    // identity — so the count is (labels − 1). Two labels = one stranger per person.
+    // Note genuine/impostor counts here are PAIRS, not independent images; prefer the
+    // --enrolled run for the number you ship.
+    let impostorIdentities = max(0, Set(samples.map(\.label)).count - 1)
+
     printSweep(genuine: genuine, impostor: impostor)
-    report(recommendThreshold(genuine: genuine, impostor: impostor), descriptor: embedder.descriptor)
+    report(recommendThreshold(genuine: genuine, impostor: impostor,
+                              impostorIdentityCount: impostorIdentities),
+           descriptor: embedder.descriptor, effectiveThreshold: effectiveThreshold)
 }
 
 print("")

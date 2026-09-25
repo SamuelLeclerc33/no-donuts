@@ -2030,51 +2030,166 @@ func runAll() async -> Bool {
     }
 
     do {
+        // Deterministic synthetic score sets that clear (or deliberately miss) the
+        // ND-094 evidence bar. `spread(n, from:, to:)` = n evenly spaced scores.
+        func spread(_ n: Int, from lo: Double, to hi: Double) -> [Double] {
+            guard n > 1 else { return n == 1 ? [lo] : [] }
+            return (0..<n).map { lo + (hi - lo) * Double($0) / Double(n - 1) }
+        }
+        let req = ThresholdStudyRequirements.standard
+        c.expect(req.minimumGenuineSamples == 30 && req.minimumImpostorSamples == 30
+                 && req.minimumImpostorIdentities == 2 && abs(req.minimumSeparationMargin - 0.05) < 1e-12,
+                 "ThresholdStudyRequirements.standard: 30 genuine, 30 impostor, 2 identities, 0.05 margin (ND-094)")
+
+        func shortfalls(_ r: ThresholdRecommendation) -> [ThresholdShortfall] {
+            if case let .insufficientData(_, s) = r { return s }
+            return []
+        }
+
         // Genuine-only data — the exact state this project was in before FaceScore —
         // must be refused, not turned into a number.
         let genuineOnly = recommendThreshold(
-            genuine: ScoreDistribution([0.88, 0.91, 0.93]),
-            impostor: ScoreDistribution([])
+            genuine: ScoreDistribution(spread(40, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution([]),
+            impostorIdentityCount: 0
         )
         var refusedGenuineOnly = false
-        if case .insufficientData = genuineOnly { refusedGenuineOnly = true }
-        c.expect(refusedGenuineOnly && !genuineOnly.justifiesTunedFlag,
+        if case let .insufficientData(reason, _) = genuineOnly {
+            refusedGenuineOnly = reason.contains("genuine-only")
+        }
+        c.expect(refusedGenuineOnly && !genuineOnly.justifiesTunedFlag && genuineOnly.refusalReason != nil,
                  "recommendThreshold: genuine-only data → insufficientData, never a threshold (ND-056)")
 
-        // Clean separation → gap midpoint, and this is the ONLY case allowed to justify
-        // flipping a descriptor's `thresholdIsTuned`.
+        // PASSING case: 30 genuine in [0.80, 0.95], 30 impostor in [0.20, 0.60] from 3
+        // people → margin 0.20, midpoint 0.70, and it justifies thresholdIsTuned.
         let separated = recommendThreshold(
-            genuine: ScoreDistribution([0.80, 0.90, 0.95]),
-            impostor: ScoreDistribution([0.20, 0.40, 0.60])
+            genuine: ScoreDistribution(spread(30, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution(spread(30, from: 0.20, to: 0.60)),
+            impostorIdentityCount: 3
         )
         var separationOK = false
         if case let .cleanSeparation(threshold, margin, impostorMaximum, genuineMinimum) = separated {
             separationOK = abs(threshold - 0.70) < 1e-9 && abs(margin - 0.20) < 1e-9
-                && impostorMaximum == 0.60 && genuineMinimum == 0.80
+                && abs(impostorMaximum - 0.60) < 1e-9 && abs(genuineMinimum - 0.80) < 1e-9
         }
-        c.expect(separationOK && separated.justifiesTunedFlag,
-                 "recommendThreshold: clean separation → gap midpoint, justifies thresholdIsTuned")
+        c.expect(separationOK && separated.justifiesTunedFlag && separated.refusalReason == nil,
+                 "recommendThreshold: 30+30 samples, 3 impostors, margin 0.20 → gap midpoint, justifies thresholdIsTuned")
 
-        // Overlap → report the equal-error point but REFUSE to bless it.
+        // ND-094 regression: the OLD verdict endorsed "clean separation" from 1+1 samples.
+        let tiny = recommendThreshold(
+            genuine: ScoreDistribution([0.90]),
+            impostor: ScoreDistribution([0.20]),
+            impostorIdentityCount: 2
+        )
+        c.expect(!tiny.justifiesTunedFlag
+                 && shortfalls(tiny).contains(.genuineSamples(have: 1, need: 30))
+                 && shortfalls(tiny).contains(.impostorSamples(have: 1, need: 30)),
+                 "recommendThreshold: 1 genuine + 1 impostor, cleanly apart → REFUSED with both count shortfalls (ND-094)")
+
+        // Each criterion refuses on its own, and names itself with the amount short.
+        let fewGenuine = recommendThreshold(
+            genuine: ScoreDistribution(spread(29, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution(spread(30, from: 0.20, to: 0.60)),
+            impostorIdentityCount: 3
+        )
+        c.expect(shortfalls(fewGenuine) == [.genuineSamples(have: 29, need: 30)] && !fewGenuine.justifiesTunedFlag
+                 && (fewGenuine.refusalReason?.contains("need 1 more") ?? false),
+                 "recommendThreshold: 29 genuine → refused on genuine count only, 'need 1 more'")
+
+        let fewImpostor = recommendThreshold(
+            genuine: ScoreDistribution(spread(30, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution(spread(10, from: 0.20, to: 0.60)),
+            impostorIdentityCount: 3
+        )
+        c.expect(shortfalls(fewImpostor) == [.impostorSamples(have: 10, need: 30)] && !fewImpostor.justifiesTunedFlag,
+                 "recommendThreshold: 10 impostor → refused on impostor count only (need 20 more)")
+
+        let oneStranger = recommendThreshold(
+            genuine: ScoreDistribution(spread(30, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution(spread(30, from: 0.20, to: 0.60)),
+            impostorIdentityCount: 1
+        )
+        c.expect(shortfalls(oneStranger) == [.impostorIdentities(have: 1, need: 2)] && !oneStranger.justifiesTunedFlag,
+                 "recommendThreshold: 30 impostor scores from ONE person → refused on identity count (EC-03)")
+
+        let unknownIdentities = recommendThreshold(
+            genuine: ScoreDistribution(spread(30, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution(spread(30, from: 0.20, to: 0.60))
+        )
+        c.expect(shortfalls(unknownIdentities) == [.impostorIdentities(have: nil, need: 2)]
+                 && !unknownIdentities.justifiesTunedFlag,
+                 "recommendThreshold: impostor identity count not supplied → refused, never assumed")
+
+        // Margin 0.03 (< 0.05): cleanly apart on this sample, but too narrow to trust.
+        let narrow = recommendThreshold(
+            genuine: ScoreDistribution(spread(30, from: 0.63, to: 0.95)),
+            impostor: ScoreDistribution(spread(30, from: 0.20, to: 0.60)),
+            impostorIdentityCount: 3
+        )
+        var narrowOK = false
+        if case let .separationMargin(have, need)? = shortfalls(narrow).first, shortfalls(narrow).count == 1 {
+            narrowOK = abs(have - 0.03) < 1e-9 && abs(need - 0.05) < 1e-12
+        }
+        c.expect(narrowOK && !narrow.justifiesTunedFlag
+                 && (narrow.refusalReason?.contains("short by 0.0200") ?? false),
+                 "recommendThreshold: margin 0.03 < 0.05 → refused on margin, 'short by 0.0200'")
+
+        // Everything short at once → every shortfall listed, so one run says all to fix.
+        let allShort = recommendThreshold(
+            genuine: ScoreDistribution([0.62, 0.70]),
+            impostor: ScoreDistribution([0.60]),
+            impostorIdentityCount: 1
+        )
+        c.expect(shortfalls(allShort).count == 4 && !allShort.justifiesTunedFlag,
+                 "recommendThreshold: all four criteria unmet → all four shortfalls reported")
+
+        // A custom (looser) bar is honored — the bar is a parameter, not magic.
+        let loose = recommendThreshold(
+            genuine: ScoreDistribution([0.80, 0.90, 0.95]),
+            impostor: ScoreDistribution([0.20, 0.40, 0.60]),
+            impostorIdentityCount: 2,
+            requirements: ThresholdStudyRequirements(minimumGenuineSamples: 3, minimumImpostorSamples: 3)
+        )
+        c.expect(loose.justifiesTunedFlag,
+                 "recommendThreshold: explicit looser requirements are honored")
+
+        // Overlap → report the equal-error point but REFUSE to bless it — even on a
+        // small sample (an impostor that matched is a finding, not noise).
         let overlapping = recommendThreshold(
             genuine: ScoreDistribution([0.30, 0.60, 0.90]),
-            impostor: ScoreDistribution([0.25, 0.65, 0.85])
+            impostor: ScoreDistribution([0.25, 0.65, 0.85]),
+            impostorIdentityCount: 2
         )
         var overlapOK = false
         if case let .overlap(equalError, _, _) = overlapping {
             overlapOK = equalError > 0.0 && equalError < 1.0
         }
-        c.expect(overlapOK && !overlapping.justifiesTunedFlag,
+        c.expect(overlapOK && !overlapping.justifiesTunedFlag
+                 && (overlapping.refusalReason?.contains("overlap") ?? false),
                  "recommendThreshold: overlap → equal-error point reported, tuned flag REFUSED")
 
         // A single impostor above the genuine floor is enough to deny separation — the
         // conservative direction (one look-alike that matches is the EC-03 failure).
         let oneBadImpostor = recommendThreshold(
-            genuine: ScoreDistribution([0.80, 0.90]),
-            impostor: ScoreDistribution([0.10, 0.20, 0.85])
+            genuine: ScoreDistribution(spread(30, from: 0.80, to: 0.95)),
+            impostor: ScoreDistribution(spread(29, from: 0.10, to: 0.40) + [0.85]),
+            impostorIdentityCount: 3
         )
-        c.expect(!oneBadImpostor.justifiesTunedFlag,
+        var oneBadIsOverlap = false
+        if case .overlap = oneBadImpostor { oneBadIsOverlap = true }
+        c.expect(oneBadIsOverlap && !oneBadImpostor.justifiesTunedFlag,
                  "recommendThreshold: one impostor above the genuine floor denies clean separation (EC-03)")
+
+        // Boundary: impostor max EQUAL to genuine min is overlap (IdentityRecognizer's
+        // `>=` would accept that impostor).
+        let touching = recommendThreshold(
+            genuine: ScoreDistribution(spread(30, from: 0.70, to: 0.95)),
+            impostor: ScoreDistribution(spread(30, from: 0.20, to: 0.70)),
+            impostorIdentityCount: 3
+        )
+        var touchingIsOverlap = false
+        if case .overlap = touching { touchingIsOverlap = true }
+        c.expect(touchingIsOverlap, "recommendThreshold: impostor max == genuine min → overlap (matches >= accept)")
     }
 
     print("\nScreenLocker self-test + chain checks (fakes only, ND-058/ND-074):")
