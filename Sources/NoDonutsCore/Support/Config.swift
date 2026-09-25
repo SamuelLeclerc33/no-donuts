@@ -32,7 +32,18 @@ public struct Config: Codable, Equatable {
     /// (`consecutiveAbsentTicksToLock` ticks, ~`* tickIntervalSeconds`) + `graceSeconds`.
     /// A genuinely long call with no obtainable frames WILL be locked at the cap —
     /// an accepted, bounded fail-open tradeoff (tune this value if needed).
-    public var maxCallAssumedPresentSeconds: Double = 1800
+    ///
+    /// ND-098: 10 min (was 30). Opening any camera app (e.g. Photo Booth) and
+    /// walking away buys at most this long unlocked, so keep it short.
+    public var maxCallAssumedPresentSeconds: Double = 600
+    /// ND-078: bounds the camera-unavailable fail-open (EC-07/08/09). While the lid
+    /// is OPEN, after this many continuous seconds of `.unavailable` (permission
+    /// revoked, wedged camera, another app blocking it) the engine treats it as
+    /// absence, so the normal consensus + grace + lock path runs. With the lid
+    /// CLOSED (clamshell) the camera is expected to be unavailable and this never
+    /// escalates. Like the call cap, this is NOT the time to lock: effective ceiling
+    /// ≈ this + consensus (`consecutiveAbsentTicksToLock` × tick) + `graceSeconds`.
+    public var maxCameraUnavailableSeconds: Double = 120
     /// Slow the tick on battery to save power (EC-18). TODO(blart/homer).
     public var throttleOnBattery: Bool = true
 

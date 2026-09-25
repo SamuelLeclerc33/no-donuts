@@ -90,6 +90,13 @@ struct DiagnosticsReporter {
         lines.append("  State: \(presenceStateDescription(state))")
         lines.append("  Lock mechanisms: \(Self.lockCapabilityDescription(lockCapability))")
         lines.append("  Camera: built-in only (ADR-0015); last unavailable reason: \(cameraUnavailableReason ?? "none")")
+        let lidLine: String
+        switch LidState.current() {
+        case .open:   lidLine = "open (camera unavailable \(Int(config.maxCameraUnavailableSeconds))s → lock)"
+        case .closed: lidLine = "closed (camera-unavailable never locks)"
+        case .noLid:  lidLine = "no lid (desktop; camera-unavailable never locks)"
+        }
+        lines.append("  Lid: \(lidLine)")
         lines.append("")
         lines.append("[Config (raw base values from store)]")
         lines.append("  tickIntervalSeconds:            \(config.tickIntervalSeconds)")

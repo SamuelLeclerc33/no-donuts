@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0012-local-identity-featureprint/">
+        <link rel="prev" href="../0015-camera-trust-built-in-only/">
       
       
-        <link rel="next" href="../0014-coreml-face-embedding-model/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0013 — Settings UI + login item - No Donuts</title>
+        <title>ADR-0016 — Bounded camera-unavailable window - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0013-settingsonboarding-in-swiftui-login-item-via-smappservice" class="md-skip">
+        <a href="#adr-0016-bounded-camera-unavailable-window-lid-open-10-minute-busy-cap" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0013 — Settings UI + login item
+              ADR-0016 — Bounded camera-unavailable window
             
           </span>
         </div>
@@ -779,6 +779,90 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../0013-settings-ui-and-login-item/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0013 — Settings UI + login item
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../0014-coreml-face-embedding-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0014 — Core ML face-embedding model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../0015-camera-trust-built-in-only/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0015 — Camera trust: built-in only
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -798,7 +882,7 @@
   <span class="md-ellipsis">
     
   
-    ADR-0013 — Settings UI + login item
+    ADR-0016 — Bounded camera-unavailable window
   
 
     
@@ -816,7 +900,7 @@
   <span class="md-ellipsis">
     
   
-    ADR-0013 — Settings UI + login item
+    ADR-0016 — Bounded camera-unavailable window
   
 
     
@@ -889,90 +973,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../0014-coreml-face-embedding-model/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0014 — Core ML face-embedding model
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../0015-camera-trust-built-in-only/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0015 — Camera trust: built-in only
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../0016-bounded-camera-unavailable/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0016 — Bounded camera-unavailable window
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1126,32 +1126,39 @@
 
 
 
-<h1 id="adr-0013-settingsonboarding-in-swiftui-login-item-via-smappservice">ADR-0013 — Settings/onboarding in SwiftUI + login-item via SMAppService<a class="headerlink" href="#adr-0013-settingsonboarding-in-swiftui-login-item-via-smappservice" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0016-bounded-camera-unavailable-window-lid-open-10-minute-busy-cap">ADR-0016 — Bounded camera-unavailable window (lid open), 10-minute busy cap<a class="headerlink" href="#adr-0016-bounded-camera-unavailable-window-lid-open-10-minute-busy-cap" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Status: Accepted</li>
-<li>Date: 2026-07-02</li>
-<li>Owner: krusty (+ gordon for the login item)</li>
+<li>Status: Accepted (amends the EC-07/08/09 policy and the ADR-0003 cap value)</li>
+<li>Date: 2026-09-25</li>
+<li>Owner: homer (with blart)</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>Through M3 the app was AppKit-only (a menu-bar <code>NSStatusItem</code>, no windows), and all tuning was via <code>defaults write</code> or menu items. M4 needs real windowed UI — a <strong>Settings</strong> form and a first-run <strong>onboarding</strong> flow — plus a user-facing <strong>"Start at login"</strong> toggle. Two decisions fall out: which UI toolkit to use for the windows, and how the settings toggle should register the app as a login item given ND-016 already ships a LaunchAgent.</p>
+<p>When the camera was <strong>unavailable</strong>, the engine showed <code>cameraUnavailable</code> and never locked. Unavailable covers permission denied or revoked, no trusted camera, a wedged or removed device, another app blocking configuration, and the lid closed. The only signal was a notification every 5 minutes. That made "unavailable" a one-step bypass: revoke camera access (<code>tccutil reset Camera</code> needs no admin), or make the camera fail, and protection ends for as long as it lasts.</p>
+<p>Two related gaps:
+- An unavailable tick reset the ADR-0003 busy-camera window, so mixing unavailable ticks with busy ones could restart the cap indefinitely.
+- The cap itself was 30 minutes. Opening Photo Booth could buy 30 minutes unlocked.</p>
+<p>Since ADR-0015, closing the lid (clamshell with an external monitor) also means "camera unavailable". Locking clamshell users on a timer would make the app unusable for them.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Windowed UI is SwiftUI, hosted in AppKit.</strong> <code>SettingsView</code> / <code>OnboardingView</code> are SwiftUI, presented in a plain <code>NSWindow</code> via <code>NSHostingController</code> (<code>AppWindows</code>). The app stays an <code>LSUIElement</code> accessory (no Dock icon); windows are shown by <code>NSApp.activate(ignoringOtherApps:)</code> + <code>makeKeyAndOrderFront</code> — we do <strong>not</strong> switch to <code>.regular</code> activation. One window is retained per kind and reused. SwiftUI is confined to these windows; the menu bar, presence loop, camera, lock, and gate remain AppKit/Core.</li>
-<li><strong>Live-apply settings.</strong> A <code>SettingsStore</code> (<code>ObservableObject</code>, UserDefaults-backed) is the single source of truth for the tunables. Changes apply immediately: engine tunables via <code>PresenceEngine.updateConfig(_:)</code> + the loop reading <code>tickIntervalSeconds</code> each iteration; <code>matchThreshold</code> / <code>antiSpoofEnabled</code> / <code>spoofTextureFloor</code> are read <strong>live</strong> by the recognizer from UserDefaults (the <code>resolved*</code> helpers), so the same keys the UI writes are the keys the recognizer reads. No relaunch.</li>
-<li><strong>"Start at login" uses <code>SMAppService.mainApp</code></strong> (ServiceManagement) — register/unregister the app itself as a login item, live, no sudo, no plist juggling. This is the <strong>user-facing</strong> autostart control.</li>
+<li><strong>Lid open:</strong> after <code>maxCameraUnavailableSeconds</code> (<strong>120 s</strong>) of <em>continuous</em> unavailability, the engine escalates to absence. The normal consensus and grace then apply, and the lock goes through the ND-054 retry/backoff path. Any real frame, busy outcome, pause, trusted-network switch or session suspend resets the window.</li>
+<li><strong>Lid closed:</strong> today's behavior is kept. There is no lock, the not-protecting notification fires, and the window is reset, so closing the lid never builds toward a lock. Lid state comes from <code>AppleClamshellState</code> on <code>IOPMrootDomain</code> (<code>LidState.isClosed()</code>). <strong>An unreadable value counts as open</strong>, so the failure mode is an extra lock, never a fail-open.</li>
+<li><strong>Before the cap, an unavailable tick HOLDS</strong> (like the EC-10 recognizer-error hold). It shows <code>cameraUnavailable</code> but does not reset absence consensus, grace or lock-retry state. Otherwise alternating unavailable ticks with busy ticks past the call cap, or with no-face frames, would zero the consensus every time and never lock. That hole was found in security review. A returning user's frame goes through <code>markPresent</code>, which resets everything, so holding can't false-lock them.</li>
+<li><strong>Only a real laptop with its lid open escalates.</strong> <code>LidState</code> is tri-state: <code>.open</code>, <code>.closed</code>, or <code>.noLid</code> (the property is absent, as on desktop Macs, which have no built-in camera under ADR-0015). <code>.closed</code> and <code>.noLid</code> never escalate; otherwise a desktop would be locked every ~2 minutes forever.</li>
+<li>While escalating, the display stays <code>cameraUnavailable</code>, so the notification isn't withdrawn seconds before the lock, until the lock path sets <code>suspended</code> or <code>lockFailed</code>. <code>cameraUnavailableEscalating</code> is exposed. The notification copy is lid-aware.</li>
+<li>Unavailable ticks <strong>no longer reset</strong> the busy-camera window.</li>
+<li><strong>Busy cap lowered</strong> from 30 to <strong>10 minutes</strong> (<code>maxCallAssumedPresentSeconds = 600</code>). macOS normally shares camera frames during calls, so the busy-with-no-frames case is rare, and 10 minutes covers transient cases.</li>
 </ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Native, maintainable forms with far less boilerplate than hand-built AppKit; SwiftUI stays isolated so the testable AppKit-free Core (ADR-0007) is unaffected.</li>
-<li><strong>Two autostart mechanisms coexist:</strong> the ND-016 <strong>LaunchAgent</strong> (installed by <code>scripts/install-launchagent.sh</code>, the CLI/scripted path) and the Settings <strong>SMAppService</strong> login item (the in-app toggle). Both achieve "start at login"; the app is a singleton menu-bar accessory so there is no real double-launch concern, but installers/users should prefer one. Documented here and in <code>LoginItem.swift</code>. (Future cleanup: converge on one — likely SMAppService for the app + retire the LaunchAgent, or vice-versa.)</li>
-<li>On <strong>ad-hoc-signed local builds</strong>, <code>SMAppService.register()</code> may throw or land in <code>.requiresApproval</code> (System Settings › General › Login Items) — the toggle surfaces the error and reflects the real status; it works cleanly on a Developer-ID-signed, notarized build (ND-050).</li>
-<li>Showing Settings/onboarding does <strong>not</strong> pause enforcement — the presence loop keeps running while a window is open.</li>
+<li>Revoking camera access, breaking the camera, or blocking it no longer disables protection for longer than about 2 minutes plus consensus plus grace while the lid is open.</li>
+<li><strong>A user who denies camera permission gets locked after every unlock</strong> (about 2 min plus grace). This is intended: the app cannot protect them. The notification explains that they should grant access or quit No Donuts.</li>
+<li>Clamshell users stay unprotected while the lid is closed, as ADR-0015 already accepted. The notification says so.</li>
+<li>A misread lid state (reported open while actually closed) could cause extra locks in clamshell. That is recoverable, and it errs toward safety.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Pure AppKit windows:</strong> consistent with the existing code but much more boilerplate for a settings form; rejected.</li>
-<li><strong>A <code>defaults</code>-only "settings" story (no window):</strong> already what we had — insufficient for a shippable app; rejected.</li>
-<li><strong>Reuse the ND-016 LaunchAgent for the toggle</strong> (shell <code>launchctl</code> from the app / bundle-embedded agent plist): more moving parts and path juggling than <code>SMAppService.mainApp</code>; rejected for the in-app toggle (the LaunchAgent remains the scripted install path).</li>
+<li><strong>Always escalate, including with the lid closed.</strong> Clamshell users would be locked on a timer. Rejected.</li>
+<li><strong>Never escalate (status quo).</strong> Leaves a trivial bypass. Rejected.</li>
 </ul>
 
 

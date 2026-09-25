@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0015-camera-trust-built-in-only/">
+        <link rel="prev" href="../adr/0016-bounded-camera-unavailable/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -857,6 +857,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0016-bounded-camera-unavailable/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0016 — Bounded camera-unavailable window
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1266,7 +1294,7 @@
 4. ✅ ND-054 + ND-079 — lock-failed alarm + retry w/ backoff; manual lock in flight swallows the auto-lock — wiggum + homer + krusty
 5. ✅ ND-055 — stale-frame guard (dead frame source serves the last good frame forever) — blart
 6. ✅ ND-075 — virtual camera accepted (looped video of the user keeps the Mac unlocked) — blart
-7. ND-078 — bounded camera-unavailable policy (unplugged/wedged camera never locks; needs ADR) — homer
+7. ✅ ND-078 — bounded camera-unavailable policy (unplugged/wedged camera never locks; needs ADR) — homer
 8. ND-072 — anti-spoof inactive on the Core ML path — wiggum + cooper
 9. ND-077 — tamper-visible tunables (<code>defaults write</code> can silently weaken threshold/anti-spoof) — krusty + wiggum
 10. ND-057 — menu honesty (<code>autoenablesItems = false</code> + <code>menuWillOpen</code>) — krusty
@@ -1285,7 +1313,7 @@
 21. ND-081 — trusted Wi-Fi bound to SSID + BSSID/gateway, not SSID alone — krusty + wiggum
 22. ✅ ND-084 — camera: post-suspend stale frame + failed <code>addOutput</code> leaves input attached — blart
 23. ND-090 — display-asleep ≠ locked in <code>SessionStateMonitor</code> — blart + homer
-24. ND-098 — busy-camera 30 min cap (Photo Booth = 30 min unlocked): surface/lower — homer + krusty
+24. ✅ ND-098 — busy-camera 30 min cap (Photo Booth = 30 min unlocked): surface/lower — homer + krusty
 25. ND-060 — EC-10 escalation cadence decision — homer
 26. ND-062 — Core resolvers for remaining tunables (UI clamps already shipped) — homer
 27. ND-064 — shared CGSession reader — wiggum + homer
@@ -1461,7 +1489,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <ul>
 <li>[x] ND-076 Threshold wiring — <code>main.swift:139</code> always passes <code>Config.matchThreshold</code> (0.6, <code>Config.swift:31</code>), so FaceNet's descriptor default 0.5 (<code>FaceEmbeddingModel.swift:120</code>) never applies; with measured genuine p5 = 0.662 some real-user ticks already fall below 0.6 (false-lock risk). <em>(Observed 2026-09-24: the dev Mac runs at 0.50 only because of a manual <code>defaults write matchThreshold 0.5</code> override; a fresh install, such as a colleague's Mac (ND-111), gets 0.6.)</em> The stored <code>matchThreshold</code> key isn't per-model, so a Vision-era value carries across a model swap. Slider floor 0.05 (<code>SettingsStore.swift:43</code>) and resolver <code>(0,1)</code> (<code>FaceEmbedding.swift:150</code>) allow values that accept any face on FaceNet. Fix: pass <code>nil</code>/descriptor unless the user overrode; key the override by model version; per-model minimum (e.g. 0.3) in BOTH resolver and slider; fix stale Vision-era comment <code>Config.swift:18-30</code>. <strong>DONE 2026-09-24:</strong> <code>Config.matchThreshold</code> removed; the descriptor is the only default; each descriptor has a <code>matchThresholdRange</code> (FaceNet 0.40–0.90, Vision 0.40–0.95); per-model override key <code>matchThreshold.&lt;version&gt;</code>, out-of-range values rejected (not clamped); the legacy global key is dropped once at launch; the Settings slider is limited to the model's range, with a model-default caption and Reset; diagnostics show default/override/effective/range. EngineCheck 97/97. ADR-0014 amended, EC-05 updated — cooper + krusty</li>
 <li>[ ] ND-077 Tamper-visible tunables — <code>defaults write com.nodonuts.app matchThreshold 0.01</code>, <code>spoofTextureFloor 0.0001</code>, <code>antiSpoofEnabled false</code> all apply silently (<code>FaceEmbedding.swift:153</code>, <code>FaceLiveness.swift:88</code>). A colleague with 10 s of access can neuter identity with no UI trace. Fix: show "protection reduced" in the menu header when any security tunable differs from its default. — krusty + wiggum</li>
-<li>[ ] ND-078 Bounded camera-unavailable policy — <code>.unavailable</code> resets absence accounting with no time limit (<code>PresenceEngine.swift:53-56</code>), so an unplugged/wedged/removed camera keeps the Mac unlocked forever (only a 5-min notification). It also clears <code>callAssumedSince</code>, so interleaved unavailable ticks restart the ND-033 call cap (<code>:55</code>, <code>:131</code>). Fix: ADR for a capped unavailable window (like <code>maxCallAssumedPresentSeconds</code>) then escalate to absence; don't reset the call cap on <code>.unavailable</code>. Revisits EC-07/08/09 (needs ADR — clamshell must not lock out the user unfairly). — homer</li>
+<li>[x] ND-078 Bounded camera-unavailable policy — <code>.unavailable</code> resets absence accounting with no time limit (<code>PresenceEngine.swift:53-56</code>), so an unplugged/wedged/removed camera keeps the Mac unlocked forever (only a 5-min notification). It also clears <code>callAssumedSince</code>, so interleaved unavailable ticks restart the ND-033 call cap (<code>:55</code>, <code>:131</code>). Fix: ADR for a capped unavailable window (like <code>maxCallAssumedPresentSeconds</code>) then escalate to absence; don't reset the call cap on <code>.unavailable</code>. Revisits EC-07/08/09 (needs ADR — clamshell must not lock out the user unfairly). <strong>DONE 2026-09-25 (ADR-0016):</strong> with the lid open, 120s of continuous unavailability escalates to absence, then grace, then lock (with retries); before the cap, unavailable ticks HOLD rather than reset; lid closed or desktop (<code>LidState</code> .closed/.noLid) never escalates; the display stays <code>cameraUnavailable</code> until the lock resolves; unavailable ticks no longer reset the call cap; the notification text depends on lid state. Security review closed two fail-open interleavings (unavailable+busy/noFace, and the pre-existing busy+noFace/error). EngineCheck 173/173 — homer</li>
 <li>[x] ND-079 Manual lock swallows auto-lock — if <code>lockNow()</code> is in flight when grace expires, the auto path sets <code>lockAttempted = true</code> (<code>PresenceEngine.swift:217</code>) then is skipped by <code>isLocking</code> (<code>:171</code>); if the manual lock fails, nothing retries this episode. Fix: set <code>lockAttempted</code> only when <code>attemptLock</code> actually runs; EngineCheck it. Pair with ND-054. <strong>DONE 2026-09-24 (with ND-054):</strong> an auto attempt is skipped without being recorded while a manual lock is in flight; the next tick attempts — homer</li>
 <li>[ ] ND-080 Indefinite pause never ends — "Pause until I resume" (<code>PauseController.swift:31-45</code>) has no reminder and survives lock/unlock. Fix: clear on session unlock (or cap), nag every N minutes while paused. EC-15. — krusty + homer</li>
 <li>[ ] ND-081 Trusted Wi-Fi keyed on SSID only — <code>WiFiMonitor.swift:83</code>; anyone can broadcast the office/home SSID from a hotspot, and <code>trustedWiFiSSIDs</code> is editable via <code>defaults write</code>. Fix: bind trust to SSID + BSSID (or gateway MAC). EC-20. — krusty + wiggum</li>
@@ -1486,7 +1514,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <li>[ ] ND-095 Model load off main — the 45 MB model loads synchronously on the main thread at launch (<code>main.swift:44</code> → <code>CoreMLFaceEmbedder.swift:108</code>), compute units left default. Fix: background load + explicit <code>MLModelConfiguration.computeUnits</code>. — cooper</li>
 <li>[ ] ND-096 Capture power &amp; device switching — no <code>sessionPreset</code> (full-res capture), 1 fps only checks the first frame-rate range and may be reset by <code>startRunning</code> (<code>CameraController.swift:156, 213-240</code>); <code>systemPreferredCamera</code> changes (Continuity/external) are ignored. Fix: 640×480 preset, lowest supported range, keep device locked across <code>startRunning</code>, observe <code>systemPreferredCamera</code> and rebuild. Also: <code>suspend()</code> while not yet running doesn't prevent a later <code>ensureConfigured</code> from starting the camera behind the lock screen (<code>:240</code>) — add a sticky <code>suspended</code> flag. EC-18. <strong>Update 2026-09-25:</strong> following <code>systemPreferredCamera</code> is moot (ADR-0015 is built-in only), and the camera-behind-lock-screen gap is closed by ND-084's sticky <code>suspended</code> flag — blart</li>
 <li>[ ] ND-097 ObjC exception ARC flag — <code>ObjCExceptionCatcher.m:4-15</code> leaks objects on throw without <code>-fobjc-arc-exceptions</code>. Fix: add the flag in <code>Package.swift</code>. — gordon</li>
-<li>[ ] ND-098 Busy-camera cap is generous — opening Photo Booth gives 30 min unlocked (<code>maxCallAssumedPresentSeconds=1800</code>). Fix: surface busy state in the notifier and/or lower the cap. EC-01. — homer + krusty</li>
+<li>[x] ND-098 Busy-camera cap is generous — opening Photo Booth gives 30 min unlocked (<code>maxCallAssumedPresentSeconds=1800</code>). Fix: surface busy state in the notifier and/or lower the cap. EC-01. <strong>DONE 2026-09-25 (with ND-078):</strong> default cap 1800 → 600s; only an enrolled-user frame (or suspend/pause/trusted) ends the busy window, so a busy/noFace alternation locks at about 600s + consensus + grace — homer + krusty</li>
 <li>[ ] ND-099 Recognition transparency — no UI showing active model, tuned y/n, stored-vs-active version (<code>SettingsView.swift:58</code>); diagnostics omit them (<code>DiagnosticsReporter.swift:80-100</code>). Mark "Reject photos of me" as inactive on Core ML until ND-072 lands (<code>SettingsView.swift:118</code>). — krusty + gordon</li>
 <li>[ ] ND-100 Accessibility — status-item labels don't name the app (<code>MenuBarController.swift:274-299</code>); grace/interval sliders unlabeled (<code>SettingsView.swift:90,105</code>); onboarding step dots undescribed (<code>OnboardingView.swift:198</code>). — krusty</li>
 <li>[ ] ND-101 Localization — hard-coded AppKit strings, no <code>NSLocalizedString</code>, "(minutes) min left" not pluralized (<code>PauseController.swift:67</code>). Fix: string catalog. — krusty</li>

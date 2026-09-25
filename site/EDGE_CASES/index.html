@@ -855,6 +855,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0016-bounded-camera-unavailable/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0016 — Bounded camera-unavailable window
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1045,7 +1073,7 @@
 <tr>
 <td>EC-01</td>
 <td><strong>On a video call</strong> (another app holds camera)</td>
-<td>Try multi-client shared frames; if none, assume PRESENT and don't lock — <strong>bounded</strong> by <code>maxCallAssumedPresentSeconds</code> (default 30 min). After that many CONTINUOUS busy-no-frames seconds the assume-present window expires and the engine escalates to absence, so a call app left running unattended eventually runs the normal grace→lock path instead of staying unlocked forever. The cap is NOT the wall-clock time-to-lock: once it expires the engine only <em>begins</em> counting absence, so the effective unlock ceiling is <code>maxCallAssumedPresentSeconds</code> + the absence consensus (<code>consecutiveAbsentTicksToLock</code> ticks) + <code>graceSeconds</code>. A genuinely long call with no obtainable frames WILL be locked at the cap — an accepted, bounded fail-open tradeoff (tunable). Any non-busy outcome (real present/absent frame, suspend, unavailable) resets the window — including the production <code>sessionSuspended()</code> lock/unlock path, so a fresh call after an unlock starts a clean window rather than re-escalating on a stale one. See <a href="../adr/0003-camera-in-use-policy/">ADR-0003</a>, ND-033. <strong>ND-032 (explicit multi-client shared-frame acquisition) is closed as not-needed on macOS:</strong> the OS shares the camera across clients, so a busy device normally still delivers frames to our session (→ normal detection); only the busy-no-frames case uses the assume-present fallback above.</td>
+<td>Try multi-client shared frames; if none, assume PRESENT and don't lock — <strong>bounded</strong> by <code>maxCallAssumedPresentSeconds</code> (default 30 min). After that many CONTINUOUS busy-no-frames seconds the assume-present window expires and the engine escalates to absence, so a call app left running unattended eventually runs the normal grace→lock path instead of staying unlocked forever. The cap is NOT the wall-clock time-to-lock: once it expires the engine only <em>begins</em> counting absence, so the effective unlock ceiling is <code>maxCallAssumedPresentSeconds</code> + the absence consensus (<code>consecutiveAbsentTicksToLock</code> ticks) + <code>graceSeconds</code>. A genuinely long call with no obtainable frames WILL be locked at the cap — an accepted, bounded fail-open tradeoff (tunable). Any non-busy outcome (real present/absent frame, suspend, unavailable) resets the window — including the production <code>sessionSuspended()</code> lock/unlock path, so a fresh call after an unlock starts a clean window rather than re-escalating on a stale one. See <a href="../adr/0003-camera-in-use-policy/">ADR-0003</a>, ND-033. <strong>ND-032 (explicit multi-client shared-frame acquisition) is closed as not-needed on macOS:</strong> the OS shares the camera across clients, so a busy device normally still delivers frames to our session (→ normal detection); only the busy-no-frames case uses the assume-present fallback above. <strong>2026-09-25 (ND-098, ADR-0016):</strong> default cap lowered from 30 to <strong>10 min</strong> (<code>maxCallAssumedPresentSeconds = 600</code>), and unavailable ticks no longer reset the busy window. Only a frame that shows the enrolled user ends the busy window, so intermittent no-face frames during a busy camera still lock after the cap.</td>
 <td>IMPLEMENTED</td>
 <td>blart/homer</td>
 </tr>
@@ -1087,21 +1115,21 @@
 <tr>
 <td>EC-07</td>
 <td><strong>External monitor, lid closed (clamshell)</strong></td>
-<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A "not protecting" local notification now fires on entry + repeats ~5 min while unavailable, clearing on recovery (ND-045, <code>NotProtectingNotifier</code>). <strong>ND-075 (2026-09-25, ADR-0015):</strong> only the built-in camera is trusted, so an external webcam in clamshell is NOT used. The app shows "camera unavailable (no built-in camera)" rather than capturing from an untrusted device.</td>
+<td>Built-in camera unavailable → <code>capture()</code> returns <code>.unavailable</code> → engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock (no fail-open; this is now real, not masked by a fake recognizer). User isn't locked out when the only camera is gone. A "not protecting" local notification now fires on entry + repeats ~5 min while unavailable, clearing on recovery (ND-045, <code>NotProtectingNotifier</code>). <strong>ND-075 (2026-09-25, ADR-0015):</strong> only the built-in camera is trusted, so an external webcam in clamshell is NOT used. The app shows "camera unavailable (no built-in camera)" rather than capturing from an untrusted device. <strong>2026-09-25 (ND-078, ADR-0016):</strong> with the lid OPEN, 2 min of continuous unavailability escalates to absence, then grace, then lock (with ND-054 retries). With the lid CLOSED (clamshell) there is no lock, as before.</td>
 <td>IMPLEMENTED</td>
 <td>blart/homer/krusty</td>
 </tr>
 <tr>
 <td>EC-08</td>
 <td><strong>Camera permission denied / restricted (MDM)</strong></td>
-<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX; a "not protecting" local notification fires on entry + repeats ~5 min while unavailable (ND-045).</td>
+<td><code>capture()</code> returns <code>.unavailable</code> (denied/restricted or no device); engine surfaces honest <code>cameraUnavailable</code> status and does NOT lock. No silent fail-open. krusty owns the prompt/remediation UX; a "not protecting" local notification fires on entry + repeats ~5 min while unavailable (ND-045). <strong>2026-09-25 (ND-078, ADR-0016):</strong> with the lid OPEN, 2 min of continuous unavailability escalates to absence, then grace, then lock (with ND-054 retries). With the lid CLOSED (clamshell) there is no lock, as before.</td>
 <td>IMPLEMENTED</td>
 <td>blart/homer/krusty</td>
 </tr>
 <tr>
 <td>EC-09</td>
 <td><strong>No camera at all / camera hardware error</strong></td>
-<td>Same policy as EC-07/EC-08: <code>.unavailable</code> → <code>cameraUnavailable</code>, do NOT lock (never hard-lock the user out when we can't see). Honest visible status + the ND-045 "not protecting" notification.</td>
+<td>Same policy as EC-07/EC-08: <code>.unavailable</code> → <code>cameraUnavailable</code>, do NOT lock (never hard-lock the user out when we can't see). Honest visible status + the ND-045 "not protecting" notification. <strong>2026-09-25 (ND-078, ADR-0016):</strong> with the lid OPEN, 2 min of continuous unavailability escalates to absence, then grace, then lock (with ND-054 retries). With the lid CLOSED (clamshell) there is no lock, as before.</td>
 <td>IMPLEMENTED</td>
 <td>blart/homer</td>
 </tr>

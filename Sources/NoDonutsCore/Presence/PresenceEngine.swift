@@ -50,6 +50,27 @@ public final class PresenceEngine {
     /// First tick of an unbroken busy-no-frames run; nil when not in such a run.
     /// Bounds the ADR-0003 assume-present fail-open (see handleCameraBusy).
     private var callAssumedSince: Date?
+    /// ND-078: first tick of an unbroken lid-open `.unavailable` run; nil when not
+    /// in such a run. Bounds the camera-unavailable fail-open (see
+    /// handleCameraUnavailable). Cleared by any non-unavailable outcome, by every
+    /// full reset (pause / trusted network / suspend / presence) and whenever the
+    /// lid is closed.
+    private var unavailableSince: Date? {
+        didSet { if unavailableSince == nil { unavailableEscalated = false } }
+    }
+    /// ND-078: true once the current lid-open unavailable run has passed
+    /// maxCameraUnavailableSeconds (engine is heading to a lock). Cleared with the run.
+    private var unavailableEscalated = false
+    /// ND-078: injected lid probe. Production = LidState.current (IOKit);
+    /// EngineCheck passes a fake so the policy stays deterministic.
+    private let lidState: @Sendable () -> LidState
+
+    /// ND-078: true while the camera has been unavailable (lid open) for longer than
+    /// `maxCameraUnavailableSeconds` and the engine is escalating toward a lock. The
+    /// display state stays `.cameraUnavailable` during this phase (until the lock
+    /// path sets `.suspended` / `.lockFailed`), so the App can use this flag to say
+    /// "locking soon" instead of treating it as recovered.
+    public var cameraUnavailableEscalating: Bool { unavailableEscalated }
 
     /// ND-054: failed AUTO-lock attempts in the current absence episode (0 when
     /// none / after presence or any reset). The App re-alerts when it increases.
@@ -59,8 +80,10 @@ public final class PresenceEngine {
     public init(camera: CameraCapturing,
                 recognizer: FaceRecognizing,
                 locker: ScreenLocking,
-                config: Config) {
+                config: Config,
+                lidState: @escaping @Sendable () -> LidState = LidState.current) {
         self.camera = camera
+        self.lidState = lidState
         self.recognizer = recognizer
         self.locker = locker
         self.config = config
@@ -71,7 +94,8 @@ public final class PresenceEngine {
     public func tick(now: Date) async {
         switch await camera.capture() {
         case .suspended:
-            // EC-02/EC-13: locked/asleep/inactive (ND-013). Mirror `.unavailable`
+            // EC-02/EC-13: locked/asleep/inactive (ND-013). The live CameraController
+            // returns this whenever its session is suspended (lock/sleep/pause). Mirror `.unavailable`
             // and reset absence accounting so a lock/unlock (or sleep/wake) that
             // happens mid-absence can't trigger a grace-less false lock on
             // resume — the next absence episode must rebuild the full consensus.
@@ -79,15 +103,21 @@ public final class PresenceEngine {
             resetAbsenceAccounting()     // also ends any busy run (clears callAssumedSince)
             return
         case .unavailable:
-            state = .cameraUnavailable   // EC-08: can't verify presence → honest status, do not lock
-            resetAbsenceAccounting()     // camera down → we don't know; clears absence accounting + busy run
-            return
+            // EC-07/08/09, bounded by ND-078 (lid open) — see handleCameraUnavailable.
+            await handleCameraUnavailable(now: now)
         case .cameraBusyNoFrames:
+            unavailableSince = nil        // busy is not unavailable → ends any unavailable run (ND-078)
             // ADR-0003 (bounded): a busy camera means the user is almost certainly
             // in front of it — but only assume so up to maxCallAssumedPresentSeconds.
             await handleCameraBusy(now: now)
         case .frame(let frame):
-            callAssumedSince = nil        // a real frame ends any busy run (ND-033)
+            // ND-098: a frame does NOT by itself end the busy run. Only a real
+            // enrolled-user reading (markPresent → full reset) does — or pause /
+            // trusted network / suspend. A noFace / stranger / error frame leaves
+            // callAssumedSince open, so busy/noFace interleavings (intermittent
+            // multi-client frames while a call app holds the camera and the user
+            // walked away) stay bounded by maxCallAssumedPresentSeconds and then lock.
+            unavailableSince = nil        // a frame ends any unavailable run (ND-078)
             switch await recognizer.recognize(frame) {
             case .enrolledUserPresent:
                 markPresent(.present)
@@ -119,7 +149,12 @@ public final class PresenceEngine {
     /// ADR-0003 with a bounded fail-open (ND-033). A busy-no-frames camera almost
     /// always means a call is in progress and the user is present, so we assume
     /// present and never lock — but only for up to maxCallAssumedPresentSeconds of
-    /// CONTINUOUS busy ticks. Past that bound (a call app left running unattended),
+    /// busy ticks. The window is ended only by a real enrolled-user reading or a
+    /// full reset — NOT by interleaved noFace/stranger/error frames or
+    /// camera-unavailable ticks (ND-098/ND-078). An under-cap busy tick does reset
+    /// the absence consensus built by interleaved absent frames, but that can only
+    /// happen until the cap: past it every busy tick escalates, so absent frames and
+    /// busy ticks all count toward the lock. Past that bound (a call app left running unattended),
     /// we stop assuming present and escalate to absence so the normal grace→lock
     /// path can eventually fire. callAssumedSince is reset only on non-busy
     /// outcomes (handled in tick()), so the window persists across consecutive
@@ -144,6 +179,57 @@ public final class PresenceEngine {
         }
     }
 
+    /// ND-078: bounded camera-unavailable fail-open (EC-07/08/09).
+    ///
+    /// - Lid CLOSED (clamshell) or NO LID (desktop Mac, no built-in camera — ADR-0015
+    ///   makes it permanently unavailable): the camera is expected to be unavailable →
+    ///   today's behavior: `.cameraUnavailable`, absence accounting reset, never lock,
+    ///   and the window is cleared so a closed lid never builds toward a lock.
+    /// - Lid OPEN, before `maxCameraUnavailableSeconds` of continuous unavailability:
+    ///   conservative HOLD (like the EC-10 error hold) — no lock, and absence
+    ///   accounting / ND-054 retry state / episodeGeneration are left UNTOUCHED.
+    ///   Resetting here was a fail-open: unavailable ticks interleaved with absence
+    ///   ticks (busy past the call cap, or no-face frames) kept zeroing the consensus
+    ///   so it never reached the lock. Holding is safe on resume: a returning user's
+    ///   frame goes through markPresent(), which resets everything.
+    ///   Display: `.cameraUnavailable`, except an unresolved `.lockFailed` warning or
+    ///   the post-lock `.suspended` is kept (don't hide "couldn't lock").
+    /// - Lid OPEN, at/after the cap: escalate via markAbsent() — normal consensus +
+    ///   grace + lock + ND-054 retry/backoff. Display stays `.cameraUnavailable`
+    ///   (markAbsent's `.absent` is rewritten back) until the lock path sets
+    ///   `.suspended` / `.lockFailed`: the user may well be present, and flipping to
+    ///   "away" would read as "camera recovered" to the App. `cameraUnavailableEscalating`
+    ///   is true in this phase so the App can warn "locking soon".
+    ///
+    /// In ALL branches the busy-run window (callAssumedSince) is preserved: an
+    /// unavailable tick is not a real reading, so unavailable ticks interleaved with
+    /// busy ticks must not restart the ND-033 call cap (ND-078). Lid-open ticks
+    /// (hold or escalation) NEVER reset absence accounting — each reset bumps
+    /// episodeGeneration and zeroes the consensus, so the lock could never build.
+    private func handleCameraUnavailable(now: Date) async {
+        if lidState() != .open {
+            state = .cameraUnavailable
+            resetAbsenceAccounting(endingWindows: false)
+            unavailableSince = nil
+            return
+        }
+        if unavailableSince == nil { unavailableSince = now }
+        if let since = unavailableSince,
+           now.timeIntervalSince(since) >= config.maxCameraUnavailableSeconds {
+            // Bounded fail-open expired with the lid open: can't verify presence for
+            // too long → treat as absence so the normal grace→lock path runs.
+            unavailableEscalated = true
+            await markAbsent(now: now)
+            // Honest display: still "camera unavailable" (not "away") until locked /
+            // lock failed. Only rewrite .absent, so a reset during the lock await
+            // (.paused/.suspended/...) is never clobbered.
+            if state == .absent { state = .cameraUnavailable }
+        } else {
+            // HOLD: neither advance nor reset the absence episode (see doc above).
+            if state != .lockFailed && !lockSucceeded { state = .cameraUnavailable }
+        }
+    }
+
     /// Clear all absence/error accounting back to a clean slate. Used on a real
     /// present reading, on camera unavailable/suspended, and on session suspend —
     /// so the next absence episode must rebuild the full consensus + grace.
@@ -151,7 +237,10 @@ public final class PresenceEngine {
     /// reset path is a definitive non-busy outcome (real reading, camera down,
     /// or session suspend), so a stale window must not survive into the next
     /// episode and immediately escalate (ND-033 lock-during-fresh-call bug).
-    private func resetAbsenceAccounting() {
+    /// Likewise ends any camera-unavailable window (unavailableSince, ND-078).
+    /// `endingWindows: false` is used only by the lid-closed unavailable path, which
+    /// must keep the call-cap window open (ND-078).
+    private func resetAbsenceAccounting(endingWindows: Bool = true) {
         consecutiveAbsentTicks = 0
         absentSince = nil
         lockSucceeded = false
@@ -159,7 +248,10 @@ public final class PresenceEngine {
         nextLockRetryAt = nil
         episodeGeneration &+= 1
         consecutiveErrorTicks = 0
-        callAssumedSince = nil
+        if endingWindows {
+            callAssumedSince = nil
+            unavailableSince = nil
+        }
     }
 
     /// Entry point the app calls when the OS session is suspended
@@ -248,8 +340,9 @@ public final class PresenceEngine {
         // Bail before locking (recording nothing). This gate is placed here — NOT
         // inside attemptLock() — because the manual `lockNow()` path runs in its OWN
         // uncancelled Task and MUST still lock. All auto callers reach locking via
-        // markAbsent (.strangerOnly/.noFace, EC-10 error escalation, and the bounded
-        // busy/callAssumedPresent escalation), so this single guard — and the retry
+        // markAbsent (.strangerOnly/.noFace, EC-10 error escalation, the bounded
+        // busy/callAssumedPresent escalation, and the bounded lid-open
+        // camera-unavailable escalation, ND-078), so this single guard — and the retry
         // policy below — covers them all consistently.
         guard !Task.isCancelled else { return }
         // ND-079: a manual lockNow() is in flight. Skip WITHOUT recording an attempt

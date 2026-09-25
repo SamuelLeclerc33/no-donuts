@@ -195,8 +195,11 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         case .ready:
             break
         case .suspended:
-            // Locked / display asleep: never start the camera from capture().
-            return .unavailable("camera suspended")
+            // Locked / display asleep / paused: never start the camera from
+            // capture(). Report the semantically correct `.suspended` (not
+            // `.unavailable`) so an in-flight tick after pause/suspend can't open a
+            // stale ND-078 camera-unavailable window in the engine.
+            return .suspended
         case .failed(let reason):
             // A (re)configure can fail precisely because another app holds the
             // device (e.g. a call started after a tear-down). Keep the bounded
@@ -213,8 +216,10 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         // raced in (monitor saw lock/sleep), restarting here would turn the
         // camera light back ON while locked and double per-tick overhead. A
         // suspended session is only restarted by the explicit resume() below.
-        // When suspended, the buffer was cleared, so we fall through to
-        // waitForFreshFrame and then report .unavailable — correct.
+        // When a suspend races in AFTER ensureConfigured returned .ready, the
+        // buffer was cleared, so we fall through to waitForFreshFrame and report
+        // .unavailable for this one tick (harmless: the App's suspend/pause path
+        // resets the engine, which clears any unavailable window — ND-078).
 
         // 3. Sample the latest FRESH frame (ND-055). A stale or pre-suspend
         //    frame is never served. If none yet (session just started), wait

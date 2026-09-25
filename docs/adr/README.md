@@ -22,6 +22,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0013](0013-settings-ui-and-login-item.md) — Settings/onboarding in SwiftUI (hosted in AppKit), live-apply; "Start at login" via SMAppService (complements the ND-016 LaunchAgent) — **Accepted**
 - [ADR-0014](0014-coreml-face-embedding-model.md) — Core ML face-recognition embedding behind a model-agnostic descriptor; FaceNet/VGGFace2 internal model; embedding versioning + forced re-enrollment (model-file-independent Phase 1) — **Accepted** (amends ADR-0012)
 - [ADR-0015](0015-camera-trust-built-in-only.md) — Camera trust: built-in camera only; external, Continuity and virtual cameras are never used — **Accepted**
+- [ADR-0016](0016-bounded-camera-unavailable.md) — Bounded camera-unavailable window (lock after 2 min with the lid open; not with the lid closed); busy-camera cap 10 min — **Accepted**
 
 ## Template
 

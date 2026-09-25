@@ -198,8 +198,22 @@ let t0 = Date(timeIntervalSinceReferenceDate: 0)
 
 @MainActor
 func makeEngine(_ camera: CameraCapturing, _ recognizer: FaceRecognizing,
-                _ locker: ScreenLocking, _ config: Config = Config()) -> PresenceEngine {
-    PresenceEngine(camera: camera, recognizer: recognizer, locker: locker, config: config)
+                _ locker: ScreenLocking, _ config: Config = Config(),
+                lid: @escaping @Sendable () -> LidState = { .open }) -> PresenceEngine {
+    // Hermetic: never read the real lid via IOKit in checks (ND-078). Default = open.
+    PresenceEngine(camera: camera, recognizer: recognizer, locker: locker, config: config,
+                   lidState: lid)
+}
+
+/// Thread-safe mutable lid flag for ND-078 checks.
+final class FakeLid: @unchecked Sendable {
+    private let q = NSLock()
+    private var _state: LidState
+    init(_ state: LidState) { _state = state }
+    var state: LidState {
+        get { q.lock(); defer { q.unlock() }; return _state }
+        set { q.lock(); _state = newValue; q.unlock() }
+    }
 }
 
 @MainActor
@@ -344,6 +358,315 @@ func runAll() async -> Bool {
         let e = makeEngine(StubCamera(.unavailable("denied")), StubRecognizer(.noFace), locker)
         await e.tick(now: t0)
         c.expect(e.state == .cameraUnavailable && locker.lockCallCount == 0, "camera unavailable → honest status, no lock (EC-08)")
+    }
+
+    // ND-078 / ND-098: defaults.
+    c.expect(Config().maxCameraUnavailableSeconds == 120, "default maxCameraUnavailableSeconds == 120 (ND-078)")
+    c.expect(Config().maxCallAssumedPresentSeconds == 600, "default maxCallAssumedPresentSeconds == 600 (ND-098)")
+
+    // ND-078: lid open → no lock before the cap; escalates at the cap and locks
+    // after the normal consensus + grace.
+    do {
+        let config = Config()
+        let cap = config.maxCameraUnavailableSeconds
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.unavailable("wedged")), StubRecognizer(.noFace), locker, config)
+        var t = 0.0
+        var heldBeforeCap = true
+        while t < cap {
+            await e.tick(now: t0.addingTimeInterval(t))
+            if e.state != .cameraUnavailable || locker.lockCallCount != 0 { heldBeforeCap = false }
+            t += 1
+        }
+        c.expect(heldBeforeCap, "lid open: unavailable < cap → .cameraUnavailable, no lock (ND-078)")
+        let notEscalatingBeforeCap = !e.cameraUnavailableEscalating
+        await e.tick(now: t0.addingTimeInterval(cap))
+        c.expect(notEscalatingBeforeCap && e.cameraUnavailableEscalating
+                 && e.state == .cameraUnavailable && locker.lockCallCount == 0,
+                 "lid open: unavailable at cap → escalating, display stays .cameraUnavailable, no lock yet (ND-078)")
+        var displayHeld = true
+        for i in 1..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(cap + Double(i)))
+            if e.state != .cameraUnavailable { displayHeld = false }
+        }
+        await e.tick(now: t0.addingTimeInterval(cap + Double(config.consecutiveAbsentTicksToLock) + 1))
+        if e.state != .cameraUnavailable { displayHeld = false }
+        c.expect(displayHeld, "lid open: between cap expiry and lock, display stays .cameraUnavailable (ND-078)")
+        let noLockInGrace = locker.lockCallCount == 0
+        await e.tick(now: t0.addingTimeInterval(cap + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds))
+        c.expect(noLockInGrace && e.state == .suspended && locker.lockCallCount == 1,
+                 "lid open: unavailable past cap + consensus + grace → locks once (ND-078)")
+    }
+
+    // ND-078: lid closed → never locks, even after an hour of unavailability.
+    do {
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.unavailable("clamshell")), StubRecognizer(.noFace), locker,
+                           lid: { .closed })
+        var allUnavailable = true
+        for i in stride(from: 0, through: 3600, by: 1) {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+            if e.state != .cameraUnavailable { allUnavailable = false }
+        }
+        c.expect(allUnavailable && locker.lockCallCount == 0,
+                 "lid closed: 1h unavailable → .cameraUnavailable, never locks (ND-078)")
+    }
+
+    // ND-078: no lid (desktop Mac, built-in-only camera → permanently unavailable)
+    // never escalates or locks; also with busy/no-face interleavings.
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.unavailable("no built-in camera"))
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config, lid: { .noLid })
+        var ok = true
+        for i in stride(from: 0, through: 3600, by: 1) {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+            if e.state != .cameraUnavailable || e.cameraUnavailableEscalating { ok = false }
+        }
+        let lockerB = SpyLocker(succeed: true)
+        let camB = StubCamera(.frame(CapturedFrame()))
+        let b = makeEngine(camB, StubRecognizer(.noFace), lockerB, config, lid: { .noLid })
+        for i in 0..<600 {
+            camB.outcome = i % 2 == 0 ? .frame(CapturedFrame()) : .unavailable("none")
+            await b.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        c.expect(ok && locker.lockCallCount == 0 && lockerB.lockCallCount == 0,
+                 "no lid (desktop): 1h unavailable (+interleavings) → never escalates, never locks (ND-078)")
+    }
+
+    // ND-078: a frame after escalation clears cameraUnavailableEscalating.
+    do {
+        let config = Config()
+        let cap = config.maxCameraUnavailableSeconds
+        let camera = StubCamera(.unavailable("wedged"))
+        let e = makeEngine(camera, StubRecognizer(.enrolledUserPresent(confidence: 1)), SpyLocker(succeed: true), config)
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(cap))
+        let was = e.cameraUnavailableEscalating
+        camera.outcome = .frame(CapturedFrame())
+        await e.tick(now: t0.addingTimeInterval(cap + 1))
+        c.expect(was && !e.cameraUnavailableEscalating && e.state == .present,
+                 "frame after escalation → present, cameraUnavailableEscalating cleared (ND-078)")
+    }
+
+    // ND-078: a real frame mid-window resets it — a fresh full cap is needed.
+    do {
+        let config = Config()
+        let cap = config.maxCameraUnavailableSeconds
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.unavailable("wedged"))
+        let e = makeEngine(camera, StubRecognizer(.enrolledUserPresent(confidence: 1)), locker, config)
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(cap - 1))
+        camera.outcome = .frame(CapturedFrame())
+        await e.tick(now: t0.addingTimeInterval(cap - 0.5))
+        let present = e.state == .present
+        camera.outcome = .unavailable("wedged")
+        await e.tick(now: t0.addingTimeInterval(cap))          // new window opens here
+        await e.tick(now: t0.addingTimeInterval(2 * cap - 1))  // still under the NEW cap
+        c.expect(present && e.state == .cameraUnavailable && locker.lockCallCount == 0,
+                 "lid open: frame mid-window resets the unavailable window (ND-078)")
+    }
+
+    // ND-078: lid open → closed mid-window resets it; reopening needs a fresh full cap.
+    do {
+        let config = Config()
+        let cap = config.maxCameraUnavailableSeconds
+        let locker = SpyLocker(succeed: true)
+        let lid = FakeLid(.open)
+        let e = makeEngine(StubCamera(.unavailable("wedged")), StubRecognizer(.noFace), locker, config,
+                           lid: { lid.state })
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(cap - 1))
+        lid.state = .closed
+        await e.tick(now: t0.addingTimeInterval(cap + 10))       // clears the window
+        lid.state = .open
+        await e.tick(now: t0.addingTimeInterval(cap + 20))       // new window opens here
+        await e.tick(now: t0.addingTimeInterval(2 * cap + 19))   // under the new cap
+        c.expect(e.state == .cameraUnavailable && locker.lockCallCount == 0,
+                 "lid open → closed mid-window resets the unavailable window (ND-078)")
+    }
+
+    // ND-078: unavailable ticks interleaved with busy ticks do NOT restart the
+    // ND-033 call cap — busy past the cap still escalates and locks.
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.cameraBusyNoFrames)
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config)
+        let callCap = config.maxCallAssumedPresentSeconds
+        // Alternate busy / unavailable every 30s: the unavailable run never reaches
+        // its own cap, and must not reset callAssumedSince either.
+        var t = 0.0
+        var phase = 0
+        while t < callCap {
+            camera.outcome = phase % 2 == 0 ? .cameraBusyNoFrames : .unavailable("flap")
+            await e.tick(now: t0.addingTimeInterval(t))
+            t += 30; phase += 1
+        }
+        let noLockBeforeCap = locker.lockCallCount == 0
+        camera.outcome = .cameraBusyNoFrames
+        for i in 0..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(callCap + Double(i)))
+        }
+        await e.tick(now: t0.addingTimeInterval(callCap + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1))
+        c.expect(noLockBeforeCap && e.state == .suspended && locker.lockCallCount == 1,
+                 "unavailable ticks interleaved with busy don't restart the call cap (ND-078/ND-033)")
+    }
+
+    // ND-078 security fix: pre-cap unavailable ticks HOLD (don't reset), so every
+    // interleaving of absence ticks with unavailable ticks still locks (lid open).
+    do {
+        // (a) busy past the call cap, unavailable every other tick.
+        let config = Config()
+        let callCap = config.maxCallAssumedPresentSeconds
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.cameraBusyNoFrames)
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config)
+        await e.tick(now: t0)
+        for i in 0..<60 {
+            camera.outcome = i % 2 == 0 ? .cameraBusyNoFrames : .unavailable("flicker")
+            await e.tick(now: t0.addingTimeInterval(callCap + Double(i)))
+        }
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended,
+                 "lid open: busy past call cap interleaved with unavailable → locks (ND-078 fix)")
+    }
+    do {
+        // (b) no-face frames interleaved with unavailable ("no fresh frame").
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.frame(CapturedFrame()))
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker)
+        for i in 0..<60 {
+            camera.outcome = i % 2 == 0 ? .frame(CapturedFrame()) : .unavailable("stale")
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended,
+                 "lid open: no-face frames interleaved with unavailable → locks (ND-078 fix)")
+    }
+    do {
+        // (c) lid closed: interleavings keep today's reset → never lock.
+        let config = Config()
+        let callCap = config.maxCallAssumedPresentSeconds
+        let lockerA = SpyLocker(succeed: true)
+        let camA = StubCamera(.cameraBusyNoFrames)
+        let a = makeEngine(camA, StubRecognizer(.noFace), lockerA, config, lid: { .closed })
+        await a.tick(now: t0)
+        for i in 0..<600 {
+            camA.outcome = i % 2 == 0 ? .cameraBusyNoFrames : .unavailable("clamshell")
+            await a.tick(now: t0.addingTimeInterval(callCap + Double(i)))
+        }
+        let lockerB = SpyLocker(succeed: true)
+        let camB = StubCamera(.frame(CapturedFrame()))
+        let b = makeEngine(camB, StubRecognizer(.noFace), lockerB, config, lid: { .closed })
+        for i in 0..<600 {
+            camB.outcome = i % 2 == 0 ? .frame(CapturedFrame()) : .unavailable("clamshell")
+            await b.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        c.expect(lockerA.lockCallCount == 0 && lockerB.lockCallCount == 0,
+                 "lid closed: busy/no-face interleaved with unavailable → never locks (ND-078)")
+    }
+    do {
+        // (d) present user + brief unavailable blip → frames resume showing the user → no lock.
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.frame(CapturedFrame()))
+        let e = makeEngine(camera, StubRecognizer(.enrolledUserPresent(confidence: 1)), locker, config)
+        await e.tick(now: t0)
+        camera.outcome = .unavailable("blip")
+        for i in 1...10 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let heldUnavailable = e.state == .cameraUnavailable
+        camera.outcome = .frame(CapturedFrame())
+        for i in 11...60 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        c.expect(heldUnavailable && e.state == .present && locker.lockCallCount == 0,
+                 "present + brief unavailable blip → frames resume with user → no false lock (ND-078)")
+    }
+    do {
+        // (e) hold keeps an unresolved .lockFailed warning and its retry schedule.
+        let config = Config()
+        let locker = ScriptedLocker([false])
+        let camera = StubCamera(.frame(CapturedFrame()))
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config)
+        await driveUntilGraceElapsed(e, config)
+        let firstAt = Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1
+        camera.outcome = .unavailable("blip")
+        await e.tick(now: t0.addingTimeInterval(firstAt + 3))
+        let keptFailed = e.state == .lockFailed && e.lockFailureCount == 1
+        camera.outcome = .frame(CapturedFrame())
+        await e.tick(now: t0.addingTimeInterval(firstAt + 10))
+        c.expect(keptFailed && locker.lockCallCount == 2 && e.lockFailureCount == 2,
+                 "unavailable hold keeps .lockFailed + retry schedule (ND-078/ND-054)")
+    }
+
+    // ND-098: busy interleaved with frames. Only an enrolled-user frame ends the
+    // busy window; noFace / error frames don't, so the call cap still bounds it.
+    for (label, result) in [("noFace", RecognitionResult.noFace),
+                            ("strangerOnly", RecognitionResult.strangerOnly),
+                            ("error", RecognitionResult.error("vision"))] {
+        let config = Config()
+        let callCap = config.maxCallAssumedPresentSeconds
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.cameraBusyNoFrames)
+        let e = makeEngine(camera, StubRecognizer(result), locker, config)
+        var firstLockAt: Double?
+        var t = 0.0
+        while t < callCap + 60 {
+            camera.outcome = Int(t) % 2 == 0 ? .cameraBusyNoFrames : .frame(CapturedFrame())
+            await e.tick(now: t0.addingTimeInterval(t))
+            if firstLockAt == nil && locker.lockCallCount > 0 { firstLockAt = t }
+            t += 1
+        }
+        let bound = callCap + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 5
+        c.expect(firstLockAt.map { $0 >= callCap && $0 <= bound } ?? false,
+                 "busy/\(label) alternating → no lock before cap, locks by cap + consensus + grace (ND-098), at \(firstLockAt.map { String($0) } ?? "never")")
+    }
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let camera = StubCamera(.cameraBusyNoFrames)
+        let e = makeEngine(camera, StubRecognizer(.enrolledUserPresent(confidence: 1)), locker, config)
+        var t = 0.0
+        while t < 3 * config.maxCallAssumedPresentSeconds {
+            camera.outcome = Int(t) % 2 == 0 ? .cameraBusyNoFrames : .frame(CapturedFrame())
+            await e.tick(now: t0.addingTimeInterval(t))
+            t += 1
+        }
+        c.expect(locker.lockCallCount == 0,
+                 "busy/enrolledUserPresent alternating (user really present) → never locks (ND-098)")
+    }
+
+    // ND-078: pause mid-window clears it (full reset).
+    do {
+        let config = Config()
+        let cap = config.maxCameraUnavailableSeconds
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.unavailable("wedged")), StubRecognizer(.noFace), locker, config)
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(cap - 1))
+        e.pause()
+        await e.tick(now: t0.addingTimeInterval(cap + 5))        // new window opens here
+        c.expect(e.state == .cameraUnavailable && locker.lockCallCount == 0,
+                 "pause clears the unavailable window (ND-078)")
+    }
+
+    // ND-078 + ND-054: after escalation, a failed lock is retried on the backoff.
+    do {
+        let config = Config()
+        let cap = config.maxCameraUnavailableSeconds
+        let locker = ScriptedLocker([false])
+        let e = makeEngine(StubCamera(.unavailable("wedged")), StubRecognizer(.noFace), locker, config)
+        await e.tick(now: t0)
+        for i in 0..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(cap + Double(i)))
+        }
+        let firstAt = cap + Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1
+        await e.tick(now: t0.addingTimeInterval(firstAt))
+        let failedOnce = locker.lockCallCount == 1 && e.state == .lockFailed && e.lockFailureCount == 1
+        await e.tick(now: t0.addingTimeInterval(firstAt + 5))
+        let noEarly = locker.lockCallCount == 1
+        await e.tick(now: t0.addingTimeInterval(firstAt + 10))
+        c.expect(failedOnce && noEarly && locker.lockCallCount == 2 && e.state == .lockFailed,
+                 "unavailable escalation: failed lock retried at +10s, not before (ND-078/ND-054)")
     }
 
     // Absence → lock

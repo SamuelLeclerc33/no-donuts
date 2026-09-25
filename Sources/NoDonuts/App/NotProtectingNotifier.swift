@@ -242,7 +242,18 @@ final class NotProtectingNotifier {
     private func postNotification() {
         let content = UNMutableNotificationContent()
         content.title = "No Donuts isn\u{2019}t protecting you"
-        content.body = "It can\u{2019}t access the camera, so it can\u{2019}t tell if you\u{2019}re here. Check camera permission or that no other app is using the camera."
+        // ND-078 / ADR-0016: say what will actually happen — lid open escalates to a
+        // lock after the cap (+ consensus + grace); lid closed / desktop never locks.
+        let base = "It can\u{2019}t access the camera, so it can\u{2019}t tell if you\u{2019}re here. Check camera permission or that no other app is using the camera."
+        switch LidState.current() {
+        case .open:
+            let minutes = max(1, Int((Config().maxCameraUnavailableSeconds / 60).rounded()))
+            content.body = base + " If this lasts about \(minutes) minute\(minutes == 1 ? "" : "s"), your Mac will lock."
+        case .closed:
+            content.body = base + " The lid is closed, so the built-in camera can\u{2019}t see you and your Mac won\u{2019}t be locked automatically."
+        case .noLid:
+            content.body = base + " This Mac has no built-in camera, so it won\u{2019}t be locked automatically."
+        }
         content.sound = .default
 
         // Fixed identifier → each re-post replaces the prior one (no stacking).
