@@ -26,6 +26,7 @@ func runAll() async -> Bool {
     await runScreenLockerChainChecks(c)
     await runFrameFreshnessChecks(c)
     await runCameraTrustPolicyChecks(c)
+    await runCaptureFormatPolicyChecks(c)
     await runProtectionAuditChecks(c)
     await runFaceQualityGateChecks(c)
     await runFaceQualityVersionChecks(c)
@@ -35,8 +36,10 @@ func runAll() async -> Bool {
     await runStartupReminderChecks(c)
     await runLauncherHandoverChecks(c)
     await runSessionSuspendChecks(c)
+    await runTickScheduleChecks(c)
     await runEngineHardeningChecks(c)
     await runCoreMLOutputShapeChecks(c)
+    await runDeferredEmbedderChecks(c)
     await runAppIdentityChecks(c)
 
     print("\n\(c.passed) passed, \(c.failed) failed")

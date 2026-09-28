@@ -84,3 +84,38 @@ func runCameraTrustPolicyChecks(_ c: Checks) async {
                  "trust: built-in transport renders as 'bltn'")
     }
 }
+
+/// ND-096 capture preset / format / frame-rate policy.
+@MainActor
+func runCaptureFormatPolicyChecks(_ c: Checks) async {
+    print("\nND-096 — CaptureFormatPolicy (640×480 preset, lowest frame rate)")
+    typealias P = CaptureFormatPolicy
+    c.expect(P.preferredPreset(isSupported: { _ in true }) == "AVCaptureSessionPreset640x480",
+             "preset: 640×480 preferred when supported")
+    c.expect(P.preferredPreset(isSupported: { $0 != "AVCaptureSessionPreset640x480" }) == "AVCaptureSessionPreset960x540",
+             "preset: next-smallest ≥ 480 lines when 640×480 is unsupported")
+    c.expect(P.preferredPreset(isSupported: { _ in false }) == nil, "preset: none supported → leave the default")
+    c.expect(!P.presetPreference.contains("AVCaptureSessionPreset352x288")
+             && !P.presetPreference.contains("AVCaptureSessionPreset320x240"),
+             "preset: nothing below 480 lines (face gate floor would drop under ~58px)")
+
+    // The reference MacBook Pro camera's format list (enumerated 2026-09-28).
+    let mbp: [(width: Int, height: Int)] = [(640, 480), (1280, 720), (1760, 1328), (1328, 1760),
+                                            (1552, 1552), (1920, 1080), (1080, 1920)]
+    c.expect(P.preferredFormatIndex(dimensions: mbp) == 0, "format: MBP camera → native 640×480")
+    c.expect(P.preferredFormatIndex(dimensions: [(1920, 1080), (1280, 720)]) == 1,
+             "format: no VGA → smallest landscape ≥ 480 lines (1280×720)")
+    c.expect(P.preferredFormatIndex(dimensions: [(320, 240), (480, 640), (1920, 1080)]) == 2,
+             "format: sub-480 and portrait formats are never chosen")
+    c.expect(P.preferredFormatIndex(dimensions: [(352, 288)]) == nil, "format: nothing qualifies → nil")
+
+    let r = P.RateRange.init
+    var pick = P.lowestRate(in: [r(15, 30)])
+    c.expect(pick?.index == 0 && pick?.fps == 15, "fps: built-in 15–30 range → 15 fps (1 fps target clamped up)")
+    pick = P.lowestRate(in: [r(30, 60), r(1, 30)])
+    c.expect(pick?.index == 1 && pick?.fps == 1, "fps: the LOWEST range is chosen, not merely the first")
+    pick = P.lowestRate(in: [r(0.5, 30)])
+    c.expect(pick?.fps == 1, "fps: never below the 1 fps target even if the device could go lower")
+    c.expect(P.lowestRate(in: []) == nil, "fps: no ranges → leave the device default")
+    c.expect(P.lowestRate(in: [r(0, 0), r(.nan, 30)]) == nil, "fps: degenerate ranges ignored")
+}

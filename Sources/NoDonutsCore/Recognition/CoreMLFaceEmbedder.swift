@@ -45,7 +45,10 @@ import os
 ///
 /// Concurrency: `@unchecked Sendable`, mirroring `VisionFeaturePrintEmbedder` — the
 /// synchronous Vision/Core ML calls run on a dedicated serial queue via a continuation,
-/// so the main actor is never blocked.
+/// so the main actor is never blocked. The synchronous initializers LOAD the model on
+/// the calling thread; the app uses the async `load(...)` factory (ND-095) through a
+/// `DeferredFaceEmbedder`, so launch never blocks the main thread. FaceScore (a CLI)
+/// keeps the synchronous `compiledModelURL:` init.
 public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
 
     public let descriptor: FaceEmbeddingModelDescriptor
@@ -80,69 +83,139 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         bundle: Bundle = .main,
         paddingFraction: CGFloat = 0.25
     ) {
-        guard let url = bundle.url(forResource: resourceName, withExtension: "mlmodelc") else {
-            // Expected in the current repo: the model isn't bundled. Log and fail so the
-            // app falls back to the Vision embedder — never crash, never no-op silently.
-            Logger(subsystem: Log.subsystem, category: "recognition")
-                .notice("Core ML face model '\(resourceName, privacy: .public).mlmodelc' not bundled — falling back to the Vision embedder (ND-021 Phase 1)")
-            return nil
-        }
+        // Expected in the current repo when the model isn't bundled: log and fail so the
+        // app falls back to the Vision embedder — never crash, never no-op silently.
+        guard let url = Self.compiledModelURL(resourceName: resourceName, bundle: bundle) else { return nil }
         self.init(descriptor: descriptor, compiledModelURL: url, paddingFraction: paddingFraction)
     }
 
     /// Load a compiled Core ML model from an explicit **file URL**, bypassing bundle
     /// resource lookup.
     ///
-    /// Same contract as the `resourceName:` initializer (this is the designated one it
-    /// delegates to) — `nil` on a model that is absent, unloadable, or has no image input.
+    /// Same contract as the `resourceName:` initializer (which delegates here) — `nil` on
+    /// a model that is absent, unloadable, has no image input, or the wrong output size.
     ///
     /// Exists so off-app tools can drive the EXACT production embedder rather than a
     /// reimplementation of it: `FaceScore` (the ND-056 threshold-tuning harness) scores
     /// image files through this same pipeline, so measured thresholds transfer to the app
     /// unchanged. A tuning number produced by a parallel implementation would not.
-    public init?(
+    public convenience init?(
         descriptor: FaceEmbeddingModelDescriptor = .facenetVGGFace2,
         compiledModelURL url: URL,
         paddingFraction: CGFloat = 0.25
     ) {
-        self.descriptor = descriptor
-        self.paddingFraction = paddingFraction
-
+        let loaded: MLModel
         do {
-            let configuration = MLModelConfiguration()
-            let loaded = try MLModel(contentsOf: url, configuration: configuration)
-            self.model = loaded
-            // Discover the single image input feature name so we don't hardcode it — a
-            // later model swap may name it differently.
-            guard let imageInput = loaded.modelDescription.inputDescriptionsByName.first(where: {
-                $0.value.type == .image
-            }) else {
-                Logger(subsystem: Log.subsystem, category: "recognition")
-                    .error("Core ML face model has no image input feature — cannot use it")
-                return nil
-            }
-            self.inputFeatureName = imageInput.key
-
-            // ND-087: the model must produce the embedding size the descriptor claims
-            // (512 for FaceNet). A different model shipped under the same descriptor
-            // would store and compare vectors from another embedding space, so a
-            // mismatch refuses the model here. The caller then falls back, and the
-            // ND-073 identity-off state makes that visible.
-            let multiArrayShapes = loaded.modelDescription.outputDescriptionsByName.values
-                .filter { $0.type == .multiArray }
-                .map { ($0.multiArrayConstraint?.shape ?? []).map { $0.intValue } }
-            guard coreMLOutputDimensionMatches(multiArrayOutputShapes: multiArrayShapes,
-                                               expected: descriptor.outputDimension) else {
-                let found = multiArrayShapes.map { "\($0)" }.joined(separator: ", ")
-                Logger(subsystem: Log.subsystem, category: Log.Category.recognition)
-                    .error("Core ML face model output shape [\(found, privacy: .public)] does not match the expected \(descriptor.outputDimension, privacy: .public)-d embedding for \(descriptor.version, privacy: .public) — refusing the model (ND-087)")
-                return nil
-            }
+            loaded = try MLModel(contentsOf: url, configuration: Self.modelConfiguration())
         } catch {
             Logger(subsystem: Log.subsystem, category: "recognition")
                 .error("failed to load Core ML face model: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+        guard let inputName = Self.validatedImageInputName(of: loaded, descriptor: descriptor) else { return nil }
+        self.init(descriptor: descriptor, model: loaded, inputFeatureName: inputName,
+                  paddingFraction: paddingFraction)
+    }
+
+    /// ND-095: load the compiled model OFF the calling thread (`MLModel.load(contentsOf:
+    /// configuration:)`, async) — the launch path uses this so the main thread never
+    /// blocks on the ~45 MB model (a cold Neural-Engine load is ~0.8 s on an M5 Pro;
+    /// warm ~50 ms once Core ML has cached the compiled plan).
+    ///
+    /// Same contract as the synchronous initializers: `nil` (logged) when the resource
+    /// is absent, fails to load, has no image input, or has the wrong output size (ND-087).
+    public static func load(
+        descriptor: FaceEmbeddingModelDescriptor = .facenetVGGFace2,
+        resourceName: String,
+        bundle: Bundle = .main,
+        paddingFraction: CGFloat = 0.25
+    ) async -> CoreMLFaceEmbedder? {
+        guard let url = compiledModelURL(resourceName: resourceName, bundle: bundle) else { return nil }
+        return await load(descriptor: descriptor, compiledModelURL: url, paddingFraction: paddingFraction)
+    }
+
+    /// ND-095: async load from an explicit compiled-model URL (see `load(resourceName:)`).
+    public static func load(
+        descriptor: FaceEmbeddingModelDescriptor = .facenetVGGFace2,
+        compiledModelURL url: URL,
+        paddingFraction: CGFloat = 0.25
+    ) async -> CoreMLFaceEmbedder? {
+        let loaded: MLModel
+        do {
+            loaded = try await MLModel.load(contentsOf: url, configuration: modelConfiguration())
+        } catch {
+            Logger(subsystem: Log.subsystem, category: "recognition")
+                .error("failed to load Core ML face model: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        guard let inputName = validatedImageInputName(of: loaded, descriptor: descriptor) else { return nil }
+        return CoreMLFaceEmbedder(descriptor: descriptor, model: loaded, inputFeatureName: inputName,
+                                  paddingFraction: paddingFraction)
+    }
+
+    /// URL of the bundled compiled model, or `nil` (logged) when it isn't bundled. Cheap
+    /// (a bundle lookup, no model load) — the launch path uses it to decide SYNCHRONOUSLY
+    /// between "Core ML is coming" and the Vision fallback (ND-095).
+    public static func compiledModelURL(resourceName: String, bundle: Bundle = .main) -> URL? {
+        guard let url = bundle.url(forResource: resourceName, withExtension: "mlmodelc") else {
+            Logger(subsystem: Log.subsystem, category: "recognition")
+                .notice("Core ML face model '\(resourceName, privacy: .public).mlmodelc' not bundled — falling back to the Vision embedder (ND-021 Phase 1)")
+            return nil
+        }
+        return url
+    }
+
+    /// ND-095: explicit compute units. `.cpuAndNeuralEngine`, not the default `.all`:
+    /// measured on an M5 Pro with this model, CPU+ANE gives the lowest steady inference
+    /// (~0.6 ms vs ~2 ms CPU-only and ~5 ms CPU+GPU) and keeps the GPU out of the picture
+    /// entirely — a 1 fps background app shouldn't wake the GPU, and the GPU path paid a
+    /// ~3.6 s shader compile on its first inference. `.all` picked the ANE here too, but
+    /// leaves Core ML free to route to the GPU; pinning it makes the power profile
+    /// deterministic. Macs without a Neural Engine run on the CPU (~2 ms, still fine).
+    public static func modelConfiguration() -> MLModelConfiguration {
+        let configuration = MLModelConfiguration()
+        configuration.computeUnits = .cpuAndNeuralEngine
+        return configuration
+    }
+
+    /// Validate a loaded model and return its image input feature name, or `nil` (logged)
+    /// if it has no image input or its output doesn't match the descriptor (ND-087).
+    private static func validatedImageInputName(of loaded: MLModel,
+                                                descriptor: FaceEmbeddingModelDescriptor) -> String? {
+        // Discover the single image input feature name so we don't hardcode it — a
+        // later model swap may name it differently.
+        guard let imageInput = loaded.modelDescription.inputDescriptionsByName.first(where: {
+            $0.value.type == .image
+        }) else {
+            Logger(subsystem: Log.subsystem, category: "recognition")
+                .error("Core ML face model has no image input feature — cannot use it")
+            return nil
+        }
+
+        // ND-087: the model must produce the embedding size the descriptor claims
+        // (512 for FaceNet). A different model shipped under the same descriptor
+        // would store and compare vectors from another embedding space, so a
+        // mismatch refuses the model here. The caller then falls back, and the
+        // ND-073 identity-off state makes that visible.
+        let multiArrayShapes = loaded.modelDescription.outputDescriptionsByName.values
+            .filter { $0.type == .multiArray }
+            .map { ($0.multiArrayConstraint?.shape ?? []).map { $0.intValue } }
+        guard coreMLOutputDimensionMatches(multiArrayOutputShapes: multiArrayShapes,
+                                           expected: descriptor.outputDimension) else {
+            let found = multiArrayShapes.map { "\($0)" }.joined(separator: ", ")
+            Logger(subsystem: Log.subsystem, category: Log.Category.recognition)
+                .error("Core ML face model output shape [\(found, privacy: .public)] does not match the expected \(descriptor.outputDimension, privacy: .public)-d embedding for \(descriptor.version, privacy: .public) — refusing the model (ND-087)")
+            return nil
+        }
+        return imageInput.key
+    }
+
+    private init(descriptor: FaceEmbeddingModelDescriptor, model: MLModel,
+                 inputFeatureName: String, paddingFraction: CGFloat) {
+        self.descriptor = descriptor
+        self.model = model
+        self.inputFeatureName = inputFeatureName
+        self.paddingFraction = paddingFraction
     }
 
     public func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {

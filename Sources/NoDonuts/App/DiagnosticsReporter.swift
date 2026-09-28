@@ -121,7 +121,6 @@ struct DiagnosticsReporter {
         lines.append("  consecutiveAbsentTicksToLock:   \(config.consecutiveAbsentTicksToLock)")
         lines.append("  maxConsecutiveErrorsBeforeAbsent: \(config.maxConsecutiveErrorsBeforeAbsent)")
         lines.append("  maxCallAssumedPresentSeconds:   \(config.maxCallAssumedPresentSeconds)")
-        lines.append("  throttleOnBattery:              \(config.throttleOnBattery)")
         lines.append("")
 
         // --- Effective recognizer values ---

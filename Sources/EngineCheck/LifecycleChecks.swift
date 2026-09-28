@@ -183,3 +183,45 @@ func runSessionSuspendChecks(_ c: Checks) async {
                  "ND-090: awake ≥30s after willSleep with no didWake → stale, cleared")
     }
 }
+
+/// ND-042a fixed-cadence (deadline-based) presence loop scheduling.
+@MainActor
+func runTickScheduleChecks(_ c: Checks) async {
+    print("\nND-042a — TickSchedule (deadline cadence, skip missed deadlines)")
+    // Work finished inside the interval: next deadline = previous + interval, so
+    // work time does NOT add to the period (old loop: work + sleep).
+    var n = TickSchedule.next(after: 100, interval: 1, now: 100.3)
+    c.expect(n.deadline == 101 && n.skipped == 0, "tick: 300ms of work → next tick at start + 1s, not +1.3s")
+    c.expect(abs(TickSchedule.delay(until: n.deadline, now: 100.3) - 0.7) < 1e-9, "tick: sleep = interval − work (0.7s)")
+
+    // Ten ticks with 300ms of work each stay on the 1s grid (no drift).
+    var d: TimeInterval = 0
+    for _ in 0..<10 { d = TickSchedule.next(after: d, interval: 1, now: d + 0.3).deadline }
+    c.expect(abs(d - 10) < 1e-9, "tick: 10 ticks × (0.3s work) land at exactly 10s — no cumulative drift")
+
+    // Finished exactly on the next deadline → run it now, nothing skipped.
+    n = TickSchedule.next(after: 100, interval: 1, now: 101)
+    c.expect(n.deadline == 101 && n.skipped == 0, "tick: finishing exactly on the deadline → due now, 0 skipped")
+
+    // Overran 2.5 intervals → skip the missed grid points, never burst.
+    n = TickSchedule.next(after: 100, interval: 1, now: 102.5)
+    c.expect(n.deadline == 103 && n.skipped == 2, "tick: 2.5s overrun → next at 103 (2 skipped), no back-to-back burst")
+    c.expect(TickSchedule.delay(until: n.deadline, now: 102.5) == 0.5, "tick: after an overrun the sleep is to the next grid point")
+
+    // Interval change (Settings) applies from the next deadline.
+    n = TickSchedule.next(after: 100, interval: 2, now: 100.4)
+    c.expect(n.deadline == 102 && n.skipped == 0, "tick: a new 2s interval applies from the previous deadline")
+
+    // Degenerate inputs never spin.
+    n = TickSchedule.next(after: 100, interval: 0, now: 100)
+    c.expect(n.deadline >= 100 + TickSchedule.minimumInterval, "tick: 0s interval floored (no spin)")
+    n = TickSchedule.next(after: 100, interval: .nan, now: 100)
+    c.expect(n.deadline >= 100 + TickSchedule.minimumInterval, "tick: NaN interval floored (no spin)")
+    n = TickSchedule.next(after: .nan, interval: 1, now: 50)
+    c.expect(n.deadline == 51 && n.skipped == 0, "tick: non-finite previous deadline re-anchors to now + interval")
+    c.expect(TickSchedule.delay(until: 10, now: 20) == 0, "tick: a past deadline never gives a negative sleep")
+
+    // Huge gap (e.g. a long stall) still resolves to the next future grid point.
+    n = TickSchedule.next(after: 0, interval: 1, now: 86_400.25)
+    c.expect(n.deadline == 86_401 && n.skipped == 86_400, "tick: a day-long stall resolves to the next grid point")
+}

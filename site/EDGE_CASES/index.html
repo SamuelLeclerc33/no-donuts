@@ -1276,8 +1276,8 @@
 <tr>
 <td>EC-18</td>
 <td><strong>Battery / power profile</strong></td>
-<td>Duty-cycle checks; possibly slow tick on battery to save power.</td>
-<td>OPEN</td>
+<td>Duty-cycle checks; possibly slow tick on battery to save power. <strong>2026-09-28 (ND-042/096/069):</strong> capture is 640×480 at the camera's minimum of 15 fps (it was 1080p; the old "1 fps" target was always clamped to 15); a fixed-cadence 1 s tick; the model runs on CPU + Neural Engine at ~0.6 ms per inference. There is NO battery throttle, by decision: slower ticks would lengthen walk-away→lock. Stopping the camera between ticks stays rejected (the camera light honestly shows we're watching).</td>
+<td>DECIDED</td>
 <td>blart/homer</td>
 </tr>
 <tr>

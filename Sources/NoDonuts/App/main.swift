@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Active face embedder (ND-021 Phase 2). Prefer the bundled Core ML FaceNet model
     /// (`CoreMLFaceEmbedder`) for a true face-IDENTITY embedding (durable EC-03 fix); fall
     /// back to `VisionFeaturePrintEmbedder` when the compiled `.mlmodelc` isn't bundled
-    /// (its failable init returns nil and logs). Shared by the recognizer AND enrollment,
+    /// or fails to load (loaded off the main thread, ND-095). Shared by the recognizer AND enrollment,
     /// so both always use the SAME model — enrollment tags its stored vectors with this
     /// embedder's descriptor.version, and a mismatch forces re-enroll (never cross-compared).
     private let embedder: FaceEmbedding = AppDelegate.makeEmbedder()
@@ -99,18 +99,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Select the launch embedder: Core ML FaceNet if its compiled model is bundled,
     /// otherwise the Vision feature-print fallback. Logs which one is active (honest —
     /// mirrors the existing launch logging), so `log stream` shows the real engine.
+    ///
+    /// ND-095: never loads the model on the main thread. The bundle lookup (cheap) decides
+    /// synchronously: no model → Vision now, exactly as before. Model present → a
+    /// `DeferredFaceEmbedder` that loads it in the background (explicit compute units, see
+    /// `CoreMLFaceEmbedder.modelConfiguration`). While it loads, the descriptor is
+    /// FaceNet's (so ND-073 identity status stays `.active`, no flap) and recognizer /
+    /// enrollment calls wait for it. If the load fails → Vision fallback, loud ND-073
+    /// identity-off on the next tick, as a synchronous failure did before.
     private static func makeEmbedder() -> FaceEmbedding {
         let log = OSLog(subsystem: Log.subsystem, category: "recognition")
-        if let coreML = CoreMLFaceEmbedder(resourceName: "FaceNetVGGFace2") {
-            os_log("active face embedder = CoreMLFaceEmbedder (%{public}@, %d-d, tuned=%{public}@)",
-                   log: log, type: .default,
-                   coreML.descriptor.version, coreML.descriptor.outputDimension,
-                   coreML.descriptor.thresholdIsTuned ? "yes" : "no")
-            return coreML
+        guard let modelURL = CoreMLFaceEmbedder.compiledModelURL(resourceName: "FaceNetVGGFace2") else {
+            os_log("active face embedder = VisionFeaturePrintEmbedder (Core ML model not bundled — fallback)",
+                   log: log, type: .default)
+            return VisionFeaturePrintEmbedder()
         }
-        os_log("active face embedder = VisionFeaturePrintEmbedder (Core ML model not bundled — fallback)",
-               log: log, type: .default)
-        return VisionFeaturePrintEmbedder()
+        let started = Date()
+        let deferred = DeferredFaceEmbedder(
+            presumed: .facenetVGGFace2,
+            fallback: VisionFeaturePrintEmbedder(),
+            load: { await CoreMLFaceEmbedder.load(compiledModelURL: modelURL) }
+        )
+        Task.detached(priority: .utility) {
+            let active = await deferred.resolvedEmbedder()
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            if active is CoreMLFaceEmbedder {
+                os_log("active face embedder = CoreMLFaceEmbedder (%{public}@, %d-d, tuned=%{public}@; loaded off-main in %d ms)",
+                       log: log, type: .default,
+                       active.descriptor.version, active.descriptor.outputDimension,
+                       active.descriptor.thresholdIsTuned ? "yes" : "no", ms)
+            } else {
+                os_log("active face embedder = VisionFeaturePrintEmbedder (Core ML model failed to load after %d ms — fallback; identity OFF until re-enrolled)",
+                       log: log, type: .error, ms)
+            }
+        }
+        return deferred
     }
     /// True during an enrollment capture: an enforcement-disabled reason (like pause)
     /// so nothing can lock the screen mid-capture. Priority in the gate sits just
@@ -883,15 +906,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Start the presence loop if it isn't already running. A single cancellable
     /// main-actor Task (ADR-0005); idempotent so resume events can't stack loops.
+    ///
+    /// ND-042a: fixed cadence. Each tick is due at the previous deadline +
+    /// `tickIntervalSeconds` on the monotonic uptime clock (`TickSchedule`), so
+    /// capture + recognition time shortens the sleep instead of stretching the
+    /// period (and the walk-away→lock math). An overrun skips missed deadlines
+    /// rather than bursting ticks. ND-042e: each tick's work time is logged at
+    /// `.debug` (`log stream --level debug --predicate 'subsystem == "…" AND
+    /// category == "presence"'`) to judge duty cycle / power.
     private func startLoop() {
         guard loopTask == nil, let engine, let menuBar else { return }
+        let loopLog = OSLog(subsystem: Log.subsystem, category: Log.Category.presence)
         loopTask = Task { @MainActor in
+            var deadline = ProcessInfo.processInfo.systemUptime   // first tick: now
             while !Task.isCancelled {
                 let generationAtTickStart = self.identityGeneration
+                let workStart = ProcessInfo.processInfo.systemUptime
                 await engine.tick(now: Date())
+                let workEnd = ProcessInfo.processInfo.systemUptime
                 // A tick cancelled mid-flight (e.g. session suspend) must not
                 // render stale state on top of a freshly-resumed loop.
                 if Task.isCancelled { break }
+                let captureMs = (self.camera?.lastCaptureDuration ?? 0) * 1000
+                let totalMs = (workEnd - workStart) * 1000
+                os_log("tick work %.0f ms (capture %.0f ms, recognize+decide %.0f ms)",
+                       log: loopLog, type: .debug, totalMs, captureMs, max(0, totalMs - captureMs))
                 menuBar.setCameraUnavailableReason(self.camera?.lastUnavailableReason)
                 menuBar.render(state: engine.state, lockFailureCount: engine.lockFailureCount)
                 // ND-045: honest "not protecting" notification. Only fires on the
@@ -913,7 +952,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 // Read the interval fresh each iteration so a Settings change to the
                 // check interval (ND-040) live-applies without restarting the loop.
-                try? await Task.sleep(for: .seconds(self.config.tickIntervalSeconds))
+                let now = ProcessInfo.processInfo.systemUptime
+                let next = TickSchedule.next(after: deadline,
+                                             interval: self.config.tickIntervalSeconds,
+                                             now: now)
+                if next.skipped > 0 {
+                    os_log("tick overran its interval; skipped %d deadline(s)",
+                           log: loopLog, type: .debug, next.skipped)
+                }
+                deadline = next.deadline
+                // Cancellation throws out of the sleep; the while condition exits.
+                try? await Task.sleep(for: .seconds(TickSchedule.delay(until: deadline, now: now)))
             }
         }
     }

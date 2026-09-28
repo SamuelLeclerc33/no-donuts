@@ -66,7 +66,9 @@ public enum FaceEmbeddingResult: Sendable {
 public protocol FaceEmbedding: Sendable {
     /// The model this embedder implements (ADR-0014). Drives the base match threshold and
     /// the embedding-version stamp used to force re-enrollment when the model changes
-    /// (see `FaceEmbeddingModelDescriptor` / `IdentityRecognizer`). Static per embedder.
+    /// (see `FaceEmbeddingModelDescriptor` / `IdentityRecognizer`). Static per embedder,
+    /// except `DeferredFaceEmbedder` (ND-095), which changes it at most once when its load
+    /// resolves — read it per use, don't cache it.
     var descriptor: FaceEmbeddingModelDescriptor { get }
 
     /// Detect the (largest) face in `frame` and return its embedding + liveness

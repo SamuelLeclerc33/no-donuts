@@ -65,8 +65,13 @@ public struct Config: Codable, Equatable {
     /// escalates. Like the call cap, this is NOT the time to lock: effective ceiling
     /// ≈ this + consensus (`consecutiveAbsentTicksToLock` × tick) + `graceSeconds`.
     public var maxCameraUnavailableSeconds: Double = 120
-    /// Slow the tick on battery to save power (EC-18). TODO(blart/homer).
-    public var throttleOnBattery: Bool = true
+    // ND-069: there is deliberately NO "throttle on battery" tunable. Slowing the
+    // tick on battery multiplies the walk-away→lock time (consensus × tick), so an
+    // unplugged laptop — the one most likely to be carried into an open office —
+    // would be the least protected. Power is handled at the camera instead (ND-096:
+    // 640×480, lowest frame rate) and measured per tick (ND-042e). The old
+    // `throttleOnBattery` flag was read by nothing; it was removed, not implemented.
+    // (A stored config with that key still decodes: unknown keys are ignored.)
 
     public init() {}
 }

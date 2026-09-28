@@ -18,7 +18,9 @@ private func hostNow() -> TimeInterval {
 // Owner: blart — camera capture, camera-in-use monitoring, display/session state.
 // Backlog: ND-011 (permission), ND-012 (single-frame capture), ND-013 (suspend/resume),
 //          ND-031 (busy fallback), ND-055 (stale-frame guard), ND-084 (session fixes),
-//          ND-075 (trust only the built-in camera; see CameraTrustPolicy).
+//          ND-075 (trust only the built-in camera; see CameraTrustPolicy),
+//          ND-042 (pre-warm, per-tick timing, buffer-pinning argument),
+//          ND-096 (640×480 preset + lowest frame rate; see CaptureFormatPolicy).
 
 /// Captures frames for the presence loop. Pulls a single frame per tick (not a
 /// continuous stream) to save power, and reports when the camera is busy or the
@@ -65,6 +67,30 @@ public protocol CameraCapturing: Sendable {
 /// Continuity, and virtual cameras are ignored (logged once); with no trusted
 /// device `capture()` reports `.unavailable(CameraTrustPolicy.noTrustedCameraReason)`.
 ///
+/// Capture format (ND-096): the session asks for the 640×480 preset and the
+/// device's lowest frame rate (15 fps on the built-in camera, which offers only
+/// 15–30), with the device kept locked across `startRunning()` so the rate isn't
+/// reset, and the actual active format / frame duration logged once per
+/// configure. Both are skipped while another app shares the device, so a call's
+/// stream is never throttled or downscaled by us. See `CaptureFormatPolicy`.
+///
+/// Pre-warm (ND-042c): `resume()` — called when enforcement turns on — configures
+/// and starts the session straight away if camera access is granted, and a grant
+/// that arrives later (onboarding) pre-warms if the camera was last resumed. So
+/// the session is brought up outside the tick, and an unlock after a
+/// launch-while-locked start no longer waits for the next `capture()`. Nothing
+/// pre-warms while suspended or before the first `resume()` (paused / trusted
+/// network at launch leave the camera off).
+///
+/// Pixel-buffer pinning (ND-042d): the delegate keeps exactly one
+/// `CVPixelBuffer` (the latest), and each delivery replaces — so releases — the
+/// previous one; the tick holds one more only for the length of recognition. At
+/// most two pool buffers are pinned, well under the data output's pool, so the
+/// pool can't be starved; no deep copy is needed (it would cost a 460 KB copy
+/// per delivered frame, 15×/s, to save nothing). `captureOutput(_:didDrop:)`
+/// logs an `OutOfBuffers` drop at `.notice` so on-device logs would show it if
+/// that ever stops holding.
+///
 /// Privacy: frames live in memory only. We hand the `CVPixelBuffer` to the
 /// recognizer and never write it to disk or off-device.
 public final class CameraController: CameraCapturing, @unchecked Sendable {
@@ -110,6 +136,13 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// locked) must not turn the camera on behind the lock screen.
     private var suspended = false
 
+    /// True after `resume()` until the next `suspend()` (false at launch).
+    /// Guarded by `sessionQueue`. Only a resumed camera is pre-warmed when
+    /// access is granted later (ND-042c): a launch that starts paused or on a
+    /// trusted network never calls `resume()`, so the grant doesn't start the
+    /// camera there.
+    private var resumed = false
+
     /// Result of `ensureConfigured`.
     private enum ConfigureResult {
         case ready
@@ -122,9 +155,23 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// Guarded by `sessionQueue`.
     private var loggedInventory: String?
 
+    /// Last capture-format summary logged at `.notice` by
+    /// `startRunningWithCaptureFormat`. Guarded by `sessionQueue`.
+    private var lastLoggedCaptureFormat: String?
+
     /// Guards `_lastUnavailableReason`.
     private let reasonLock = NSLock()
     private var _lastUnavailableReason: String?
+    private var _lastCaptureDuration: TimeInterval?
+
+    /// Wall time of the most recent `capture()` call, in seconds (ND-042e), or
+    /// nil before the first. Thread-safe. The loop logs it with the tick's total
+    /// work time at `.debug`, so power / duty cycle can be judged from logs.
+    public var lastCaptureDuration: TimeInterval? {
+        reasonLock.lock()
+        defer { reasonLock.unlock() }
+        return _lastCaptureDuration
+    }
 
     /// Reason from the most recent `.unavailable` outcome; nil after a
     /// successful `.frame` (and before the first capture). Thread-safe. For
@@ -157,16 +204,26 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// the presence loop (so a tick never blocks on the TCC dialog).
     public func requestAccessIfNeeded() async {
         if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
-            _ = await AVCaptureDevice.requestAccess(for: .video)
+            let granted = await AVCaptureDevice.requestAccess(for: .video)
+            // ND-042c: bring the session up now rather than inside the next tick
+            // — only if the camera is currently wanted (resumed, not suspended).
+            if granted {
+                sessionQueue.async { self.prewarmOnQueue(trigger: "camera access granted") }
+            }
         }
     }
 
     public func capture() async -> CaptureOutcome {
+        let started = hostNow()
         let outcome = await captureOutcome()
-        switch outcome {
-        case .unavailable(let reason): reasonLock.withLock { _lastUnavailableReason = reason }
-        case .frame: reasonLock.withLock { _lastUnavailableReason = nil }
-        default: break
+        let elapsed = hostNow() - started
+        reasonLock.withLock {
+            _lastCaptureDuration = elapsed
+            switch outcome {
+            case .unavailable(let reason): _lastUnavailableReason = reason
+            case .frame: _lastUnavailableReason = nil
+            default: break
+            }
         }
         return outcome
     }
@@ -303,6 +360,13 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         }
         guard inputOK, let input else { return .failed("cannot open camera input") }
 
+        // Another app already streaming from the device (a call): don't touch
+        // its format or rate (ND-096) — both are device-wide.
+        let sharedWithAnotherApp = device.isInUseByAnotherApplication
+        if sharedWithAnotherApp {
+            cameraLog.notice("Camera is in use by another app; not changing the session preset")
+        }
+
         session.beginConfiguration()
 
         guard session.canAddInput(input),
@@ -351,60 +415,23 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
             cameraLog.info("No video connection on the data output; skipping deterministic mirroring config")
         }
 
-        session.commitConfiguration()
-
-        // Low frame rate where supported — we only need ~1 frame per tick.
-        // Aim for ~1 fps, clamped into the format's supported range. Only
-        // set the duration if 1 fps actually fits the range; otherwise
-        // leave the device defaults alone.
-        //
-        // Some devices (e.g. an external UVC webcam surfaced as an
-        // AVCaptureDALDevice) reject `activeVideoMin/MaxFrameDuration`
-        // by THROWING an NSException, which Swift cannot catch with
-        // do/try/catch — it would propagate to abort() and crash on
-        // launch. So we (1) clamp the CMTime into the range's own
-        // [minFrameDuration, maxFrameDuration] and (2) perform the
-        // assignment inside an ObjC @try/@catch shim. A throwing device
-        // is NON-fatal: we just log and continue at the default rate.
-        //
-        // Skipped when another app already holds the device (a call): locking
-        // it and forcing 1 fps would throttle the call app's shared stream.
-        // We then run at the device default until the next reconfigure.
-        let sharedWithAnotherApp = device.isInUseByAnotherApplication
-        if sharedWithAnotherApp {
-            cameraLog.notice("Camera is in use by another app; not forcing a fixed frame rate")
-        }
+        // ND-096: smallest preset ≥ 640×480 (CaptureFormatPolicy). Set after
+        // the input is attached (canSetSessionPreset depends on it) and before
+        // commit, so the device switches format once.
         if !sharedWithAnotherApp,
-           let range = device.activeFormat.videoSupportedFrameRateRanges.first,
-           (try? device.lockForConfiguration()) != nil {
-            let targetFPS = min(max(1.0, range.minFrameRate), range.maxFrameRate)
-            var frameDuration = CMTime(value: 1,
-                                       timescale: CMTimeScale(targetFPS.rounded()))
-            // Clamp into the range's advertised duration bounds. Note
-            // duration is inversely related to rate: min rate -> max
-            // duration, max rate -> min duration.
-            if CMTimeCompare(frameDuration, range.minFrameDuration) < 0 {
-                frameDuration = range.minFrameDuration
-            }
-            if CMTimeCompare(frameDuration, range.maxFrameDuration) > 0 {
-                frameDuration = range.maxFrameDuration
-            }
-            var shimError: NSError?
-            let ok = nd_runCatchingObjCException({
-                device.activeVideoMinFrameDuration = frameDuration
-                device.activeVideoMaxFrameDuration = frameDuration
-            }, &shimError)
-            // Always unlock, regardless of whether the setter threw
-            // (the throw is caught by the shim before returning here).
-            device.unlockForConfiguration()
-            if !ok {
-                cameraLog.notice("Device rejected a fixed frame rate (\(shimError?.localizedDescription ?? "unknown", privacy: .public)); continuing at the default rate")
+           let chosen = CaptureFormatPolicy.preferredPreset(isSupported: { raw in
+               session.canSetSessionPreset(AVCaptureSession.Preset(rawValue: raw))
+           }) {
+            _ = objcSafe("setting the session preset") {
+                session.sessionPreset = AVCaptureSession.Preset(rawValue: chosen)
             }
         }
+
+        session.commitConfiguration()
 
         // Fresh start: nothing queued before this point may be served.
         delegate.clear(notBefore: hostNow())
-        guard objcSafe("starting the session", { session.startRunning() }) else {
+        guard startRunningWithCaptureFormat(device: device, context: "configure") else {
             removeAllInputsAndOutputs()
             return .failed("cannot start camera session")
         }
@@ -415,6 +442,92 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         configured = true
         cameraLog.notice("Camera: using \(device.localizedName, privacy: .public) (transport \(CameraTrustPolicy.fourCC(device.transportType), privacy: .public))")
         return .ready
+    }
+
+    /// ND-096: THE one way the session is started — by the initial configure and
+    /// by `resume()`'s restart after a suspend. `stopRunning()` / `startRunning()`
+    /// can drop the device back to its default format + rate (30 fps on the
+    /// built-in camera), so both are re-applied on every start:
+    /// lock the device → set the 640×480 format + lowest frame duration → start →
+    /// unlock → log what the device actually runs at.
+    ///
+    /// Format + rate are skipped (device left untouched, not locked) when another
+    /// app is using the camera, so a call's stream is never downscaled or throttled;
+    /// that is re-evaluated at every start. Must be called on `sessionQueue`.
+    /// Returns whether `startRunning()` completed without an exception.
+    ///
+    /// Why the device stays LOCKED across `startRunning()`: an unlocked device lets
+    /// the session start reset the frame duration to the format default, and a
+    /// locked device keeps its activeFormat, so the format is set explicitly too
+    /// (the preset alone could leave it at the previous 1080p format).
+    ///
+    /// Frame rate: the range with the lowest minimum rate is chosen (not merely the
+    /// first), and `targetFPS` is clamped into it; on the built-in camera that is
+    /// 15 fps. Some devices (e.g. an external UVC webcam surfaced as an
+    /// AVCaptureDALDevice) reject `activeVideoMin/MaxFrameDuration` / activeFormat
+    /// by THROWING an NSException, which Swift cannot catch — so the CMTime is
+    /// clamped into the range's own bounds and every assignment goes through the
+    /// ObjC @try/@catch shim. A throwing device is non-fatal: log and continue.
+    private func startRunningWithCaptureFormat(device: AVCaptureDevice, context: String) -> Bool {
+        let sharedWithAnotherApp = device.isInUseByAnotherApplication
+        var locked = false
+        if !sharedWithAnotherApp, (try? device.lockForConfiguration()) != nil {
+            locked = true
+            let formats = device.formats
+            if let idx = CaptureFormatPolicy.preferredFormatIndex(dimensions: formats.map {
+                let d = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
+                return (Int(d.width), Int(d.height))
+            }), formats[idx] != device.activeFormat {
+                _ = objcSafe("setting the capture format") { device.activeFormat = formats[idx] }
+            }
+            let ranges = device.activeFormat.videoSupportedFrameRateRanges
+            if let pick = CaptureFormatPolicy.lowestRate(in: ranges.map {
+                CaptureFormatPolicy.RateRange(minFrameRate: $0.minFrameRate, maxFrameRate: $0.maxFrameRate)
+            }) {
+                let range = ranges[pick.index]
+                // At the range floor use the device's own CMTime (exact); else 1/fps.
+                var frameDuration = pick.fps <= range.minFrameRate
+                    ? range.maxFrameDuration
+                    : CMTime(value: 1, timescale: CMTimeScale(pick.fps.rounded()))
+                // Duration is inverse to rate: min rate -> max duration.
+                if CMTimeCompare(frameDuration, range.minFrameDuration) < 0 {
+                    frameDuration = range.minFrameDuration
+                }
+                if CMTimeCompare(frameDuration, range.maxFrameDuration) > 0 {
+                    frameDuration = range.maxFrameDuration
+                }
+                var shimError: NSError?
+                let ok = nd_runCatchingObjCException({
+                    device.activeVideoMinFrameDuration = frameDuration
+                    device.activeVideoMaxFrameDuration = frameDuration
+                }, &shimError)
+                if !ok {
+                    cameraLog.notice("Device rejected a fixed frame rate (\(shimError?.localizedDescription ?? "unknown", privacy: .public)); continuing at the default rate")
+                }
+            }
+        } else if sharedWithAnotherApp {
+            cameraLog.notice("Camera is in use by another app; not changing its format or frame rate (\(context, privacy: .public))")
+        }
+
+        let started = objcSafe("starting the session (\(context))") { session.startRunning() }
+        // Released on every path, after the start (see the doc comment).
+        if locked { device.unlockForConfiguration() }
+        guard started else { return false }
+
+        // What the device actually runs at. `.notice` once per distinct result
+        // (so a revert to 30 fps after a restart is visible), `.debug` otherwise —
+        // resume() runs on every unlock/wake.
+        let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        let minD = device.activeVideoMinFrameDuration.seconds
+        let maxD = device.activeVideoMaxFrameDuration.seconds
+        let summary = "preset \(session.sessionPreset.rawValue), active format \(dims.width)x\(dims.height), frame duration \(String(format: "%.4f", minD))–\(String(format: "%.4f", maxD))s (≈\(String(format: "%.1f", minD > 0 ? 1 / minD : 0)) fps max)"
+        if summary != lastLoggedCaptureFormat {
+            lastLoggedCaptureFormat = summary
+            cameraLog.notice("Camera (\(context, privacy: .public)): \(summary, privacy: .public)")
+        } else {
+            cameraLog.debug("Camera (\(context, privacy: .public)): \(summary, privacy: .public)")
+        }
+        return true
     }
 
     // MARK: - Device trust (ND-075)
@@ -605,6 +718,7 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     public func suspend() {
         sessionQueue.async {
             self.suspended = true
+            self.resumed = false
             self.interruptedSince = nil
             if self.running {
                 _ = self.objcSafe("stopping the session") { self.session.stopRunning() }
@@ -622,16 +736,24 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// resume() (called by the SessionStateMonitor on unlock/wake) is the ONLY
     /// path that restarts a suspended session — capture() never does
     /// (`ensureConfigured` returns `.suspended` until resume() clears the flag).
-    /// A session that was never configured (launch while locked) or was torn
-    /// down is brought up by the first post-resume capture()'s
-    /// ensureConfigured(), which is an acceptable minor first-tick delay.
+    /// ND-042c: a session that was never configured (launch while locked,
+    /// access granted since) or was torn down is configured + started right
+    /// here if access is granted, instead of waiting for the next capture().
     public func resume() {
         sessionQueue.async {
             self.suspended = false
+            self.resumed = true
             self.interruptedSince = nil
             self.delegate.clear(notBefore: hostNow())
-            guard self.configured, !self.running else { return }
-            guard self.objcSafe("restarting the session", { self.session.startRunning() }) else {
+            guard self.configured else {
+                self.prewarmOnQueue(trigger: "resume")
+                return
+            }
+            guard !self.running else { return }
+            // ND-096: re-apply format + frame rate on the restart (a stop/start
+            // can revert the device to its 30 fps default).
+            guard let device = self.activeDevice,
+                  self.startRunningWithCaptureFormat(device: device, context: "resume") else {
                 self.tearDownOnQueue(reason: "restart after resume failed")
                 return
             }
@@ -640,8 +762,26 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         }
     }
 
+    /// ND-042c: configure + start the session ahead of the next tick. Only when
+    /// the camera is wanted (`resumed`, not `suspended`), access is granted, and
+    /// it isn't already configured. A failure is logged and left for the next
+    /// `capture()` to retry and report honestly. Must be called on `sessionQueue`.
+    private func prewarmOnQueue(trigger: String) {
+        guard resumed, !suspended, !configured,
+              AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
+        switch configureOnQueue() {
+        case .ready:
+            cameraLog.info("Camera pre-warmed (\(trigger, privacy: .public))")
+        case .suspended:
+            break
+        case .failed(let reason):
+            cameraLog.info("Camera pre-warm (\(trigger, privacy: .public)) failed: \(reason, privacy: .public); the next tick retries")
+        }
+    }
+
     /// Poll the delegate for a fresh frame, up to `timeout` seconds. Returns nil
-    /// promptly if the calling task is cancelled.
+    /// promptly if the calling task is cancelled (ND-042b: the `Task.sleep` throw
+    /// is caught and returns, it is not swallowed with `try?`).
     private func waitForFreshFrame(timeout: TimeInterval) async -> CVPixelBuffer? {
         let deadline = hostNow() + timeout
         while hostNow() < deadline {
@@ -673,6 +813,7 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
     private var frameTime: TimeInterval?
     private var notBefore: TimeInterval?
     private var loggedStaleArrival = false
+    private var loggedOutOfBuffers = false
 
     /// Returns the session's synchronization clock. Called on the session queue.
     private let clockProvider: () -> CMClock?
@@ -700,6 +841,29 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
         }
         buffer = pixelBuffer
         frameTime = stamp
+    }
+
+    /// ND-042d evidence hook: an `OutOfBuffers` drop means the output's pool is
+    /// starved (buffers pinned too long). Logged once per clear at `.notice`;
+    /// other drop reasons (e.g. `FrameWasLate`, expected with
+    /// `alwaysDiscardsLateVideoFrames`) only at `.debug`.
+    func captureOutput(_ output: AVCaptureOutput,
+                       didDrop sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        let reason = CMGetAttachment(sampleBuffer,
+                                     key: kCMSampleBufferAttachmentKey_DroppedFrameReason,
+                                     attachmentModeOut: nil) as? String ?? "unknown"
+        if reason == (kCMSampleBufferDroppedFrameReason_OutOfBuffers as String) {
+            lock.lock()
+            let first = !loggedOutOfBuffers
+            loggedOutOfBuffers = true
+            lock.unlock()
+            if first {
+                cameraLog.notice("Camera dropped a frame: out of buffers (pixel-buffer pool starved)")
+            }
+        } else {
+            cameraLog.debug("Camera dropped a frame: \(reason, privacy: .public)")
+        }
     }
 
     private static func hostTime(of sampleBuffer: CMSampleBuffer,
@@ -744,6 +908,7 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
         frameTime = nil
         self.notBefore = notBefore
         loggedStaleArrival = false
+        loggedOutOfBuffers = false
         lock.unlock()
     }
 }

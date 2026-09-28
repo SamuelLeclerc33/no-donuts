@@ -4,6 +4,7 @@ import CoreVideo
 import ImageIO
 import IOKit.audio
 import NoDonutsCore
+import CoreML
 // Owner: see CLAUDE.md module table. Split out of main.swift (ND-114) — pure move.
 
 // Shared fixtures for the recognition-core checks (hoisted from runAll()).
@@ -965,5 +966,148 @@ func runThresholdAnalysisChecks(_ c: Checks) async {
         var touchingIsOverlap = false
         if case .overlap = touching { touchingIsOverlap = true }
         c.expect(touchingIsOverlap, "recommendThreshold: impostor max == genuine min → overlap (matches >= accept)")
+    }
+}
+
+// MARK: - ND-095: deferred (off-main) model load
+
+/// One-shot gate a fake `load` closure waits on, so a check controls when "loading" ends.
+private final class LoadGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if opened { lock.unlock(); k.resume(); return }
+            waiters.append(k)
+            lock.unlock()
+        }
+    }
+    func open() {
+        lock.lock(); opened = true; let w = waiters; waiters = []; lock.unlock()
+        w.forEach { $0.resume() }
+    }
+}
+
+private func vector(_ o: FaceEmbeddingOutcome) -> [Float]? {
+    if case let .embedding(v) = o { return v }
+    return nil
+}
+private func isFailure(_ o: FaceEmbeddingOutcome) -> Bool {
+    if case .failure = o { return true }
+    return false
+}
+
+/// Short real-time pause so a spawned task reaches its `await` on the load.
+private func settle() async { try? await Task.sleep(nanoseconds: 30_000_000) }
+
+@MainActor
+func runDeferredEmbedderChecks(_ c: Checks) async {
+    print("\nDeferred model load checks (ND-095):")
+    let presumed = FaceEmbeddingModelDescriptor.uniqueFake()
+    let fallbackDesc = FaceEmbeddingModelDescriptor.uniqueFake()
+
+    // Load succeeds: descriptor is the presumed one while loading, an in-flight embed
+    // WAITS (no placeholder answer), then gets the loaded embedder's vector.
+    do {
+        let gate = LoadGate()
+        let real = FakeEmbedder([1, 0, 0, 0], descriptor: presumed)
+        let d = DeferredFaceEmbedder(presumed: presumed, fallback: FakeEmbedder([0, 1, 0, 0], descriptor: fallbackDesc),
+                                     load: { await gate.wait(); return real })
+        c.expect(d.descriptor.version == presumed.version && !d.isResolved,
+                 "ND-095: while loading, descriptor = presumed model (no identity flap)")
+        let pending = Task { await d.embeddingWithLiveness(for: CapturedFrame()).outcome }
+        await settle()
+        c.expect(!d.isResolved, "ND-095: an embed call during load waits for the model")
+        gate.open()
+        let first = await pending.value
+        c.expect(vector(first) == [1, 0, 0, 0], "ND-095: the waiting call is answered by the LOADED model")
+        c.expect(d.isResolved && d.descriptor.version == presumed.version,
+                 "ND-095: after a successful load, descriptor stays the loaded model's")
+        let later = await d.embedding(for: CapturedFrame())
+        c.expect(vector(later) == [1, 0, 0, 0], "ND-095: later calls delegate to the loaded model")
+    }
+
+    // Load fails: permanent Vision-style fallback; the call that straddled the switch
+    // gets .failure (never a vector from another embedding space).
+    do {
+        let gate = LoadGate()
+        let d = DeferredFaceEmbedder(presumed: presumed, fallback: FakeEmbedder([0, 1, 0, 0], descriptor: fallbackDesc),
+                                     load: { await gate.wait(); return nil })
+        let pending = Task { await d.embeddingWithLiveness(for: CapturedFrame()).outcome }
+        await settle()
+        gate.open()
+        let straddling = await pending.value
+        c.expect(isFailure(straddling),
+                 "ND-095: load failure → the in-flight call returns .failure, not a cross-model vector")
+        c.expect(d.descriptor.version == fallbackDesc.version,
+                 "ND-095: load failure → descriptor switches to the fallback (loud ND-073 identity-off)")
+        let later = await d.embedding(for: CapturedFrame())
+        c.expect(vector(later) == [0, 1, 0, 0], "ND-095: after a load failure, calls use the fallback")
+    }
+
+    // ND-073 no-flap: enrolled under the presumed model → identity is .active DURING the
+    // load (status is published before the embed awaits), and after a failed load it is
+    // .off(.modelMismatch) (the loud fallback state).
+    do {
+        let gate = LoadGate()
+        let d = DeferredFaceEmbedder(presumed: presumed, fallback: FakeEmbedder([0, 1, 0, 0], descriptor: fallbackDesc),
+                                     load: { await gate.wait(); return nil })
+        let store = InMemoryEnrollmentStore(embeddings: [[1, 0, 0, 0]], modelVersion: presumed.version)
+        let r = IdentityRecognizer(embedder: d, store: store, marker: InMemoryEnrollmentMarker(presumed.version))
+        let pending = Task { await r.recognize(CapturedFrame()) }
+        await settle()
+        c.expect(r.lastIdentityStatus == .active, "ND-095: identity status is .active while the model loads")
+        gate.open()
+        let during = await pending.value
+        c.expect(during == .error("face embedding failed"),
+                 "ND-095: the tick that straddled a failed load holds (.error), never matches cross-model")
+        _ = await r.recognize(CapturedFrame())
+        c.expect(r.lastIdentityStatus == .off(.modelMismatch(stored: presumed.version, active: fallbackDesc.version)),
+                 "ND-095: after a failed load identity is loudly OFF (model mismatch)")
+    }
+
+    // Load timeout (security-review hardening): a load that never completes must not
+    // hang every tick in recognize() (no reading → no absence → never locks). After the
+    // timeout it resolves to the fallback (loud identity-off), like a failed load.
+    do {
+        let gate = LoadGate()   // never opened before the timeout: the load hangs
+        let real = FakeEmbedder([1, 0, 0, 0], descriptor: presumed)
+        let d = DeferredFaceEmbedder(presumed: presumed, fallback: FakeEmbedder([0, 1, 0, 0], descriptor: fallbackDesc),
+                                     loadTimeout: 0.2,
+                                     load: { await gate.wait(); return real })
+        let store = InMemoryEnrollmentStore(embeddings: [[1, 0, 0, 0]], modelVersion: presumed.version)
+        let r = IdentityRecognizer(embedder: d, store: store, marker: InMemoryEnrollmentMarker(presumed.version))
+        let started = Date()
+        let during = await r.recognize(CapturedFrame())
+        let waited = Date().timeIntervalSince(started)
+        c.expect(waited < 5, "load timeout: a never-completing load releases the tick after the timeout (waited \(String(format: "%.2f", waited))s)")
+        c.expect(during == .error("face embedding failed"),
+                 "load timeout: the straddling tick holds (.error), never matches cross-model")
+        c.expect(d.isResolved && d.descriptor.version == fallbackDesc.version,
+                 "load timeout: resolves to the fallback descriptor")
+        _ = await r.recognize(CapturedFrame())
+        c.expect(r.lastIdentityStatus == .off(.modelMismatch(stored: presumed.version, active: fallbackDesc.version)),
+                 "load timeout: identity is loudly OFF (model mismatch), not silently on")
+        gate.open()          // the load finally completes — too late
+        await settle()
+        c.expect(d.descriptor.version == fallbackDesc.version,
+                 "load timeout: a load completing after the timeout is discarded (fallback stays)")
+    }
+
+    // Explicit compute units (ND-095): CPU + Neural Engine, never the GPU.
+    c.expect(CoreMLFaceEmbedder.modelConfiguration().computeUnits == .cpuAndNeuralEngine,
+             "ND-095: Core ML model configured for .cpuAndNeuralEngine")
+
+    // The real model, when present locally (not in CI): async load succeeds.
+    let local = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("../../Resources/Models/FaceNetVGGFace2.mlmodelc").standardizedFileURL
+    if FileManager.default.fileExists(atPath: local.path) {
+        let loaded = await CoreMLFaceEmbedder.load(compiledModelURL: local)
+        c.expect(loaded?.descriptor.version == FaceEmbeddingModelDescriptor.facenetVGGFace2.version,
+                 "ND-095: CoreMLFaceEmbedder.load(compiledModelURL:) loads the bundled FaceNet model async")
+    } else {
+        print("  (skipped: local FaceNet model not present)")
     }
 }
