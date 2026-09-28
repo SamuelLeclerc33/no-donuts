@@ -1,0 +1,208 @@
+/* No Donuts — Localizable.strings (English, development language). ND-101.
+
+   KEY CONVENTION: keys are the English source text itself, exactly as written in
+   Swift (SwiftUI Text("…")/Button("…")/Section("…") literals are LocalizedStringKeys,
+   and String(localized: "…") uses its literal as the key). So this file is an identity
+   map, kept so every key is listed for translators and so en/fr key sets can be diffed.
+   Consequences:
+     - Editing English copy in Swift CHANGES THE KEY: update this file and every other
+       <lang>.lproj/Localizable.strings with the same key (a stale key silently falls
+       back to the English text).
+     - Interpolations become format specifiers in the key: a String -> %@, an Int -> %lld.
+       Translations with 2+ arguments use positional specifiers (%1$@, %2$@) so word
+       order can change.
+     - Keys that need plural forms (%lld min left, %lld seconds, ...) live ONLY in
+       Localizable.stringsdict, never here.
+   Not localized on purpose: the Copy Diagnostics report (support artifact, English),
+   log messages, and strings produced by NoDonutsCore (protection-audit reasons,
+   camera-unavailable reasons, lock-mechanism names).
+   Tooling: CLT-only build, so no .xcstrings String Catalog (needs xcstringstool).
+   Validate with `plutil -lint`. Resources/*.lproj are copied by scripts/make-app.sh. */
+
+"⚠️ Notifications off — No Donuts can’t alert you if it stops protecting" = "⚠️ Notifications off — No Donuts can’t alert you if it stops protecting";
+"Open Notification Settings…" = "Open Notification Settings…";
+"⚠️ Protection reduced: %@" = "⚠️ Protection reduced: %@";
+"Pause for 15 minutes" = "Pause for 15 minutes";
+"Pause for 1 hour" = "Pause for 1 hour";
+"Pause until I resume" = "Pause until I resume";
+"Resume" = "Resume";
+"Resume (%@)" = "Resume (%@)";
+"Paused" = "Paused";
+"Trust this Wi-Fi network" = "Trust this Wi-Fi network";
+"Trust this Wi-Fi network (\"%@\")" = "Trust this Wi-Fi network (\"%@\")";
+"Trust this Wi-Fi network (\"%@\") — router verified" = "Trust this Wi-Fi network (\"%@\") — router verified";
+"Trust this Wi-Fi network (\"%@\") — checking router…" = "Trust this Wi-Fi network (\"%@\") — checking router…";
+"Trust this Wi-Fi network (\"%@\") — router can’t be verified" = "Trust this Wi-Fi network (\"%@\") — router can’t be verified";
+"Trust this Wi-Fi network (\"%@\") — re-confirm" = "Trust this Wi-Fi network (\"%@\") — re-confirm";
+"Trust this Wi-Fi network (\"%@\") — different router" = "Trust this Wi-Fi network (\"%@\") — different router";
+"Trust this Wi-Fi network… (asks for Location)" = "Trust this Wi-Fi network… (asks for Location)";
+"Wi-Fi network unknown" = "Wi-Fi network unknown";
+"Wi-Fi network unknown (grant Location in System Settings)" = "Wi-Fi network unknown (grant Location in System Settings)";
+"Enroll my face…" = "Enroll my face…";
+"Re-enroll my face (required)…" = "Re-enroll my face (required)…";
+"Reset enrollment" = "Reset enrollment";
+"Settings…" = "Settings…";
+"Lock now" = "Lock now";
+"Quit No Donuts…" = "Quit No Donuts…";
+"No Donuts: %@" = "No Donuts: %@";
+"can't lock the screen on this macOS" = "can't lock the screen on this macOS";
+"starting" = "starting";
+"face present — identity check off, re-enroll needed" = "face present — identity check off, re-enroll needed";
+"present" = "present";
+"away" = "away";
+"on a call" = "on a call";
+"locked / asleep" = "locked / asleep";
+"couldn't lock the screen" = "couldn't lock the screen";
+"camera unavailable — no built-in camera" = "camera unavailable — no built-in camera";
+"camera unavailable — grant access" = "camera unavailable — grant access";
+"paused" = "paused";
+"paused on trusted Wi-Fi" = "paused on trusted Wi-Fi";
+"No Donuts — enrolling your face…" = "No Donuts — enrolling your face…";
+"No Donuts — ⚠️ can't lock the screen on this macOS" = "No Donuts — ⚠️ can't lock the screen on this macOS";
+"No Donuts — ⚠️ identity off: re-enroll needed" = "No Donuts — ⚠️ identity off: re-enroll needed";
+"No Donuts — starting…" = "No Donuts — starting…";
+"No Donuts — watching for you" = "No Donuts — watching for you";
+"No Donuts — present" = "No Donuts — present";
+"No Donuts — you're away" = "No Donuts — you're away";
+"No Donuts — away" = "No Donuts — away";
+"No Donuts — paused" = "No Donuts — paused";
+"No Donuts — paused (trusted Wi-Fi)" = "No Donuts — paused (trusted Wi-Fi)";
+"No Donuts — on a call" = "No Donuts — on a call";
+"No Donuts — locked/asleep" = "No Donuts — locked/asleep";
+"No Donuts — ⚠️ couldn't lock the screen (retrying)" = "No Donuts — ⚠️ couldn't lock the screen (retrying)";
+"No Donuts — ⚠️ couldn't lock the screen" = "No Donuts — ⚠️ couldn't lock the screen";
+"No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren’t trusted)" = "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren’t trusted)";
+"No Donuts — ⚠️ camera unavailable (grant access)" = "No Donuts — ⚠️ camera unavailable (grant access)";
+"No Donuts Settings" = "No Donuts Settings";
+"Behavior" = "Behavior";
+"Lock sensitivity" = "Lock sensitivity";
+"Lenient" = "Lenient";
+"Strict" = "Strict";
+"Higher is stricter." = "Higher is stricter.";
+"How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter." = "How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.";
+"Model default %@ (tuned)" = "Model default %@ (tuned)";
+"Model default %@ (not yet tuned)" = "Model default %@ (not yet tuned)";
+"Reset to default" = "Reset to default";
+"Grace period" = "Grace period";
+"%lld s" = "%lld s";
+"How long you can be away before the Mac locks." = "How long you can be away before the Mac locks.";
+"Check interval" = "Check interval";
+"%@ s" = "%@ s";
+"%@ seconds" = "%@ seconds";
+"How often No Donuts checks the camera. Faster reacts sooner; slower uses less power." = "How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.";
+"Security" = "Security";
+"Reject photos of me (anti-spoofing)" = "Reject photos of me (anti-spoofing)";
+"Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It’s a basic, conservative check (no blink or motion test) and isn’t fully hardened — turn it off if a live face is ever rejected." = "Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It’s a basic, conservative check (no blink or motion test) and isn’t fully hardened — turn it off if a live face is ever rejected.";
+"Recognition" = "Recognition";
+"Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere." = "Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere.";
+"Model" = "Model";
+"%@ (%@), loading…" = "%@ (%@), loading…";
+"Threshold tuned" = "Threshold tuned";
+"Yes" = "Yes";
+"No (provisional default)" = "No (provisional default)";
+"%@ (model default)" = "%@ (model default)";
+"%@ (custom; default %@)" = "%@ (custom; default %@)";
+"Effective threshold" = "Effective threshold";
+"%@, matches the active model" = "%@, matches the active model";
+"Not enrolled (any face keeps the Mac unlocked)" = "Not enrolled (any face keeps the Mac unlocked)";
+"legacy, unversioned" = "legacy, unversioned";
+"%@: re-enroll needed (identity check off)" = "%@: re-enroll needed (identity check off)";
+"Missing (was %@): re-enroll needed (identity check off)" = "Missing (was %@): re-enroll needed (identity check off)";
+"Checking…" = "Checking…";
+"Enrollment" = "Enrollment";
+"Off (turned off above)" = "Off (turned off above)";
+"Active on this model" = "Active on this model";
+"Not supported by this model" = "Not supported by this model";
+"Unknown for this model" = "Unknown for this model";
+"Photo rejection" = "Photo rejection";
+"Built-in camera (not opened yet)" = "Built-in camera (not opened yet)";
+"%@, unavailable: %@" = "%@, unavailable: %@";
+"Camera" = "Camera";
+"Lock mechanisms" = "Lock mechanisms";
+"None: can’t lock on this macOS" = "None: can’t lock on this macOS";
+"Startup" = "Startup";
+"Start at login" = "Start at login";
+"Needs approval in System Settings › General › Login Items." = "Needs approval in System Settings › General › Login Items.";
+"Couldn't change this. It may need approval in System Settings › General › Login Items." = "Couldn't change this. It may need approval in System Settings › General › Login Items.";
+"Trusted Wi-Fi networks" = "Trusted Wi-Fi networks";
+"No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (“Trust this Wi-Fi network”)." = "No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (“Trust this Wi-Fi network”).";
+"Remove" = "Remove";
+"Remove %@" = "Remove %@";
+"A network is trusted only on the router it was trusted on (Wi-Fi name + router address), so a hotspot using the same name isn’t trusted." = "A network is trusted only on the router it was trusted on (Wi-Fi name + router address), so a hotspot using the same name isn’t trusted.";
+"Needs re-confirming: join it and choose “Trust this Wi-Fi network” again (not trusted until then)" = "Needs re-confirming: join it and choose “Trust this Wi-Fi network” again (not trusted until then)";
+"Router …%@ (trusted only on this router)" = "Router …%@ (trusted only on this router)";
+"Diagnostics" = "Diagnostics";
+"Copy diagnostics" = "Copy diagnostics";
+"Copied" = "Copied";
+"A local, privacy-safe summary you can paste into a bug report. Never includes photos, face data, or network names." = "A local, privacy-safe summary you can paste into a bug report. Never includes photos, face data, or network names.";
+"Welcome to No Donuts" = "Welcome to No Donuts";
+"No Donuts uses your camera to check you’re at your Mac and locks the screen when you step away — so you never leave it unlocked by accident." = "No Donuts uses your camera to check you’re at your Mac and locks the screen when you step away — so you never leave it unlocked by accident.";
+"Everything happens on-device. No Donuts only looks at the camera to tell whether someone is there. Nothing is ever recorded, saved as a photo, or sent anywhere." = "Everything happens on-device. No Donuts only looks at the camera to tell whether someone is there. Nothing is ever recorded, saved as a photo, or sent anywhere.";
+"Enable the camera" = "Enable the camera";
+"No Donuts needs camera access to see that you’re at your Mac. Frames are checked on-device and immediately discarded — never recorded or uploaded." = "No Donuts needs camera access to see that you’re at your Mac. Frames are checked on-device and immediately discarded — never recorded or uploaded.";
+"Enable camera…" = "Enable camera…";
+"Camera enabled" = "Camera enabled";
+"Camera off — enable it in System Settings › Privacy & Security › Camera" = "Camera off — enable it in System Settings › Privacy & Security › Camera";
+"Enroll your face (optional)" = "Enroll your face (optional)";
+"Enrolling teaches No Donuts to recognize *you* specifically, so it stays unlocked only for you and locks for anyone else." = "Enrolling teaches No Donuts to recognize *you* specifically, so it stays unlocked only for you and locks for anyone else.";
+"You can skip this for now — No Donuts will keep the Mac unlocked whenever *any* face is present until you enroll. You can enroll anytime from the menu-bar icon." = "You can skip this for now — No Donuts will keep the Mac unlocked whenever *any* face is present until you enroll. You can enroll anytime from the menu-bar icon.";
+"Skip for now" = "Skip for now";
+"Enrolling needs camera access first — go Back and tap Enable camera." = "Enrolling needs camera access first — go Back and tap Enable camera.";
+"Enrolling needs camera access — allow it in System Settings › Privacy & Security › Camera." = "Enrolling needs camera access — allow it in System Settings › Privacy & Security › Camera.";
+"You’re all set" = "You’re all set";
+"Almost there — camera access needed" = "Almost there — camera access needed";
+"No Donuts is now watching for you and will lock your Mac when you step away." = "No Donuts is now watching for you and will lock your Mac when you step away.";
+"No Donuts is not protecting your Mac until you allow camera access in System Settings › Privacy & Security › Camera." = "No Donuts is not protecting your Mac until you allow camera access in System Settings › Privacy & Security › Camera.";
+"Look for the No Donuts icon in your menu bar — that’s where you’ll find Pause, Enroll my face, Settings, and Lock now." = "Look for the No Donuts icon in your menu bar — that’s where you’ll find Pause, Enroll my face, Settings, and Lock now.";
+"Back" = "Back";
+"Finish" = "Finish";
+"Continue" = "Continue";
+"Step %lld of %lld" = "Step %lld of %lld";
+"OK" = "OK";
+"Cancel" = "Cancel";
+"Stop protecting this Mac?" = "Stop protecting this Mac?";
+"Your Mac won’t lock when you walk away until No Donuts is opened again." = "Your Mac won’t lock when you walk away until No Donuts is opened again.";
+"Quit No Donuts" = "Quit No Donuts";
+"Turn Off Start at Login" = "Turn Off Start at Login";
+"Turn off Start at login and quit?" = "Turn off Start at login and quit?";
+"No Donuts will quit now and won’t start at login. Protection stops until you open it again." = "No Donuts will quit now and won’t start at login. Protection stops until you open it again.";
+"Turn Off and Quit" = "Turn Off and Quit";
+"Start at Login" = "Start at Login";
+"Couldn’t turn off Start at login" = "Couldn’t turn off Start at login";
+"No Donuts is still running and protecting this Mac. You can also remove it in System Settings › General › Login Items." = "No Donuts is still running and protecting this Mac. You can also remove it in System Settings › General › Login Items.";
+"Enroll My Face" = "Enroll My Face";
+"No Donuts stores your face signature in your Keychain" = "No Donuts stores your face signature in your Keychain";
+"So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again." = "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again.";
+"You're enrolled" = "You're enrolled";
+"It will now stay unlocked only for you — a different face triggers a lock after the grace period. Everything is stored encrypted on this Mac; no images are kept." = "It will now stay unlocked only for you — a different face triggers a lock after the grace period. Everything is stored encrypted on this Mac; no images are kept.";
+"Couldn't see your face" = "Couldn't see your face";
+"No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged." = "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged.";
+"Couldn't get a consistent capture" = "Couldn't get a consistent capture";
+"The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged." = "The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged.";
+"Camera unavailable" = "Camera unavailable";
+"No Donuts only uses the Mac’s built-in camera (external and virtual cameras aren’t trusted), and none is available. Open the lid, then try again." = "No Donuts only uses the Mac’s built-in camera (external and virtual cameras aren’t trusted), and none is available. Open the lid, then try again.";
+"No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again." = "No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again.";
+"Couldn't save your enrollment" = "Couldn't save your enrollment";
+"No Donuts saw your face but couldn't save your enrollment. Please try again. Your previous enrollment (if any) was left unchanged." = "No Donuts saw your face but couldn't save your enrollment. Please try again. Your previous enrollment (if any) was left unchanged.";
+"Enrollment cancelled" = "Enrollment cancelled";
+"Enrollment was interrupted. Your previous enrollment (if any) was left unchanged." = "Enrollment was interrupted. Your previous enrollment (if any) was left unchanged.";
+"No Donuts was quit" = "No Donuts was quit";
+"Your Mac isn’t protected — it won’t lock when you walk away. Open No Donuts to turn protection back on." = "Your Mac isn’t protected — it won’t lock when you walk away. Open No Donuts to turn protection back on.";
+"No Donuts isn’t running" = "No Donuts isn’t running";
+"No Donuts didn’t start" = "No Donuts didn’t start";
+"No Donuts didn’t start after you logged in — your Mac isn’t protected. Open No Donuts, or turn on Start at login in Settings." = "No Donuts didn’t start after you logged in — your Mac isn’t protected. Open No Donuts, or turn on Start at login in Settings.";
+"No Donuts is paused" = "No Donuts is paused";
+"Your Mac won’t lock when you walk away. Resume from the menu bar." = "Your Mac won’t lock when you walk away. Resume from the menu bar.";
+"No Donuts couldn’t lock your Mac" = "No Donuts couldn’t lock your Mac";
+"You seem to be away, but locking failed. It will keep retrying. Lock manually with Control-Command-Q." = "You seem to be away, but locking failed. It will keep retrying. Lock manually with Control-Command-Q.";
+"Locking the screen failed. Lock manually with Control-Command-Q." = "Locking the screen failed. Lock manually with Control-Command-Q.";
+"No Donuts can’t lock your Mac" = "No Donuts can’t lock your Mac";
+"The macOS screen-lock mechanism No Donuts uses isn’t available on this version of macOS, so walking away WON’T lock your Mac. Update No Donuts, and lock manually with Control-Command-Q until then." = "The macOS screen-lock mechanism No Donuts uses isn’t available on this version of macOS, so walking away WON’T lock your Mac. Update No Donuts, and lock manually with Control-Command-Q until then.";
+"No Donuts isn’t checking that it’s you" = "No Donuts isn’t checking that it’s you";
+"To fix it, click the No Donuts icon in the menu bar and choose “Re-enroll my face (required)…”." = "To fix it, click the No Donuts icon in the menu bar and choose “Re-enroll my face (required)…”.";
+"The face-recognition model changed, so your saved enrollment no longer applies. Until you re-enroll, ANY face keeps your Mac unlocked." = "The face-recognition model changed, so your saved enrollment no longer applies. Until you re-enroll, ANY face keeps your Mac unlocked.";
+"Your saved face enrollment is missing (it was removed from the Keychain). Until you re-enroll, ANY face keeps your Mac unlocked." = "Your saved face enrollment is missing (it was removed from the Keychain). Until you re-enroll, ANY face keeps your Mac unlocked.";
+"No Donuts isn’t protecting you" = "No Donuts isn’t protecting you";
+"It can’t access the camera, so it can’t tell if you’re here. Check camera permission or that no other app is using the camera." = "It can’t access the camera, so it can’t tell if you’re here. Check camera permission or that no other app is using the camera.";
+"The lid is closed, so the built-in camera can’t see you and your Mac won’t be locked automatically." = "The lid is closed, so the built-in camera can’t see you and your Mac won’t be locked automatically.";
+"This Mac has no built-in camera, so it won’t be locked automatically." = "This Mac has no built-in camera, so it won’t be locked automatically.";

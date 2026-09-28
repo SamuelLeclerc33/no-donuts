@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0014-coreml-face-embedding-model/">
+        <link rel="prev" href="../0019-validated-tunables/">
       
       
-        <link rel="next" href="../0016-bounded-camera-unavailable/">
+        <link rel="next" href="../0021-updates-no-in-app-updater/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0015 — Camera trust: built-in only - No Donuts</title>
+        <title>ADR-0020 — Docs site - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0015-camera-trust-use-the-built-in-camera-only" class="md-skip">
+        <a href="#adr-0020-documentation-website-mkdocs-material-offline-committed" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0015 — Camera trust: built-in only
+              ADR-0020 — Docs site
             
           </span>
         </div>
@@ -807,37 +807,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0015 — Camera trust: built-in only
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0015-camera-trust-built-in-only/" class="md-nav__link">
         
   
   
@@ -853,70 +826,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1038,10 +947,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0020-docs-site/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0020 — Docs site
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1057,6 +993,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1238,33 +1238,38 @@
 
 
 
-<h1 id="adr-0015-camera-trust-use-the-built-in-camera-only">ADR-0015 — Camera trust: use the built-in camera only<a class="headerlink" href="#adr-0015-camera-trust-use-the-built-in-camera-only" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0020-documentation-website-mkdocs-material-offline-committed">ADR-0020 — Documentation website: MkDocs + Material, offline, committed<a class="headerlink" href="#adr-0020-documentation-website-mkdocs-material-offline-committed" title="Permanent link">&para;</a></h1>
 <ul>
 <li>Status: Accepted</li>
-<li>Date: 2026-09-25</li>
-<li>Owner: blart (with wiggum)</li>
+<li>Date: 2026-06-30</li>
+<li>Owner: gordon</li>
+<li>Note: originally filed as a second ADR-0005 (duplicating the presence-loop concurrency ADR); renumbered to 0020 on 2026-09-28 (ND-019). The decision is unchanged.</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p><code>CameraController</code> captured from <code>AVCaptureDevice.default(for: .video)</code>, which is whatever camera macOS picks. That includes <strong>virtual cameras</strong>: OBS, Snap Camera, and any CMIO camera extension. They feed arbitrary video. A looped clip of the enrolled user would match every tick and keep the Mac unlocked indefinitely. That is a trivial, repeatable spoof, much stronger than the flat-photo case EC-12 addresses. Virtual cameras usually present as device type <code>.external</code>, the same as physical USB webcams. The reliable difference is their transport type.</p>
-<p>The app is meant for internal distribution to colleagues on essentially the same laptop hardware (ND-111), all of which have a built-in camera.</p>
+<p>The project's documentation (PRD, Architecture, Security/Privacy, ADRs, Backlog, Edge Cases) lives as Markdown under <code>docs/</code>. Reading it raw on disk or only on GitHub is fine but not great: no unified navigation, no search, no consistent presentation. We want a browsable site.</p>
+<p>Two hard constraints shape the choice. First, <strong>privacy/no-network is a project-level requirement</strong> — the tooling and the rendered output must not fetch remote assets (fonts, analytics, CDNs). Second, the site must be <strong>consumable locally and offline</strong> without anyone needing to run a build first — i.e. the generated output should be present in the repo.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p><strong>Trust only the Mac's built-in camera.</strong></p>
 <ul>
-<li>Select the device through <code>AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], …)</code>, and require <strong>both</strong> the built-in device type <strong>and</strong> a built-in transport (<code>transportType == kIOAudioDeviceTransportTypeBuiltIn</code>). Requiring both is defense in depth: a virtual device claiming a built-in type is still rejected. The pure rule lives in <code>CameraTrustPolicy</code> and is covered by EngineCheck.</li>
-<li>External USB webcams, iPhone Continuity Camera and virtual cameras are <strong>never used</strong>. They are logged once as "ignored untrusted camera".</li>
-<li>If no trusted camera is present, <code>capture()</code> returns <code>.unavailable("no trusted built-in camera …")</code>. The app shows the honest "camera unavailable" state with that reason, plus the existing not-protecting notification (EC-07/08/09 policy). It never falls back to an untrusted device.</li>
-<li>The busy probe and the wedged in-use check query the same trusted device, not <code>.default</code> (discharges ND-066b).</li>
+<li><strong>Generator:</strong> <a href="https://www.mkdocs.org/">MkDocs</a> with the <a href="https://squidfunk.github.io/mkdocs-material/">Material for MkDocs</a> theme. Python-based, single <code>mkdocs.yml</code>, renders the existing Markdown as-is.</li>
+<li><strong>Fully offline:</strong> <code>theme.font: false</code> (no Google Fonts fetch), no analytics, no social-card/instant-loading plugins that pull remote assets. Material ships its CSS/JS/icons as local static files, so the built site is self-contained.</li>
+<li><strong>Source-version the output:</strong> the generated <code>site/</code> folder is <strong>committed</strong> to the repo so the docs can be opened offline (<code>site/index.html</code>) with no build step. <code>site/</code> is deliberately <strong>not</strong> in <code>.gitignore</code>.</li>
+<li><strong>Regenerate via pre-commit hook:</strong> <code>.githooks/pre-commit</code> runs <code>mkdocs build</code> (non-strict) and <code>git add site/</code> so the committed output never drifts from the source Markdown. The hook is a no-op (with a clear install hint) when <code>mkdocs</code> isn't on PATH, so it never blocks a commit. Installed via <code>scripts/install-hooks.sh</code> (<code>git config core.hooksPath .githooks</code>).</li>
+<li><strong>Local-only for now:</strong> no GitHub Pages / CI publishing. Deferred until there's a reason to expose docs publicly.</li>
 </ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>A virtual-camera replay can no longer drive identity. A physical attacker would need to present a spoof to the real lens, which ND-041/ND-072 anti-spoofing covers.</li>
-<li><strong>Clamshell with an external webcam is unprotected.</strong> With the lid closed there is no built-in camera, so the app reports "camera unavailable" and doesn't lock (EC-07). This is accepted for a laptop fleet. It can be revisited, for example with an allowlist of physical USB transports, if a colleague needs it.</li>
-<li>ND-096's "follow <code>systemPreferredCamera</code>" becomes moot: the preferred camera is never followed.</li>
+<li>Anyone can read the full docs as a navigable site by opening <code>site/index.html</code> — no Python, no network, no build. Matches the offline/privacy requirement end to end.</li>
+<li>Build is non-strict on purpose: <code>docs/BACKLOG.md</code> links to <code>../CLAUDE.md</code>, which lives outside <code>docs_dir</code> and would fail <code>--strict</code>. We accept that one known warning rather than mangling the source link.</li>
+<li>The toolchain is locked in <code>docs/requirements.lock</code> (full <code>pip freeze</code>, ND-106); <code>docs/requirements.txt</code> is only the top-level spec used to regenerate the lock. Without the lock, transitive drift (Markdown, pymdown-extensions, Pygments) changes the rendered HTML and churns <code>site/</code>.</li>
+<li>Committing <code>site/</code> means generated files show up in diffs. The pre-commit hook keeps them in sync automatically; the trade-off is larger commits in exchange for zero-setup offline docs.</li>
+<li>Editing docs requires regenerating: contributors should install the hook (<code>scripts/install-hooks.sh</code>) or run <code>mkdocs build</code> before committing. The hook makes this automatic when the toolchain is present.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Built-in + physical USB + Continuity; reject only virtual transports.</strong> Broader hardware support, but it relies on third-party drivers reporting their transport honestly, and it trusts an iPhone stream. It was the recommended option in the interview; the user chose the strict one.</li>
-<li><strong>Keep <code>.default</code> and detect virtual cameras by name or manufacturer.</strong> Brittle and trivially evaded. Rejected.</li>
+<li><strong>GitHub Pages / hosted site:</strong> convenient, but introduces a network dependency for reading docs and a publishing pipeline we don't need yet. Deferred, not rejected.</li>
+<li><strong>Docusaurus / other JS generators:</strong> heavier toolchain (Node), and the default themes lean on remote fonts/assets. More work to make fully offline than Material with <code>font: false</code>.</li>
+<li><strong>Leave docs as raw Markdown:</strong> zero tooling, but no navigation/search and a poorer reading experience. The site is cheap enough to be worth it.</li>
+<li><strong>Generate but <code>.gitignore</code> the output:</strong> smaller repo, but then the docs aren't browsable offline without a build — defeats the main goal.</li>
 </ul>
 
 

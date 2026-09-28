@@ -75,12 +75,13 @@ public final class PauseController {
     /// A short remaining-time string for the menu: "14 min left" for a timed
     /// pause, "Paused" for an indefinite pause, nil when not paused. Whole
     /// minutes; rounds up so "0 min left" never shows while still paused.
+    /// ND-101: localized; "%lld min left" is pluralized via Localizable.stringsdict.
     public func remainingDescription() -> String? {
         guard isPaused else { return nil }
-        guard let expiry else { return "Paused" }
+        guard let expiry else { return String(localized: "Paused") }
         let remaining = expiry.timeIntervalSinceNow
-        guard remaining > 0 else { return "Paused" }
+        guard remaining > 0 else { return String(localized: "Paused") }
         let minutes = max(1, Int(ceil(remaining / 60)))
-        return "\(minutes) min left"
+        return String(localized: "\(minutes) min left")
     }
 }

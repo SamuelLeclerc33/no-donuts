@@ -19,7 +19,8 @@ struct MessageView: View {
     let style: Style
     let title: String
     let message: String
-    var buttonTitle = "OK"
+    /// ND-101: callers pass already-localized copy; Text(String) renders it verbatim.
+    var buttonTitle = String(localized: "OK")
     let onDismiss: () -> Void
     /// Primary button (Return). Defaults to `onDismiss` for plain OK-style messages.
     var onConfirm: (() -> Void)? = nil

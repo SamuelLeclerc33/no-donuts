@@ -17,10 +17,10 @@ public final class MenuBarController: NSObject {
     /// authorization is DENIED — every alarm (dead-man, lock-failed, not-protecting,
     /// identity-off, didn't-start) is silently dropped then, so the menu must say so.
     private let notificationsOffItem = NSMenuItem(
-        title: "⚠️ Notifications off \u{2014} No Donuts can\u{2019}t alert you if it stops protecting",
+        title: String(localized: "⚠️ Notifications off \u{2014} No Donuts can\u{2019}t alert you if it stops protecting"),
         action: nil, keyEquivalent: "")
     private let openNotificationSettingsItem = NSMenuItem(
-        title: "Open Notification Settings\u{2026}",
+        title: String(localized: "Open Notification Settings\u{2026}"),
         action: #selector(openNotificationSettingsClicked), keyEquivalent: "")
     /// ND-057: called from `menuWillOpen` so the AppDelegate can push fresh dynamic state
     /// (pause remaining time, trust item, protection audit) right before the menu shows.
@@ -74,18 +74,18 @@ public final class MenuBarController: NSObject {
     private var cameraUnavailableReason: String?
 
     // Pause items shown when NOT paused; hidden and replaced by `resumeItem` when paused.
-    private let pause15Item = NSMenuItem(title: "Pause for 15 minutes", action: #selector(pause15Clicked), keyEquivalent: "")
-    private let pause1hItem = NSMenuItem(title: "Pause for 1 hour", action: #selector(pause1hClicked), keyEquivalent: "")
-    private let pauseIndefiniteItem = NSMenuItem(title: "Pause until I resume", action: #selector(pauseIndefiniteClicked), keyEquivalent: "")
-    private let resumeItem = NSMenuItem(title: "Resume", action: #selector(resumeClicked), keyEquivalent: "")
+    private let pause15Item = NSMenuItem(title: String(localized: "Pause for 15 minutes"), action: #selector(pause15Clicked), keyEquivalent: "")
+    private let pause1hItem = NSMenuItem(title: String(localized: "Pause for 1 hour"), action: #selector(pause1hClicked), keyEquivalent: "")
+    private let pauseIndefiniteItem = NSMenuItem(title: String(localized: "Pause until I resume"), action: #selector(pauseIndefiniteClicked), keyEquivalent: "")
+    private let resumeItem = NSMenuItem(title: String(localized: "Resume"), action: #selector(resumeClicked), keyEquivalent: "")
     /// Checkable "Trust this Wi-Fi network" item (ND-036).
-    private let trustItem = NSMenuItem(title: "Trust this Wi-Fi network", action: #selector(trustClicked), keyEquivalent: "")
+    private let trustItem = NSMenuItem(title: String(localized: "Trust this Wi-Fi network"), action: #selector(trustClicked), keyEquivalent: "")
     /// "Enroll my face…" — always visible; re-enrolls/overwrites when already enrolled (ND-022).
-    private let enrollItem = NSMenuItem(title: "Enroll my face…", action: #selector(enrollClicked), keyEquivalent: "")
+    private let enrollItem = NSMenuItem(title: String(localized: "Enroll my face…"), action: #selector(enrollClicked), keyEquivalent: "")
     /// "Reset enrollment" — shown only when enrolled; clears back to presence-only.
-    private let resetEnrollmentItem = NSMenuItem(title: "Reset enrollment", action: #selector(resetEnrollmentClicked), keyEquivalent: "")
+    private let resetEnrollmentItem = NSMenuItem(title: String(localized: "Reset enrollment"), action: #selector(resetEnrollmentClicked), keyEquivalent: "")
     /// "Settings…" — opens the SwiftUI settings window (ND-040). ⌘, per macOS convention.
-    private let settingsItem = NSMenuItem(title: "Settings…", action: #selector(settingsClicked), keyEquivalent: ",")
+    private let settingsItem = NSMenuItem(title: String(localized: "Settings…"), action: #selector(settingsClicked), keyEquivalent: ",")
 
     public init(onLockNow: @escaping @MainActor () -> Void,
                 onPause: @escaping @MainActor (TimeInterval?) -> Void,
@@ -161,11 +161,11 @@ public final class MenuBarController: NSObject {
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
-        let lockNowItem = NSMenuItem(title: "Lock now", action: #selector(lockNowClicked), keyEquivalent: "l")
+        let lockNowItem = NSMenuItem(title: String(localized: "Lock now"), action: #selector(lockNowClicked), keyEquivalent: "l")
         lockNowItem.target = self
         lockNowItem.isEnabled = true
         menu.addItem(lockNowItem)
-        let quitItem = NSMenuItem(title: "Quit No Donuts\u{2026}", action: #selector(quitClicked), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: String(localized: "Quit No Donuts\u{2026}"), action: #selector(quitClicked), keyEquivalent: "q")
         quitItem.target = self
         quitItem.isEnabled = true
         menu.addItem(quitItem)
@@ -217,7 +217,7 @@ public final class MenuBarController: NSObject {
         protectionReducedItem.isHidden = reasons.isEmpty
         protectionReducedItem.title = reasons.isEmpty
             ? ""
-            : "⚠️ Protection reduced: " + reasons.joined(separator: "; ")
+            : String(localized: "⚠️ Protection reduced: \(reasons.joined(separator: "; "))")
     }
 
     /// Reflect the identity-recognition status (ND-073; replaces setEnrolled(_:)).
@@ -234,7 +234,9 @@ public final class MenuBarController: NSObject {
         guard status != .unknown, status != identity else { return }
         identity = status
         resetEnrollmentItem.isHidden = !status.hasStoredEnrollment
-        enrollItem.title = status.isOff ? "Re-enroll my face (required)…" : "Enroll my face…"
+        enrollItem.title = status.isOff
+            ? String(localized: "Re-enroll my face (required)…")
+            : String(localized: "Enroll my face…")
         // The glyph AND header depend on identity, so force a full redraw of the last
         // rendered state (render(state:)'s cache would otherwise skip it).
         if let state = lastRenderedState {
@@ -298,9 +300,9 @@ public final class MenuBarController: NSObject {
         pauseIndefiniteItem.isHidden = isPaused
         resumeItem.isHidden = !isPaused
         if let remaining, isPaused {
-            resumeItem.title = "Resume (\(remaining))"
+            resumeItem.title = String(localized: "Resume (\(remaining))")
         } else {
-            resumeItem.title = "Resume"
+            resumeItem.title = String(localized: "Resume")
         }
     }
 
@@ -328,36 +330,40 @@ public final class MenuBarController: NSObject {
     public func refreshTrustItem(ssid: String?, status: TrustedNetworkStatus, router: RouterCheck,
                                  locationGranted: Bool, locationNotDetermined: Bool = false) {
         if let ssid, !ssid.isEmpty {
-            let base = "Trust this Wi-Fi network (\"\(ssid)\")"
+            // ND-101: one whole sentence per state (not base + suffix) so translators
+            // can reorder freely around the network name.
             trustItem.state = status == .trusted ? .on : .off
             if status == .trusted {
                 trustItem.isEnabled = true
-                trustItem.title = "\(base) \u{2014} router verified"
+                trustItem.title = String(localized: "Trust this Wi-Fi network (\"\(ssid)\") \u{2014} router verified")
             } else if router == .checking {
                 trustItem.isEnabled = false
-                trustItem.title = "\(base) \u{2014} checking router\u{2026}"
+                trustItem.title = String(localized: "Trust this Wi-Fi network (\"\(ssid)\") \u{2014} checking router\u{2026}")
             } else if router == .unreadable {
                 // Can't capture the router, so a click couldn't trust anything.
                 trustItem.isEnabled = false
-                trustItem.title = "\(base) \u{2014} router can\u{2019}t be verified"
+                trustItem.title = String(localized: "Trust this Wi-Fi network (\"\(ssid)\") \u{2014} router can\u{2019}t be verified")
             } else {
                 trustItem.isEnabled = true
                 switch status {
-                case .needsReTrust: trustItem.title = "\(base) \u{2014} re-confirm"
-                case .otherRouter:  trustItem.title = "\(base) \u{2014} different router"
-                case .notTrusted, .trusted: trustItem.title = base
+                case .needsReTrust:
+                    trustItem.title = String(localized: "Trust this Wi-Fi network (\"\(ssid)\") \u{2014} re-confirm")
+                case .otherRouter:
+                    trustItem.title = String(localized: "Trust this Wi-Fi network (\"\(ssid)\") \u{2014} different router")
+                case .notTrusted, .trusted:
+                    trustItem.title = String(localized: "Trust this Wi-Fi network (\"\(ssid)\")")
                 }
             }
         } else if locationNotDetermined {
             trustItem.isEnabled = true
             trustItem.state = .off
-            trustItem.title = "Trust this Wi-Fi network\u{2026} (asks for Location)"
+            trustItem.title = String(localized: "Trust this Wi-Fi network\u{2026} (asks for Location)")
         } else {
             trustItem.isEnabled = false
             trustItem.state = .off
             trustItem.title = locationGranted
-                ? "Wi-Fi network unknown"
-                : "Wi-Fi network unknown (grant Location in System Settings)"
+                ? String(localized: "Wi-Fi network unknown")
+                : String(localized: "Wi-Fi network unknown (grant Location in System Settings)")
         }
     }
 
@@ -382,7 +388,7 @@ public final class MenuBarController: NSObject {
         let glyph = glyph(for: state)
         // ND-100: VoiceOver reads the status item among OTHER apps' menu extras, so the
         // label names the app first ("No Donuts: present"), not just the state.
-        let accessibilityLabel = "No Donuts: \(glyph.label)"
+        let accessibilityLabel = String(localized: "No Donuts: \(glyph.label)")
         if let button = statusItem.button {
             button.setAccessibilityLabel(accessibilityLabel)
             button.toolTip = accessibilityLabel
@@ -461,46 +467,46 @@ public final class MenuBarController: NSObject {
         // every other overlay (incl. identity-off) for the active states.
         if showsLockUnavailable(for: state) {
             return Glyph(symbolName: "exclamationmark.triangle.fill", tint: .systemRed,
-                         label: "can't lock the screen on this macOS", fallbackText: "!lock")
+                         label: String(localized: "can't lock the screen on this macOS"), fallbackText: "!lock")
         }
         switch state {
         case .unknown:
             return Glyph(symbolName: "hourglass", tint: nil,
-                         label: "starting", fallbackText: "…")
+                         label: String(localized: "starting"), fallbackText: "…")
         case .present:
             // ND-073: identity off → a face is present but we are NOT checking it's
             // the user. Orange question-mark person (baked tint, EC-22), never green.
             if isIdentityOff {
                 return Glyph(symbolName: "person.fill.questionmark", tint: .systemOrange,
-                             label: "face present — identity check off, re-enroll needed",
+                             label: String(localized: "face present — identity check off, re-enroll needed"),
                              fallbackText: "?id")
             }
             return Glyph(symbolName: "person.fill", tint: .systemGreen,
-                         label: "present", fallbackText: "ok")
+                         label: String(localized: "present"), fallbackText: "ok")
         case .absent:
             return Glyph(symbolName: "person.slash", tint: nil,
-                         label: "away", fallbackText: "away")
+                         label: String(localized: "away"), fallbackText: "away")
         case .callAssumedPresent:
             return Glyph(symbolName: "video.fill", tint: .systemBlue,
-                         label: "on a call", fallbackText: "call")
+                         label: String(localized: "on a call"), fallbackText: "call")
         case .suspended:
             return Glyph(symbolName: "lock.fill", tint: nil,
-                         label: "locked / asleep", fallbackText: "lock")
+                         label: String(localized: "locked / asleep"), fallbackText: "lock")
         case .lockFailed:
             return Glyph(symbolName: "exclamationmark.triangle.fill", tint: .systemRed,
-                         label: "couldn't lock the screen", fallbackText: "!lock")
+                         label: String(localized: "couldn't lock the screen"), fallbackText: "!lock")
         case .cameraUnavailable:
             return Glyph(symbolName: "video.slash.fill", tint: .systemOrange,
                          label: cameraUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
-                             ? "camera unavailable — no built-in camera"
-                             : "camera unavailable — grant access",
+                             ? String(localized: "camera unavailable — no built-in camera")
+                             : String(localized: "camera unavailable — grant access"),
                          fallbackText: "!cam")
         case .paused:
             return Glyph(symbolName: "pause.circle.fill", tint: .systemGray,
-                         label: "paused", fallbackText: "||")
+                         label: String(localized: "paused"), fallbackText: "||")
         case .trustedNetwork:
             return Glyph(symbolName: "wifi", tint: .systemGray,
-                         label: "paused on trusted Wi-Fi", fallbackText: "wifi")
+                         label: String(localized: "paused on trusted Wi-Fi"), fallbackText: "wifi")
         }
     }
 
@@ -515,32 +521,34 @@ public final class MenuBarController: NSObject {
     /// - When identity is OFF (ND-073), "present"/"away" say so loudly instead: any
     ///   face keeps the Mac unlocked until the user re-enrolls.
     private func headerTitle(for state: PresenceState) -> String {
-        if isEnrolling { return "No Donuts — enrolling your face…" }
+        if isEnrolling { return String(localized: "No Donuts — enrolling your face…") }
         if showsLockUnavailable(for: state) {
-            return "No Donuts — ⚠️ can't lock the screen on this macOS"
+            return String(localized: "No Donuts — ⚠️ can't lock the screen on this macOS")
         }
         if isIdentityOff, state == .present || state == .absent {
-            return "No Donuts — ⚠️ identity off: re-enroll needed"
+            return String(localized: "No Donuts — ⚠️ identity off: re-enroll needed")
         }
         switch state {
-        case .unknown:            return "No Donuts — starting…"
-        case .present:            return isEnrolled ? "No Donuts — watching for you" : "No Donuts — present"
-        case .absent:             return isEnrolled ? "No Donuts — you're away" : "No Donuts — away"
-        case .paused:             return "No Donuts — paused"
-        case .trustedNetwork:     return "No Donuts — paused (trusted Wi-Fi)"
-        case .callAssumedPresent: return "No Donuts — on a call"
-        case .suspended:          return "No Donuts — locked/asleep"
+        case .unknown:            return String(localized: "No Donuts — starting…")
+        case .present:
+            return isEnrolled ? String(localized: "No Donuts — watching for you") : String(localized: "No Donuts — present")
+        case .absent:
+            return isEnrolled ? String(localized: "No Donuts — you're away") : String(localized: "No Donuts — away")
+        case .paused:             return String(localized: "No Donuts — paused")
+        case .trustedNetwork:     return String(localized: "No Donuts — paused (trusted Wi-Fi)")
+        case .callAssumedPresent: return String(localized: "No Donuts — on a call")
+        case .suspended:          return String(localized: "No Donuts — locked/asleep")
         case .lockFailed:
             // ND-054: the engine keeps retrying auto-locks on a backoff while absent.
             return lockFailureCount >= 1
-                ? "No Donuts — ⚠️ couldn't lock the screen (retrying)"
-                : "No Donuts — ⚠️ couldn't lock the screen"
+                ? String(localized: "No Donuts — ⚠️ couldn't lock the screen (retrying)")
+                : String(localized: "No Donuts — ⚠️ couldn't lock the screen")
         case .cameraUnavailable:
             // ND-075 (ADR-0015): only the built-in camera is trusted — say so instead
             // of sending the user to camera permissions.
             return cameraUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
-                ? "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren\u{2019}t trusted)"
-                : "No Donuts — ⚠️ camera unavailable (grant access)"
+                ? String(localized: "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren\u{2019}t trusted)")
+                : String(localized: "No Donuts — ⚠️ camera unavailable (grant access)")
         }
     }
 }

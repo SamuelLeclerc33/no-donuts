@@ -1,8 +1,9 @@
-# ADR-0005 — Documentation website: MkDocs + Material, offline, committed
+# ADR-0020 — Documentation website: MkDocs + Material, offline, committed
 
 - Status: Accepted
 - Date: 2026-06-30
 - Owner: gordon
+- Note: originally filed as a second ADR-0005 (duplicating the presence-loop concurrency ADR); renumbered to 0020 on 2026-09-28 (ND-019). The decision is unchanged.
 
 ## Context
 
@@ -22,6 +23,7 @@ Two hard constraints shape the choice. First, **privacy/no-network is a project-
 
 - Anyone can read the full docs as a navigable site by opening `site/index.html` — no Python, no network, no build. Matches the offline/privacy requirement end to end.
 - Build is non-strict on purpose: `docs/BACKLOG.md` links to `../CLAUDE.md`, which lives outside `docs_dir` and would fail `--strict`. We accept that one known warning rather than mangling the source link.
+- The toolchain is locked in `docs/requirements.lock` (full `pip freeze`, ND-106); `docs/requirements.txt` is only the top-level spec used to regenerate the lock. Without the lock, transitive drift (Markdown, pymdown-extensions, Pygments) changes the rendered HTML and churns `site/`.
 - Committing `site/` means generated files show up in diffs. The pre-commit hook keeps them in sync automatically; the trade-off is larger commits in exchange for zero-setup offline docs.
 - Editing docs requires regenerating: contributors should install the hook (`scripts/install-hooks.sh`) or run `mkdocs build` before committing. The hook makes this automatic when the toolchain is present.
 

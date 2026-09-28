@@ -100,8 +100,8 @@ public extension FaceEmbedding {
 ///
 /// Tune on-device with, e.g. `defaults write com.nodonuts.app visionOrientation 6`.
 ///
-/// This is a shared resolver so BOTH the identity embedder's detection pass and the
-/// presence-only `FaceDetectionRecognizer` use the SAME orientation. Within one embed
+/// This is a shared resolver so every detection pass (the Vision feature-print embedder,
+/// the Core ML embedder, and the FaceScore tool) uses the SAME orientation. Within one embed
 /// call, detection + crop must use one resolved value so enrollment and matching stay
 /// consistent. The already-upright cropped image feature print stays `.up` regardless.
 ///
@@ -197,13 +197,13 @@ private func noteRejectedThreshold(key: String, description: String, fallback: D
 /// Mitigated by a lenient threshold, multiple reference embeddings, and the presence
 /// engine's debounce. The protocol seam lets a Core ML face model swap in later (ND-021).
 ///
-/// Concurrency: `@unchecked Sendable`, mirroring `FaceDetectionRecognizer` — the
+/// Concurrency: `@unchecked Sendable` — the
 /// synchronous Vision `perform(_:)` calls are offloaded onto a dedicated serial
 /// `DispatchQueue` via `withCheckedContinuation`, so the main actor is never blocked.
 public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendable {
 
     /// Dedicated serial queue so Vision's synchronous `perform` never runs on the
-    /// main actor (mirrors `FaceDetectionRecognizer`).
+    /// main actor.
     private let queue = DispatchQueue(label: "com.nodonuts.face-embedding")
 
     /// Reused Core Image context for cropping (creating one per call is expensive).
@@ -249,8 +249,8 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
 
         // 1) Detect faces. Resolve the RAW-buffer source orientation ONCE per call
         // (default `.up`, overridable via the `visionOrientation` UserDefaults key —
-        // see `resolvedVisionOrientation`). Shared with FaceDetectionRecognizer so
-        // presence + identity agree. Detection + crop use the SAME resolved value so
+        // see `resolvedVisionOrientation`). Shared with every detection pass so
+        // enrollment, matching and FaceScore agree. Detection + crop use the SAME resolved value so
         // enrollment and matching stay consistent.
         let orientation = resolvedVisionOrientation()
 

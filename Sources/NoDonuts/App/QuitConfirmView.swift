@@ -7,9 +7,10 @@ import SwiftUI
 // Also reused for "Turn off Start at login" from the launchd-managed copy, which is a
 // quit too (unregistering stops the job): same window, different copy.
 struct QuitConfirmView: View {
-    var title = "Stop protecting this Mac?"
-    var message = "Your Mac won\u{2019}t lock when you walk away until No Donuts is opened again."
-    var quitButtonTitle = "Quit No Donuts"
+    // ND-101: localized defaults; Text(String)/Button(String) render them verbatim.
+    var title = String(localized: "Stop protecting this Mac?")
+    var message = String(localized: "Your Mac won\u{2019}t lock when you walk away until No Donuts is opened again.")
+    var quitButtonTitle = String(localized: "Quit No Donuts")
     let onQuit: () -> Void
     let onCancel: () -> Void
 

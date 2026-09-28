@@ -57,6 +57,22 @@ public protocol FaceRecognizing: Sendable {
 /// - store `.unavailable`                           → status NOT overwritten (keeps the previous
 ///     value, so a flaky Keychain read can't flap the UI/notifier). Initial value `.unknown`.
 ///
+/// **Confidence semantics:** the `confidence` carried by `.enrolledUserPresent` is the
+/// max cosine match score on the identity path, and a fixed `1.0` on every presence-only
+/// fallback (not enrolled / version mismatch / empty references). It is never a Vision
+/// face-*detection* confidence. The presence engine switches on the result case alone,
+/// never on this magnitude; it is surfaced for logging and tuning only (ND-024).
+///
+/// There is deliberately NO standalone "any face = present" recognizer (the old
+/// presence-only `FaceDetectionRecognizer` was removed in ND-068): presence-only
+/// behaviour exists only as an explicit, status-published branch of this class, so it
+/// can never be wired in by mistake on an enrolled machine.
+///
+/// Privacy (ADR-0002 / SECURITY_PRIVACY): detection and embedding run entirely
+/// on-device. Each frame is analyzed in memory and discarded; only the enrollment
+/// reference embeddings are persisted (encrypted, in the Keychain). No image, frame,
+/// or derived data is ever sent over a network.
+///
 /// `Sendable`: the presence engine (ADR-0005, `@MainActor`) awaits `recognize()` from
 /// the main actor. No main-actor work happens here — the heavy lifting is inside the
 /// injected `FaceEmbedding`, which offloads to its own queue.

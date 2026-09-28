@@ -39,6 +39,7 @@ func runAll() async -> Bool {
     await runTickScheduleChecks(c)
     await runEngineHardeningChecks(c)
     await runCoreMLOutputShapeChecks(c)
+    await runCoreMLEmbeddingHelperChecks(c)
     await runDeferredEmbedderChecks(c)
     await runAppIdentityChecks(c)
 

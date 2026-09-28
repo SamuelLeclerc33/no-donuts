@@ -420,7 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// while the user decides. Closing the window = Cancel.
     private func confirmQuit() {
         guard !isQuitting else { return }
-        appWindows.show(.quitConfirm, title: "Quit No Donuts") {
+        appWindows.show(.quitConfirm, title: String(localized: "Quit No Donuts")) {
             QuitConfirmView(
                 onQuit: { [weak self] in self?.performUserQuit() },
                 onCancel: { [weak self] in self?.appWindows.close(.quitConfirm) }
@@ -445,11 +445,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// clean path ("was quit" reminder at +30 min) and only then unregister.
     private func confirmDisableStartAtLogin() {
         guard !isQuitting else { return }
-        appWindows.show(.disableLoginConfirm, title: "Turn Off Start at Login") {
+        appWindows.show(.disableLoginConfirm, title: String(localized: "Turn Off Start at Login")) {
             QuitConfirmView(
-                title: "Turn off Start at login and quit?",
-                message: "No Donuts will quit now and won\u{2019}t start at login. Protection stops until you open it again.",
-                quitButtonTitle: "Turn Off and Quit",
+                title: String(localized: "Turn off Start at login and quit?"),
+                message: String(localized: "No Donuts will quit now and won\u{2019}t start at login. Protection stops until you open it again."),
+                quitButtonTitle: String(localized: "Turn Off and Quit"),
                 onQuit: { [weak self] in self?.performDisableStartAtLoginAndQuit() },
                 onCancel: { [weak self] in self?.appWindows.close(.disableLoginConfirm) }
             )
@@ -475,10 +475,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.settingsStore?.refresh()
                 // ND-070: non-blocking (the loop keeps protecting while this is up).
                 self.showMessage(.startAtLoginError,
-                                 windowTitle: "Start at Login",
+                                 windowTitle: String(localized: "Start at Login"),
                                  style: .warning,
-                                 title: "Couldn\u{2019}t turn off Start at login",
-                                 message: "No Donuts is still running and protecting this Mac. You can also remove it in System Settings \u{203A} General \u{203A} Login Items.")
+                                 title: String(localized: "Couldn\u{2019}t turn off Start at login"),
+                                 message: String(localized: "No Donuts is still running and protecting this Mac. You can also remove it in System Settings \u{203A} General \u{203A} Login Items."))
             }
         }
     }
@@ -541,11 +541,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // clicking "Enroll my face…" again while it's open just re-fronts it.
         if !Permissions.hasExplainedKeychain {
             showMessage(.keychainExplainer,
-                        windowTitle: "Enroll My Face",
+                        windowTitle: String(localized: "Enroll My Face"),
                         style: .informational,
-                        title: "No Donuts stores your face signature in your Keychain",
-                        message: "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again.",
-                        buttonTitle: "Continue",
+                        title: String(localized: "No Donuts stores your face signature in your Keychain"),
+                        message: String(localized: "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again."),
+                        buttonTitle: String(localized: "Continue"),
                         // Review fix: closing the window (red button / Escape) backs out —
                         // no capture, and the note shows again next time. Only Continue
                         // marks it explained and starts enrollment.
@@ -712,36 +712,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch result {
         case .success(let count):
             style = .informational
-            title = "You're enrolled"
-            message = "No Donuts captured \(count) reference \(count == 1 ? "image" : "images") of your face. It will now stay unlocked only for you — a different face triggers a lock after the grace period. Everything is stored encrypted on this Mac; no images are kept."
+            title = String(localized: "You're enrolled")
+            // ND-101: the count sentence is pluralized via Localizable.stringsdict.
+            message = String(localized: "No Donuts captured \(count) reference images of your face.")
+                + " "
+                + String(localized: "It will now stay unlocked only for you — a different face triggers a lock after the grace period. Everything is stored encrypted on this Mac; no images are kept.")
         case .notEnoughFaces:
             style = .warning
-            title = "Couldn't see your face"
-            message = "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
+            title = String(localized: "Couldn't see your face")
+            message = String(localized: "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged.")
         case .inconsistent:
             // ND-063: enough faces, but they didn't agree with each other.
             style = .warning
-            title = "Couldn't get a consistent capture"
-            message = "The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
+            title = String(localized: "Couldn't get a consistent capture")
+            message = String(localized: "The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged.")
         case .cameraUnavailable:
             style = .warning
-            title = "Camera unavailable"
+            title = String(localized: "Camera unavailable")
             // ND-075: only the built-in camera is trusted (ADR-0015) — say so when that's why.
             message = camera?.lastUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
-                ? "No Donuts only uses the Mac\u{2019}s built-in camera (external and virtual cameras aren\u{2019}t trusted), and none is available. Open the lid, then try again."
-                : "No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again."
+                ? String(localized: "No Donuts only uses the Mac\u{2019}s built-in camera (external and virtual cameras aren\u{2019}t trusted), and none is available. Open the lid, then try again.")
+                : String(localized: "No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again.")
         case .saveFailed:
             style = .warning
-            title = "Couldn't save your enrollment"
-            message = "No Donuts saw your face but couldn't save your enrollment. Please try again. Your previous enrollment (if any) was left unchanged."
+            title = String(localized: "Couldn't save your enrollment")
+            message = String(localized: "No Donuts saw your face but couldn't save your enrollment. Please try again. Your previous enrollment (if any) was left unchanged.")
         case .cancelled:
             // Cancelled captures are handled silently by the caller (no alert over the
             // lock screen); this case keeps the switch exhaustive.
             style = .informational
-            title = "Enrollment cancelled"
-            message = "Enrollment was interrupted. Your previous enrollment (if any) was left unchanged."
+            title = String(localized: "Enrollment cancelled")
+            message = String(localized: "Enrollment was interrupted. Your previous enrollment (if any) was left unchanged.")
         }
-        showMessage(.enrollmentResult, windowTitle: "Enroll My Face",
+        showMessage(.enrollmentResult, windowTitle: String(localized: "Enroll My Face"),
                     style: style, title: title, message: message)
     }
 
@@ -753,7 +756,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                              style: MessageView.Style,
                              title: String,
                              message: String,
-                             buttonTitle: String = "OK",
+                             buttonTitle: String = String(localized: "OK"),
                              onDismiss: (() -> Void)? = nil,
                              onConfirm: (() -> Void)? = nil) {
         // Review fix: `onConfirm` runs ONLY for the button (Return); closing the window
@@ -816,7 +819,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (bypassing "Finish"), still guarantee the camera/notification prompt this
         // session (code-review #1). Idempotent, so double-firing with closeOnboarding()
         // — which also runs on Finish — never double-prompts.
-        appWindows.show(.onboarding, title: "Welcome to No Donuts",
+        appWindows.show(.onboarding, title: String(localized: "Welcome to No Donuts"),
                         onClose: { [weak self] in self?.requestOnboardingPermissionsIfNeeded() }) {
             OnboardingView(actions: actions)
         }
@@ -910,7 +913,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // login" / trusted-network values after they changed elsewhere (code-review #2).
         settingsStore.trustedNetworksProvider = { [weak self] in self?.trustedNetworks.all() ?? [] }
         settingsStore.refresh()
-        appWindows.show(.settings, title: "No Donuts Settings") {
+        appWindows.show(.settings, title: String(localized: "No Donuts Settings")) {
             SettingsView(store: settingsStore, actions: actions)
         }
     }

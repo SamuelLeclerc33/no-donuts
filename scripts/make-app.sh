@@ -183,6 +183,21 @@ echo "==> bundling launch agent ${AGENT_PLIST_NAME} -> Contents/Library/LaunchAg
 mkdir -p "${APP_DIR}/Contents/Library/LaunchAgents"
 cp "${AGENT_PLIST_SRC}" "${APP_DIR}/Contents/Library/LaunchAgents/${AGENT_PLIST_NAME}"
 
+# --- localizations (ND-101) --------------------------------------------------
+# Copy Resources/<lang>.lproj (Localizable.strings/.stringsdict, InfoPlist.strings) into
+# Contents/Resources/ so Bundle.main resolves String(localized:) and SwiftUI literals.
+# Classic .strings, not .xcstrings: compiling a String Catalog needs full Xcode.
+# Lint first so a malformed file fails the build instead of silently falling back to
+# English. Copied BEFORE codesign so the bundle signature seals them.
+for LPROJ in Resources/*.lproj; do
+    [ -d "${LPROJ}" ] || continue
+    for STRINGS_FILE in "${LPROJ}"/*.strings "${LPROJ}"/*.stringsdict; do
+        if [ -f "${STRINGS_FILE}" ]; then plutil -lint -s "${STRINGS_FILE}"; fi
+    done
+    echo "==> bundling localization $(basename "${LPROJ}") -> Contents/Resources/"
+    cp -R "${LPROJ}" "${APP_DIR}/Contents/Resources/"
+done
+
 # --- codesign (local dev) ---------------------------------------------------
 # Prefer the stable self-signed "No Donuts Dev" identity (scripts/make-dev-cert.sh):
 # its designated requirement survives rebuilds, so the login-keychain ACL and the

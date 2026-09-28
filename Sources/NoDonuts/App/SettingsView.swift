@@ -10,6 +10,16 @@ import NoDonutsCore
 // Privacy: no network, no external assets. Trusted networks are shown by name (plus the
 // router MAC's last two octets) only in the local UI (they already live in the user's
 // UserDefaults); diagnostics is the privacy-safe reporter (counts only, never SSIDs/MACs).
+//
+// ND-101 localization: SwiftUI literals (Text("…"), Button("…"), Section("…")…) resolve
+// as LocalizedStringKey against Bundle.main; anything built as a `String` (row labels,
+// computed values, errors) goes through `String(localized:)` because Text(String) is
+// verbatim. Numbers use the user's locale (`displayNumber`), e.g. "0,75" in French.
+
+/// Locale-aware fixed-precision number for display (never String(format:), which is POSIX).
+func displayNumber(_ value: Double, digits: Int) -> String {
+    value.formatted(.number.precision(.fractionLength(digits)))
+}
 
 /// ND-099: read-only snapshot of what recognition is ACTUALLY doing right now, for the
 /// Settings "Recognition" section. Built by the AppDelegate from the same live sources
@@ -107,7 +117,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Lock sensitivity")
                     Spacer()
-                    Text(String(format: "%.2f", store.matchThreshold))
+                    Text(verbatim: displayNumber(store.matchThreshold, digits: 2))
                         .foregroundStyle(.secondary).monospacedDigit()
                 }
                 // Bounds come from the ACTIVE model (ND-076) — per-model score scales differ.
@@ -121,14 +131,15 @@ struct SettingsView: View {
                     Text("Strict").font(.caption).foregroundStyle(.secondary)
                 }
                 .accessibilityLabel("Lock sensitivity")
-                .accessibilityValue(String(format: "%.2f", store.matchThreshold))
+                .accessibilityValue(displayNumber(store.matchThreshold, digits: 2))
                 .accessibilityHint("Higher is stricter.")
                 Text("How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     // Honest about provenance: an un-tuned default is a provisional guess.
-                    Text(String(format: "Model default %.2f", store.modelDefaultThreshold)
-                         + (store.thresholdIsTuned ? " (tuned)" : " (not yet tuned)"))
+                    Text(store.thresholdIsTuned
+                         ? String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (tuned)")
+                         : String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (not yet tuned)"))
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Reset to default") { store.resetMatchThreshold() }
@@ -159,14 +170,14 @@ struct SettingsView: View {
                 HStack {
                     Text("Check interval")
                     Spacer()
-                    Text(String(format: "%.1f s", store.tickIntervalSeconds))
+                    Text("\(displayNumber(store.tickIntervalSeconds, digits: 1)) s")
                         .foregroundStyle(.secondary).monospacedDigit()
                 }
                 Slider(value: $store.tickIntervalSeconds,
                        in: SettingsStore.Range.tick,
                        step: 0.5)
                 .accessibilityLabel("Check interval")
-                .accessibilityValue(String(format: "%.1f seconds", store.tickIntervalSeconds))
+                .accessibilityValue("\(displayNumber(store.tickIntervalSeconds, digits: 1)) seconds")
                 Text("How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -226,68 +237,74 @@ struct SettingsView: View {
         var rows: [RecognitionRow] = []
 
         let model = info.modelLoading
-            ? "\(info.modelName) (\(info.modelVersion)), loading\u{2026}"
+            ? String(localized: "\(info.modelName) (\(info.modelVersion)), loading\u{2026}")
             : "\(info.modelName) (\(info.modelVersion))"
-        rows.append(RecognitionRow(label: "Model", value: model))
+        rows.append(RecognitionRow(label: String(localized: "Model"), value: model))
 
-        rows.append(RecognitionRow(label: "Threshold tuned",
-                                   value: info.thresholdIsTuned ? "Yes" : "No (provisional default)",
+        rows.append(RecognitionRow(label: String(localized: "Threshold tuned"),
+                                   value: info.thresholdIsTuned
+                                       ? String(localized: "Yes")
+                                       : String(localized: "No (provisional default)"),
                                    warning: !info.thresholdIsTuned))
 
         let threshold: String
         if abs(info.effectiveThreshold - info.defaultThreshold) < 0.000_5 {
-            threshold = String(format: "%.2f (model default)", info.effectiveThreshold)
+            threshold = String(localized: "\(displayNumber(info.effectiveThreshold, digits: 2)) (model default)")
         } else {
-            threshold = String(format: "%.2f (custom; default %.2f)", info.effectiveThreshold, info.defaultThreshold)
+            let effective = displayNumber(info.effectiveThreshold, digits: 2)
+            let modelDefault = displayNumber(info.defaultThreshold, digits: 2)
+            threshold = String(localized: "\(effective) (custom; default \(modelDefault))")
         }
-        rows.append(RecognitionRow(label: "Effective threshold", value: threshold))
+        rows.append(RecognitionRow(label: String(localized: "Effective threshold"), value: threshold))
 
         let enrollment: String
         var enrollmentWarning = false
         switch info.identity {
         case .active:
-            enrollment = "\(info.modelVersion), matches the active model"
+            enrollment = String(localized: "\(info.modelVersion), matches the active model")
         case .notEnrolled:
-            enrollment = "Not enrolled (any face keeps the Mac unlocked)"
+            enrollment = String(localized: "Not enrolled (any face keeps the Mac unlocked)")
             enrollmentWarning = true
         case .off(.modelMismatch(let stored, _)):
-            enrollment = "\(stored ?? "legacy, unversioned"): re-enroll needed (identity check off)"
+            let storedName = stored ?? String(localized: "legacy, unversioned")
+            enrollment = String(localized: "\(storedName): re-enroll needed (identity check off)")
             enrollmentWarning = true
         case .off(.enrollmentMissing(let expected)):
-            enrollment = "Missing (was \(expected)): re-enroll needed (identity check off)"
+            enrollment = String(localized: "Missing (was \(expected)): re-enroll needed (identity check off)")
             enrollmentWarning = true
         case .unknown:
-            enrollment = "Checking\u{2026}"
+            enrollment = String(localized: "Checking\u{2026}")
         }
-        rows.append(RecognitionRow(label: "Enrollment", value: enrollment, warning: enrollmentWarning))
+        rows.append(RecognitionRow(label: String(localized: "Enrollment"), value: enrollment, warning: enrollmentWarning))
 
         let antiSpoof: String
         var antiSpoofWarning = false
         switch (info.antiSpoofEnabled, info.antiSpoofSupportedByModel) {
         case (false, _):
-            antiSpoof = "Off (turned off above)"
+            antiSpoof = String(localized: "Off (turned off above)")
             antiSpoofWarning = true
         case (true, true?):
-            antiSpoof = "Active on this model"
+            antiSpoof = String(localized: "Active on this model")
         case (true, false?):
-            antiSpoof = "Not supported by this model"
+            antiSpoof = String(localized: "Not supported by this model")
             antiSpoofWarning = true
         case (true, nil):
-            antiSpoof = "Unknown for this model"
+            antiSpoof = String(localized: "Unknown for this model")
             antiSpoofWarning = true
         }
-        rows.append(RecognitionRow(label: "Photo rejection", value: antiSpoof, warning: antiSpoofWarning))
+        rows.append(RecognitionRow(label: String(localized: "Photo rejection"), value: antiSpoof, warning: antiSpoofWarning))
 
-        var camera = info.cameraName ?? "Built-in camera (not opened yet)"
+        var camera = info.cameraName ?? String(localized: "Built-in camera (not opened yet)")
         if let reason = info.cameraUnavailableReason {
-            camera += ", unavailable: \(reason)"
+            // The reason itself comes from NoDonutsCore (CameraController) and stays English.
+            camera = String(localized: "\(camera), unavailable: \(reason)")
         }
-        rows.append(RecognitionRow(label: "Camera", value: camera,
+        rows.append(RecognitionRow(label: String(localized: "Camera"), value: camera,
                                    warning: info.cameraUnavailableReason != nil))
 
-        rows.append(RecognitionRow(label: "Lock mechanisms",
+        rows.append(RecognitionRow(label: String(localized: "Lock mechanisms"),
                                    value: info.lockMechanisms.isEmpty
-                                       ? "None: can\u{2019}t lock on this macOS"
+                                       ? String(localized: "None: can\u{2019}t lock on this macOS")
                                        : info.lockMechanisms.joined(separator: ", "),
                                    warning: info.lockMechanisms.isEmpty))
         return rows
@@ -322,7 +339,7 @@ struct SettingsView: View {
             // successful register on an ad-hoc build).
             store.startAtLogin = LoginItem.isEnabled()
             if enabled && LoginItem.status() == .requiresApproval {
-                loginError = "Needs approval in System Settings › General › Login Items."
+                loginError = String(localized: "Needs approval in System Settings › General › Login Items.")
             } else {
                 loginError = nil
             }
@@ -337,7 +354,7 @@ struct SettingsView: View {
         } catch {
             // Keep the toggle honest: reflect actual status, surface the reason.
             store.startAtLogin = LoginItem.isEnabled()
-            loginError = "Couldn't change this. It may need approval in System Settings › General › Login Items."
+            loginError = String(localized: "Couldn't change this. It may need approval in System Settings › General › Login Items.")
         }
     }
 
@@ -377,10 +394,10 @@ struct SettingsView: View {
     /// two octets: enough to tell several routers of one SSID apart.
     static func routerLabel(for network: TrustedNetwork) -> String {
         guard let mac = network.gatewayMAC else {
-            return "Needs re-confirming: join it and choose \u{201C}Trust this Wi-Fi network\u{201D} again (not trusted until then)"
+            return String(localized: "Needs re-confirming: join it and choose \u{201C}Trust this Wi-Fi network\u{201D} again (not trusted until then)")
         }
         let tail = mac.split(separator: ":").suffix(2).joined(separator: ":")
-        return "Router \u{2026}\(tail) (trusted only on this router)"
+        return String(localized: "Router \u{2026}\(tail) (trusted only on this router)")
     }
 
     // MARK: - Diagnostics

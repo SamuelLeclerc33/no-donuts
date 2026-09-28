@@ -92,8 +92,8 @@ final class LifecycleNotifier {
             completion()
         }
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts was quit"
-        content.body = "Your Mac isn\u{2019}t protected \u{2014} it won\u{2019}t lock when you walk away. Open No Donuts to turn protection back on."
+        content.title = String(localized: "No Donuts was quit")
+        content.body = String(localized: "Your Mac isn\u{2019}t protected \u{2014} it won\u{2019}t lock when you walk away. Open No Donuts to turn protection back on.")
         content.sound = .default
         let request = UNNotificationRequest(
             identifier: Self.notRunningID,
@@ -110,8 +110,8 @@ final class LifecycleNotifier {
     private func scheduleDeadMan() {
         guard heartbeatEnabled else { return }
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts isn\u{2019}t running"
-        content.body = "Your Mac isn\u{2019}t protected \u{2014} it won\u{2019}t lock when you walk away. Open No Donuts to turn protection back on."
+        content.title = String(localized: "No Donuts isn\u{2019}t running")
+        content.body = String(localized: "Your Mac isn\u{2019}t protected \u{2014} it won\u{2019}t lock when you walk away. Open No Donuts to turn protection back on.")
         content.sound = .default
         // Same id → replaces the pending request (pushes the fire date back).
         let request = UNNotificationRequest(
@@ -182,8 +182,8 @@ final class LifecycleNotifier {
 
     private func scheduleDidNotStart(completion: (@Sendable () -> Void)? = nil) {
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts didn\u{2019}t start"
-        content.body = "No Donuts didn\u{2019}t start after you logged in \u{2014} your Mac isn\u{2019}t protected. Open No Donuts, or turn on Start at login in Settings."
+        content.title = String(localized: "No Donuts didn\u{2019}t start")
+        content.body = String(localized: "No Donuts didn\u{2019}t start after you logged in \u{2014} your Mac isn\u{2019}t protected. Open No Donuts, or turn on Start at login in Settings.")
         content.sound = .default
         // Same id → replaces any pending one (pushes the fire date back).
         let request = UNNotificationRequest(
@@ -275,8 +275,8 @@ final class LifecycleNotifier {
 
     private func postPausedReminder() {
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts is paused"
-        content.body = "Your Mac won\u{2019}t lock when you walk away. Resume from the menu bar."
+        content.title = String(localized: "No Donuts is paused")
+        content.body = String(localized: "Your Mac won\u{2019}t lock when you walk away. Resume from the menu bar.")
         content.sound = .default
         let request = UNNotificationRequest(
             identifier: Self.pausedReminderID,
@@ -303,7 +303,8 @@ final class LifecycleNotifier {
 
     // MARK: - Diagnostics
 
-    /// Coarse notification-permission label for Copy Diagnostics. Calls out that the
+    /// Coarse notification-permission label for Copy Diagnostics. English on purpose
+    /// (ND-101): diagnostics is a support artifact, not user-facing UI. Calls out that the
     /// "not running" / "paused" reminders can't be shown when not authorized.
     static func authorizationDescription() async -> String {
         let settings = await UNUserNotificationCenter.current().notificationSettings()

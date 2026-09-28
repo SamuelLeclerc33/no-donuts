@@ -38,7 +38,7 @@ Full design in [Architecture](ARCHITECTURE.md).
 | Face engine | Apple Vision + Core ML embeddings (all local) | [ADR-0002](adr/0002-face-recognition-engine.md) |
 | Camera-in-use | Try shared frames; fall back to "assume present" | [ADR-0003](adr/0003-camera-in-use-policy.md) |
 | App identity | Bundle id, name, minimum macOS 15 | [ADR-0004](adr/0004-app-identity.md) |
-| Docs site | MkDocs + Material, fully offline, committed `site/` | [ADR-0005](adr/0005-docs-site.md) |
+| Docs site | MkDocs + Material, fully offline, committed `site/` | [ADR-0020](adr/0020-docs-site.md) |
 
 ## Documentation map
 

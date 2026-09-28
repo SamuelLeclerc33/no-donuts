@@ -13,6 +13,10 @@ import Combine
 //
 // Privacy: no network, no external assets. Copy reuses the explainer + SECURITY_PRIVACY
 // tone — on-device, camera-only, nothing recorded or sent.
+//
+// ND-101: string literals below are LocalizedStringKeys resolved against Bundle.main
+// (Resources/<lang>.lproj/Localizable.strings); `stepScaffold` takes a key, not a String,
+// so its titles localize too (Text(String) would be verbatim).
 
 /// The things the onboarding view needs to *do*, injected by the AppDelegate so the
 /// SwiftUI view reaches into no singletons (matches `SettingsActions`).
@@ -160,8 +164,8 @@ struct OnboardingView: View {
             .padding(.top, 2)
             if !cameraAuthorized {
                 Label(cameraAuth == .notDetermined
-                        ? "Enrolling needs camera access first — go Back and tap Enable camera."
-                        : "Enrolling needs camera access — allow it in System Settings \u{203A} Privacy & Security \u{203A} Camera.",
+                        ? String(localized: "Enrolling needs camera access first — go Back and tap Enable camera.")
+                        : String(localized: "Enrolling needs camera access — allow it in System Settings \u{203A} Privacy & Security \u{203A} Camera."),
                       systemImage: "info.circle")
                     .foregroundStyle(.secondary).font(.caption)
             }
@@ -189,7 +193,7 @@ struct OnboardingView: View {
     /// Shared per-step layout: an SF Symbol, a title, and step-specific body content.
     private func stepScaffold<Body: View>(
         symbol: String,
-        title: String,
+        title: LocalizedStringKey,
         @ViewBuilder body: () -> Body
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {

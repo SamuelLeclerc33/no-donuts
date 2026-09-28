@@ -51,7 +51,7 @@ Run the engine checks with **`swift run EngineCheck`** — a framework-free harn
 
 ## Documentation site
 
-The `docs/` Markdown is published as a local, fully-offline **MkDocs** (Material) site → see [ADR-0005](docs/adr/0005-docs-site.md). The built `site/` is committed (source-versioned). A **pre-commit hook** regenerates it when `docs/` or `mkdocs.yml` are staged. Setup: `python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt`, then `scripts/install-hooks.sh`. Preview with `.venv/bin/mkdocs serve`. If you edit docs without the hook installed, run `.venv/bin/mkdocs build` and commit `site/` yourself.
+The `docs/` Markdown is published as a local, fully-offline **MkDocs** (Material) site → see [ADR-0020](docs/adr/0020-docs-site.md). The built `site/` is committed (source-versioned). A **pre-commit hook** regenerates it when `docs/` or `mkdocs.yml` are staged. Setup: `python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.lock`, then `scripts/install-hooks.sh`. Preview with `.venv/bin/mkdocs serve`. If you edit docs without the hook installed, run `.venv/bin/mkdocs build` and commit `site/` yourself.
 
 ## Skills
 

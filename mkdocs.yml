@@ -39,7 +39,6 @@ nav:
       - "ADR-0003 — Camera-in-use policy": adr/0003-camera-in-use-policy.md
       - "ADR-0004 — App identity": adr/0004-app-identity.md
       - "ADR-0005 — Presence loop concurrency": adr/0005-presence-loop-concurrency.md
-      - "ADR-0005 — Docs site": adr/0005-docs-site.md
       - "ADR-0006 — Screen-lock mechanism": adr/0006-screen-lock-mechanism.md
       - "ADR-0007 — Package layout (testable core)": adr/0007-package-layout-testable-core.md
       - "ADR-0008 — App packaging": adr/0008-app-packaging.md
@@ -54,5 +53,7 @@ nav:
       - "ADR-0017 — Stranger fast lock": adr/0017-stranger-fast-lock.md
       - "ADR-0018 — Bundled KeepAlive agent": adr/0018-bundled-keepalive-agent.md
       - "ADR-0019 — Validated tunables": adr/0019-validated-tunables.md
+      - "ADR-0020 — Docs site": adr/0020-docs-site.md
+      - "ADR-0021 — Updates (no in-app updater)": adr/0021-updates-no-in-app-updater.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

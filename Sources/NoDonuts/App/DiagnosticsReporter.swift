@@ -15,6 +15,10 @@ import NoDonutsCore
 // COUNTS only (ND-081), plus a yes/no for whether the current router is readable.
 // Permissions appear as coarse status labels only. The log tail is filtered to
 // our own subsystem and is limited to recent, current-process entries.
+//
+// LOCALIZATION (ND-101): deliberately English-only. This is a support artifact read by
+// whoever triages the bug report, so it stays in one stable language regardless of the
+// user's UI language (don't wrap these strings in String(localized:)).
 
 /// Gathers a privacy-safe diagnostics summary and can copy it to the pasteboard.
 ///

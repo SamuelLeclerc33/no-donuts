@@ -25,14 +25,14 @@ elif command -v mkdocs >/dev/null 2>&1; then
 	MKDOCS=mkdocs
 else
 	echo "No Donuts: mkdocs not found (.venv/bin/mkdocs or PATH) — skipping docs site regeneration."
-	echo "  To enable it: python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.txt"
+	echo "  To enable it: python3 -m venv .venv && .venv/bin/pip install -r docs/requirements.lock"
 	echo "  (then re-run the commit, or add .venv/bin to PATH)"
 	exit 0
 fi
 
 echo "No Donuts: regenerating docs site ($MKDOCS build)..."
 # Non-strict on purpose: docs/BACKLOG.md links to ../CLAUDE.md (outside docs_dir),
-# which would fail --strict. See ADR-0005.
+# which would fail --strict. See ADR-0020.
 if ! "$MKDOCS" build; then
 	echo "No Donuts: mkdocs build failed — fix the docs before committing." >&2
 	exit 1

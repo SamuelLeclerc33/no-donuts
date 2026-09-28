@@ -282,7 +282,7 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
                 inputFeatureName: MLFeatureValue(pixelBuffer: inputBuffer)
             ])
             let output = try model.prediction(from: provider)
-            guard let emb = firstMultiArrayOutput(output) else {
+            guard let emb = coreMLFirstMultiArrayOutput(output) else {
                 log.error("Core ML face model produced no multi-array output")
                 return .failure
             }
@@ -332,35 +332,43 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         ciContext.render(image, to: buffer)
         return buffer
     }
+}
 
-    /// Extract the first `MLMultiArray` output as a `[Float]`. Handles the common float32
-    /// / float16 / double element types.
-    private func firstMultiArrayOutput(_ output: MLFeatureProvider) -> [Float]? {
-        for name in output.featureNames {
-            guard let value = output.featureValue(for: name),
-                  value.type == .multiArray,
-                  let arr = value.multiArrayValue else { continue }
-            let count = arr.count
-            guard count > 0 else { return nil }
-            var result = [Float](repeating: 0, count: count)
-            for i in 0..<count { result[i] = arr[i].floatValue }
-            return result
-        }
-        return nil
+/// Extract the first `MLMultiArray` output of a Core ML prediction as a `[Float]`
+/// (float32 / float16 / double / int32 element types all go through `floatValue`).
+/// Non-multi-array outputs are skipped. Feature names are visited in sorted order so
+/// the pick is deterministic (ND-087 already refuses a model with more than one
+/// multi-array output, so in practice there is exactly one candidate). Returns `nil`
+/// when there is no multi-array output or the first one is empty (→ `.failure`).
+/// Public and pure so EngineCheck covers it with an `MLDictionaryFeatureProvider` (ND-110).
+public func coreMLFirstMultiArrayOutput(_ output: MLFeatureProvider) -> [Float]? {
+    for name in output.featureNames.sorted() {
+        guard let value = output.featureValue(for: name),
+              value.type == .multiArray,
+              let arr = value.multiArrayValue else { continue }
+        let count = arr.count
+        guard count > 0 else { return nil }
+        var result = [Float](repeating: 0, count: count)
+        for i in 0..<count { result[i] = arr[i].floatValue }
+        return result
     }
+    return nil
+}
 
-    /// L2-normalize a vector; returns `[]` (→ failure) if the norm is zero/non-finite.
-    private func l2Normalized(_ v: [Float]) -> [Float] {
-        var sum = 0.0
-        for x in v {
-            let d = Double(x)
-            guard d.isFinite else { return [] }
-            sum += d * d
-        }
-        guard sum > 0 else { return [] }
-        let inv = 1.0 / sum.squareRoot()
-        return v.map { Float(Double($0) * inv) }
+/// L2-normalize a vector. Returns `[]` (the caller maps it to `.failure`) for an
+/// empty vector, a zero norm, or any non-finite component — never a NaN-filled vector
+/// that would poison every cosine score. Accumulates in `Double` so a 512-d float
+/// vector with large components can't overflow the sum. Pure (ND-110).
+public func l2Normalized(_ v: [Float]) -> [Float] {
+    var sum = 0.0
+    for x in v {
+        let d = Double(x)
+        guard d.isFinite else { return [] }
+        sum += d * d
     }
+    guard sum > 0, sum.isFinite else { return [] }
+    let inv = 1.0 / sum.squareRoot()
+    return v.map { Float(Double($0) * inv) }
 }
 
 /// ND-087: does a Core ML model's declared output match the embedding size the

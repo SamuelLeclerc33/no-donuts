@@ -985,4 +985,67 @@ func runTrustedDisableSuspendAndConfigChecks(_ c: Checks) async {
         c.expect(noLockWhileStrict && notYetLocked && e.state == .suspended && locker.lockCallCount == 1,
                  "updateConfig() live-applies: strict never locks, loosened config locks next tick (ND-040)")
     }
+
+    // ND-110: updateConfig() MID-EPISODE keeps the in-progress absence episode (tick
+    // count AND the running grace clock) and the new thresholds apply from the next
+    // tick; updateConfig() itself never locks. Tick-pinned at 1s ticks from .present.
+    func firstLock(update afterTick: Int, _ newConfig: Config) async -> (atUpdate: Bool, firstLockAt: Int?, count: Int) {
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, Config())
+        await e.tick(now: t0)                              // establish .present
+        recognizer.result = .noFace
+        var lockedAtUpdate = false
+        var firstLockAt: Int?
+        for n in 1...30 {
+            await e.tick(now: t0.addingTimeInterval(Double(n)))
+            if firstLockAt == nil, locker.lockCallCount > 0 { firstLockAt = n }
+            if n == afterTick {
+                e.updateConfig(newConfig)
+                lockedAtUpdate = locker.lockCallCount > 0
+            }
+        }
+        return (lockedAtUpdate, firstLockAt, locker.lockCallCount)
+    }
+    do {
+        // Defaults lock on no-face tick #10 (consensus 5 at tick 5 starts the 5s grace).
+        // Tighten consensus 5 → 3 and grace 5 → 2 after tick 3: the 3 absent ticks
+        // already counted are kept, so tick 4 meets consensus and starts grace → lock at
+        // tick 6. A reset episode would lock at tick 9; the old config at tick 10.
+        var tight = Config()
+        tight.consecutiveAbsentTicksToLock = 3
+        tight.graceSeconds = 2
+        let r = await firstLock(update: 3, tight)
+        c.expect(!r.atUpdate && r.firstLockAt == 6 && r.count == 1,
+                 "ND-110 updateConfig mid-episode (before consensus): absent-tick count kept, new consensus/grace apply → locks at tick 6 (got \(r.firstLockAt.map(String.init) ?? "never"))")
+    }
+    do {
+        // Grace clock already running (started at tick 5). Tighten grace 5 → 2 after
+        // tick 6: elapsed is already 1s, so tick 7 (2s since tick 5) is due. Proves the
+        // grace START is kept (not restarted at the update) and the new grace applies on
+        // the next tick — not retroactively inside updateConfig().
+        var shortGrace = Config()
+        shortGrace.graceSeconds = 2
+        let r = await firstLock(update: 6, shortGrace)
+        c.expect(!r.atUpdate && r.firstLockAt == 7 && r.count == 1,
+                 "ND-110 updateConfig mid-grace (tighten): grace clock kept, shorter grace applies next tick → locks at tick 7 (got \(r.firstLockAt.map(String.init) ?? "never"))")
+    }
+    do {
+        // Tighten past the already-elapsed time: after tick 8 (3s into grace) set grace 2.
+        // The update alone must not lock; the NEXT tick does (tick 9).
+        var shortGrace = Config()
+        shortGrace.graceSeconds = 2
+        let r = await firstLock(update: 8, shortGrace)
+        c.expect(!r.atUpdate && r.firstLockAt == 9 && r.count == 1,
+                 "ND-110 updateConfig with grace already exceeded: no lock inside updateConfig, locks on the next tick (got \(r.firstLockAt.map(String.init) ?? "never"))")
+    }
+    do {
+        // Loosen grace 5 → 10 mid-grace (after tick 6): the old deadline (tick 10) no
+        // longer applies; the grace still counts from tick 5 → lock at tick 15, once.
+        var longGrace = Config()
+        longGrace.graceSeconds = 10
+        let r = await firstLock(update: 6, longGrace)
+        c.expect(!r.atUpdate && r.firstLockAt == 15 && r.count == 1,
+                 "ND-110 updateConfig mid-grace (loosen): grace counts from the original start → locks at tick 15 (got \(r.firstLockAt.map(String.init) ?? "never"))")
+    }
 }

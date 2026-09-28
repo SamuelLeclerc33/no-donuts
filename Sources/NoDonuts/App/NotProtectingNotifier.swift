@@ -162,10 +162,10 @@ final class NotProtectingNotifier {
     /// false = a manual "Lock now" failed (user present, no retries scheduled).
     private func postLockFailedNotification(retrying: Bool) {
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts couldn\u{2019}t lock your Mac"
+        content.title = String(localized: "No Donuts couldn\u{2019}t lock your Mac")
         content.body = retrying
-            ? "You seem to be away, but locking failed. It will keep retrying. Lock manually with Control-Command-Q."
-            : "Locking the screen failed. Lock manually with Control-Command-Q."
+            ? String(localized: "You seem to be away, but locking failed. It will keep retrying. Lock manually with Control-Command-Q.")
+            : String(localized: "Locking the screen failed. Lock manually with Control-Command-Q.")
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
@@ -178,8 +178,8 @@ final class NotProtectingNotifier {
 
     private func postLockNotification() {
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts can\u{2019}t lock your Mac"
-        content.body = "The macOS screen-lock mechanism No Donuts uses isn\u{2019}t available on this version of macOS, so walking away WON\u{2019}T lock your Mac. Update No Donuts, and lock manually with Control-Command-Q until then."
+        content.title = String(localized: "No Donuts can\u{2019}t lock your Mac")
+        content.body = String(localized: "The macOS screen-lock mechanism No Donuts uses isn\u{2019}t available on this version of macOS, so walking away WON\u{2019}T lock your Mac. Update No Donuts, and lock manually with Control-Command-Q until then.")
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
@@ -207,13 +207,14 @@ final class NotProtectingNotifier {
     private func postIdentityNotification() {
         guard let reason = identityOffReason else { return }
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts isn\u{2019}t checking that it\u{2019}s you"
-        let fix = "To fix it, click the No Donuts icon in the menu bar and choose \u{201C}Re-enroll my face (required)\u{2026}\u{201D}."
+        content.title = String(localized: "No Donuts isn\u{2019}t checking that it\u{2019}s you")
+        // ND-101: sentence-level keys joined with a space (each sentence translates alone).
+        let fix = String(localized: "To fix it, click the No Donuts icon in the menu bar and choose \u{201C}Re-enroll my face (required)\u{2026}\u{201D}.")
         switch reason {
         case .modelMismatch:
-            content.body = "The face-recognition model changed, so your saved enrollment no longer applies. Until you re-enroll, ANY face keeps your Mac unlocked. " + fix
+            content.body = String(localized: "The face-recognition model changed, so your saved enrollment no longer applies. Until you re-enroll, ANY face keeps your Mac unlocked.") + " " + fix
         case .enrollmentMissing:
-            content.body = "Your saved face enrollment is missing (it was removed from the Keychain). Until you re-enroll, ANY face keeps your Mac unlocked. " + fix
+            content.body = String(localized: "Your saved face enrollment is missing (it was removed from the Keychain). Until you re-enroll, ANY face keeps your Mac unlocked.") + " " + fix
         }
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
@@ -241,18 +242,19 @@ final class NotProtectingNotifier {
 
     private func postNotification() {
         let content = UNMutableNotificationContent()
-        content.title = "No Donuts isn\u{2019}t protecting you"
+        content.title = String(localized: "No Donuts isn\u{2019}t protecting you")
         // ND-078 / ADR-0016: say what will actually happen — lid open escalates to a
         // lock after the cap (+ consensus + grace); lid closed / desktop never locks.
-        let base = "It can\u{2019}t access the camera, so it can\u{2019}t tell if you\u{2019}re here. Check camera permission or that no other app is using the camera."
+        let base = String(localized: "It can\u{2019}t access the camera, so it can\u{2019}t tell if you\u{2019}re here. Check camera permission or that no other app is using the camera.")
         switch LidState.current() {
         case .open:
             let minutes = max(1, Int((Config().maxCameraUnavailableSeconds / 60).rounded()))
-            content.body = base + " If this lasts about \(minutes) minute\(minutes == 1 ? "" : "s"), your Mac will lock."
+            // ND-101: pluralized via Localizable.stringsdict.
+            content.body = base + " " + String(localized: "If this lasts about \(minutes) minutes, your Mac will lock.")
         case .closed:
-            content.body = base + " The lid is closed, so the built-in camera can\u{2019}t see you and your Mac won\u{2019}t be locked automatically."
+            content.body = base + " " + String(localized: "The lid is closed, so the built-in camera can\u{2019}t see you and your Mac won\u{2019}t be locked automatically.")
         case .noLid:
-            content.body = base + " This Mac has no built-in camera, so it won\u{2019}t be locked automatically."
+            content.body = base + " " + String(localized: "This Mac has no built-in camera, so it won\u{2019}t be locked automatically.")
         }
         content.sound = .default
 

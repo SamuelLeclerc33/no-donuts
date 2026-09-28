@@ -1111,3 +1111,90 @@ func runDeferredEmbedderChecks(_ c: Checks) async {
         print("  (skipped: local FaceNet model not present)")
     }
 }
+
+/// ND-110: the Core ML embedder's pure post-processing helpers — `l2Normalized` and
+/// `coreMLFirstMultiArrayOutput` — exercised without a model file.
+@MainActor
+func runCoreMLEmbeddingHelperChecks(_ c: Checks) async {
+    print("\nND-110 Core ML embedding helper checks:")
+
+    // l2Normalized: unit length, direction kept; degenerate input → [] (→ .failure).
+    do {
+        let n = l2Normalized([3, 4])
+        c.expect(n.count == 2 && abs(n[0] - 0.6) < 1e-6 && abs(n[1] - 0.8) < 1e-6,
+                 "ND-110 l2Normalized: [3,4] → [0.6,0.8] (unit length, direction kept)")
+        let unit = l2Normalized([0, 1, 0])
+        c.expect(unit == [0, 1, 0], "ND-110 l2Normalized: an already-unit vector is unchanged")
+        let big = l2Normalized([Float](repeating: 1e30, count: 512))
+        let norm = big.reduce(0.0) { $0 + Double($1) * Double($1) }.squareRoot()
+        c.expect(big.count == 512 && abs(norm - 1) < 1e-4 && big.allSatisfy { $0.isFinite },
+                 "ND-110 l2Normalized: huge components (Float² would overflow) → finite unit vector")
+        let tiny = l2Normalized([1e-30, 0])
+        c.expect(tiny.count == 2 && abs(tiny[0] - 1) < 1e-6,
+                 "ND-110 l2Normalized: tiny non-zero components still normalize")
+        c.expect(l2Normalized([]).isEmpty && l2Normalized([0, 0, 0]).isEmpty,
+                 "ND-110 l2Normalized: empty or zero-norm vector → [] (failure, not NaN)")
+        c.expect(l2Normalized([1, .nan]).isEmpty && l2Normalized([.infinity, 1]).isEmpty
+                 && l2Normalized([-.infinity]).isEmpty,
+                 "ND-110 l2Normalized: any NaN / ±inf component → [] (never a poisoned vector)")
+        let a = l2Normalized([2, 0, 0]), b = l2Normalized([5, 0, 0])
+        c.expect(a == b && abs(cosineSimilarity(a, b) - 1) < 1e-6,
+                 "ND-110 l2Normalized: scale-invariant (2x and 5x the same direction match)")
+    }
+
+    // coreMLFirstMultiArrayOutput: picks the multi-array, skips other outputs, handles
+    // element types, refuses empty / missing outputs.
+    func multiArray(_ values: [Double], _ type: MLMultiArrayDataType) -> MLMultiArray? {
+        guard let arr = try? MLMultiArray(shape: [1, NSNumber(value: values.count)], dataType: type) else { return nil }
+        for (i, v) in values.enumerated() { arr[i] = NSNumber(value: v) }
+        return arr
+    }
+    func provider(_ dict: [String: Any]) -> MLFeatureProvider? {
+        try? MLDictionaryFeatureProvider(dictionary: dict)
+    }
+    do {
+        if let f32 = multiArray([0.5, -1, 2], .float32), let p = provider(["embedding": f32]) {
+            c.expect(coreMLFirstMultiArrayOutput(p) == [0.5, -1, 2],
+                     "ND-110 firstMultiArrayOutput: float32 [1,3] output → its 3 values, in order")
+        } else { c.expect(false, "ND-110 firstMultiArrayOutput: float32 fixture could not be built") }
+
+        if let f64 = multiArray([0.25, 4], .double), let p = provider(["out": f64]) {
+            c.expect(coreMLFirstMultiArrayOutput(p) == [0.25, 4],
+                     "ND-110 firstMultiArrayOutput: double output → converted to Float")
+        } else { c.expect(false, "ND-110 firstMultiArrayOutput: double fixture could not be built") }
+
+        if let f16 = multiArray([1, 0.5, -2], .float16), let p = provider(["out": f16]) {
+            c.expect(coreMLFirstMultiArrayOutput(p) == [1, 0.5, -2],
+                     "ND-110 firstMultiArrayOutput: float16 output → converted to Float")
+        } else { c.expect(false, "ND-110 firstMultiArrayOutput: float16 fixture could not be built") }
+
+        // A non-multi-array output (e.g. a string label) alongside the embedding is skipped,
+        // whichever order the provider reports its names in.
+        if let emb = multiArray([1, 2], .float32), let p = provider(["aaa_label": "face", "zzz_emb": emb]) {
+            c.expect(coreMLFirstMultiArrayOutput(p) == [1, 2],
+                     "ND-110 firstMultiArrayOutput: non-multi-array outputs are skipped")
+        } else { c.expect(false, "ND-110 firstMultiArrayOutput: mixed-output fixture could not be built") }
+
+        if let p = provider(["label": "face", "score": 0.9]) {
+            c.expect(coreMLFirstMultiArrayOutput(p) == nil,
+                     "ND-110 firstMultiArrayOutput: no multi-array output → nil (failure)")
+        } else { c.expect(false, "ND-110 firstMultiArrayOutput: no-array fixture could not be built") }
+
+        if let empty = try? MLMultiArray(shape: [0], dataType: .float32), let p = provider(["out": empty]) {
+            c.expect(coreMLFirstMultiArrayOutput(p) == nil,
+                     "ND-110 firstMultiArrayOutput: empty multi-array → nil (failure)")
+        } else {
+            // Core ML may refuse a zero-length array outright; that is also a non-output.
+            c.expect(true, "ND-110 firstMultiArrayOutput: zero-length MLMultiArray not constructible, skipped")
+        }
+
+        // Deterministic pick: two multi-arrays → the one with the lexically first name,
+        // on every call (featureNames is an unordered Set).
+        if let a = multiArray([1], .float32), let b = multiArray([2], .float32),
+           let p = provider(["b_out": b, "a_out": a]) {
+            let picks = (0..<5).map { _ in coreMLFirstMultiArrayOutput(p) }
+            c.expect(picks.allSatisfy { $0 == [1] },
+                     "ND-110 firstMultiArrayOutput: several multi-arrays → deterministic (sorted-name) pick")
+        } else { c.expect(false, "ND-110 firstMultiArrayOutput: two-array fixture could not be built") }
+    }
+}

@@ -11,7 +11,6 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0003](0003-camera-in-use-policy.md) — Camera-in-use: try shared frames, fall back to assume-present — **Accepted**
 - [ADR-0004](0004-app-identity.md) — App identity: bundle id, name, minimum macOS — **Accepted**
 - [ADR-0005](0005-presence-loop-concurrency.md) — Presence loop concurrency: main-actor-driven loop — **Accepted**
-- [ADR-0005](0005-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted** ⚠️ duplicate number (see ND-019)
 - [ADR-0006](0006-screen-lock-mechanism.md) — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript — **Superseded by ADR-0010**
 - [ADR-0007](0007-package-layout-testable-core.md) — Package layout: testable core library + framework-free checks — **Accepted**
 - [ADR-0008](0008-app-packaging.md) — Local app packaging: SPM build + bundling script (ad-hoc signed) — **Accepted**
@@ -26,6 +25,8 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0017](0017-stranger-fast-lock.md) — Stranger at the keyboard locks after 3 ticks with no grace — **Accepted**
 - [ADR-0018](0018-bundled-keepalive-agent.md) — Single launcher: bundled KeepAlive agent via SMAppService.agent; dead-man notification; confirmed Quit — **Accepted** (supersedes the launcher part of ADR-0013)
 - [ADR-0019](0019-validated-tunables.md) — All presence tunables pass through one validated Config (Config.Bounds) — **Accepted**
+- [ADR-0020](0020-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted** (renumbered from a duplicate 0005, ND-019)
+- [ADR-0021](0021-updates-no-in-app-updater.md) — Updates for internal distribution: no in-app updater; new versions ship as a notarized DMG or via company MDM — **Accepted**
 
 ## Template
 

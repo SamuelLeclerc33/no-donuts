@@ -1,0 +1,5 @@
+/* No Donuts — InfoPlist.strings (en). ND-101. Localizes Info.plist usage descriptions
+   (permission prompts). English values mirror Resources/Info.plist; keep them in sync. */
+"NSCameraUsageDescription" = "No Donuts checks the camera on-device to confirm you're at your Mac and locks it when you step away. Images never leave your device.";
+"NSLocalNetworkUsageDescription" = "No Donuts reads your Wi-Fi router’s hardware address to confirm a trusted network is really yours (not a look-alike hotspot). Nothing is sent over the network.";
+"NSLocationWhenInUseUsageDescription" = "No Donuts checks your current Wi-Fi network name to skip locking on networks you've marked as trusted (like home). This never leaves your device.";

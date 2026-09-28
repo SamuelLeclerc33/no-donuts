@@ -109,7 +109,7 @@ To work on the docs:
 ```sh
 # 1. Install the toolchain (once)
 python3 -m venv .venv
-.venv/bin/pip install -r docs/requirements.txt
+.venv/bin/pip install -r docs/requirements.lock
 
 # 2. Live preview while editing → http://localhost:8000
 .venv/bin/mkdocs serve
@@ -121,7 +121,7 @@ python3 -m venv .venv
 scripts/install-hooks.sh
 ```
 
-The pre-commit hook runs `mkdocs build` and stages `site/` so the committed output never drifts from the source. If `mkdocs` isn't installed it just warns and lets the commit through. See [ADR-0005](docs/adr/0005-docs-site.md).
+The pre-commit hook runs `mkdocs build` and stages `site/` so the committed output never drifts from the source. If `mkdocs` isn't installed it just warns and lets the commit through. See [ADR-0020](docs/adr/0020-docs-site.md).
 
 ## Name
 

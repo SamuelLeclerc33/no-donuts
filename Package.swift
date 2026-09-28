@@ -15,7 +15,12 @@ let package = Package(
         // stay CLT-buildable: no AVFoundation/AppKit imports here.
         .target(
             name: "ObjCExceptionCatcher",
-            path: "Sources/ObjCExceptionCatcher"
+            path: "Sources/ObjCExceptionCatcher",
+            // ND-097: ARC is not exception-safe by default. Without this flag, objects
+            // retained inside the @try block leak when an NSException unwinds through
+            // it. unsafeFlags is fine here: this is a local target, never consumed as a
+            // remote package dependency.
+            cSettings: [.unsafeFlags(["-fobjc-arc-exceptions"])]
         ),
         // Testable, AppKit-free core: presence engine, camera/recognition/lock
         // protocols + stubs, shared types. Imported by the app and the checks.
