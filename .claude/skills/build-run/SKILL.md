@@ -64,18 +64,31 @@ First run triggers the macOS camera prompt (uses `NSCameraUsageDescription`). To
 tccutil reset Camera <bundle-id>
 ```
 
-## Install to start at login (LaunchAgent)
+## Install and start at login (bundled LaunchAgent)
 
-One script builds the app, installs it to `/Applications/NoDonuts.app`, and loads
-the LaunchAgent so No Donuts starts at login (`RunAtLoad`):
+There is **one launcher** (ND-082 / ND-083): a LaunchAgent plist bundled inside the app, registered from the app with `SMAppService.agent(plistName:)`.
+
+- Source: `Resources/LaunchAgents/com.nodonuts.app.agent.plist`. `make-app.sh` copies it to `NoDonuts.app/Contents/Library/LaunchAgents/` **before** codesign (the build fails if it's missing). Check: `codesign --verify --strict build/NoDonuts.app`.
+- Label **`com.nodonuts.app.agent`**, `BundleProgram` `Contents/MacOS/NoDonuts`, `RunAtLoad`, `KeepAlive { SuccessfulExit = false }`, `ThrottleInterval` 10. A crash, kill, or non-zero exit is relaunched; menu **Quit** (exit 0) and the single-instance guard's duplicate exit (exit 0) are not.
+- Turned on and off by **Settings › Start at login** (`LoginItem.swift`). If macOS parks it in `.requiresApproval`, the app opens System Settings › General › Login Items so you can approve it.
+- Never copy this plist into `~/Library/LaunchAgents` by hand. `BundleProgram` only resolves through SMAppService.
+
 ```bash
-scripts/install-launchagent.sh     # make-app.sh + copy to /Applications + load agent
-scripts/uninstall-launchagent.sh   # unload + remove the agent (leaves the app + data, ND-052)
+scripts/install-app.sh             # make-app.sh + copy to /Applications + remove legacy agent + open
+# then: menu bar → Settings → Start at login (approve in Login Items if asked)
+launchctl print gui/$(id -u)/com.nodonuts.app.agent   # confirm it's loaded
+scripts/uninstall-launchagent.sh   # stop the app + legacy agent; then turn OFF Start at login
 ```
-Both are idempotent (no sudo). The plist (`scripts/com.nodonuts.agent.plist`) uses
-`KeepAlive` with `SuccessfulExit=false`, so launchd relaunches the app on a
-crash/kill (it's a security enforcer) but honors the menu **Quit** (clean exit 0),
-which stays quit until the next login/reload.
+
+- **Register from the copy you'll actually run.** SMAppService records the bundle that called `register()`. Enabling it from `build/NoDonuts.app` makes login launch `build/`. Use `/Applications/NoDonuts.app`.
+- The registration lives in macOS's login-items database, not in a file. `launchctl bootout` only unloads it until next login. To remove it for good, turn off the toggle, remove No Donuts in System Settings › Login Items, or delete the app. `uninstall.sh --purge` is ND-052.
+- After enabling, the running copy is the one you opened by hand. launchd's RunAtLoad copy exits 0 on the single-instance guard, so KeepAlive supervision starts at next login.
+
+### Migrating from the old launchers
+
+- **`SMAppService.mainApp` login item** (the old toggle): the app migrates it by itself. It unregisters `mainApp` and, if it was on, registers the agent in its place. You'll see `migration:` lines in the log.
+- **Script-installed `~/Library/LaunchAgents/com.nodonuts.agent.plist`** (ND-016, `install-launchagent.sh`): run `scripts/migrate-launcher.sh` once. It does `launchctl bootout gui/$UID/com.nodonuts.agent` and deletes the plist. `install-app.sh` and `uninstall-launchagent.sh` run it too. `install-launchagent.sh` is deprecated and forwards to `install-app.sh`.
+
 First launch prompts for Camera (and Location, if you use trusted Wi-Fi).
 
 ## Verifying a change works

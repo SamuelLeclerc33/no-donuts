@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0010-screen-lock-no-accessibility/">
+        <link rel="prev" href="../0017-stranger-fast-lock/">
       
       
-        <link rel="next" href="../0012-local-identity-featureprint/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0011 — Enforcement gating - No Donuts</title>
+        <title>ADR-0018 — Bundled KeepAlive agent - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0011-enforcement-gating-pause-trusted-wi-fi" class="md-skip">
+        <a href="#adr-0018-single-launcher-bundled-keepalive-agent-via-smappservice-dead-man-notification" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0011 — Enforcement gating
+              ADR-0018 — Bundled KeepAlive agent
             
           </span>
         </div>
@@ -723,37 +723,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0011 — Enforcement gating
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0011-enforcement-gating/" class="md-nav__link">
         
   
   
@@ -769,70 +742,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1010,10 +919,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0018-bundled-keepalive-agent/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0018 — Bundled KeepAlive agent
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1029,6 +965,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1182,51 +1182,38 @@
 
 
 
-<h1 id="adr-0011-enforcement-gating-pause-trusted-wi-fi">ADR-0011 — Enforcement gating: pause + trusted Wi-Fi<a class="headerlink" href="#adr-0011-enforcement-gating-pause-trusted-wi-fi" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0018-single-launcher-bundled-keepalive-agent-via-smappservice-dead-man-notification">ADR-0018 — Single launcher: bundled KeepAlive agent via SMAppService; dead-man notification<a class="headerlink" href="#adr-0018-single-launcher-bundled-keepalive-agent-via-smappservice-dead-man-notification" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Status: Accepted</li>
-<li>Date: 2026-07-01</li>
-<li>Owner: homer + krusty (with gordon for the Location usage string)</li>
+<li>Status: Accepted (supersedes the launcher part of <a href="../0013-settings-ui-and-login-item/">ADR-0013</a> and the ND-016 install-script LaunchAgent)</li>
+<li>Date: 2026-09-28</li>
+<li>Owner: gordon (with krusty)</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>No Donuts continuously enforces presence (lock when the enrolled user is away). Two user needs require <em>not</em> enforcing at certain times:</p>
-<ul>
-<li><strong>Pause</strong> (ND-035): a deliberate, temporary "don't lock me right now" — a coffee break, a whiteboard session, a demo.</li>
-<li><strong>Trusted networks</strong> (ND-036): don't enforce in places the user considers safe (e.g. home Wi-Fi), identified by the current Wi-Fi SSID.</li>
-</ul>
-<p>Separately, ND-013 (ADR-0009) already suspends the loop + camera when the session is locked/asleep/off-console. That is a <em>third</em> reason enforcement should be off. Without a unifying model, three independent code paths would each start/stop the loop and set state, and could fight each other (e.g. a pause timer firing while the screen is locked).</p>
-<p>Reading the current SSID on modern macOS (CoreWLAN <code>CWWiFiClient.interface().ssid()</code>) returns <code>nil</code> unless the app has <strong>Location</strong> authorization — so ND-036 forces a new permission decision.</p>
+<p>Two launchers coexisted: the script-installed LaunchAgent <code>com.nodonuts.agent</code> (ND-016, KeepAlive) and the Settings "Start at login" toggle, which used <code>SMAppService.mainApp</code> with no KeepAlive. Together they caused duplicate instances (ND-083, now guarded). Meanwhile the login-item path had no crash or kill recovery: one <code>kill</code> left the Mac unprotected until next login, and nothing told the user (ND-082). Colleagues (ND-111) shouldn't need to run an install script.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p><strong>A single enforcement gate in the App layer.</strong> Enforcement is enabled iff:</p>
-<div class="highlight"><pre><span></span><code>enabled = sessionActive &amp;&amp; !paused &amp;&amp; !onTrustedNetwork
-</code></pre></div>
 <ul>
-<li><code>sessionActive</code> — from the existing <code>SessionStateMonitor</code> (ND-013).</li>
-<li><code>paused</code> — from a new <code>PauseController</code> (in-memory; 15 min / 1 hr auto-resume timers, or indefinite).</li>
-<li><code>onTrustedNetwork</code> — from a new <code>WiFiMonitor</code>: <code>TrustedNetworksStore.isTrusted(currentSSID)</code>.</li>
+<li><strong>One launcher:</strong> a LaunchAgent plist <strong>bundled in the app</strong> (<code>Contents/Library/LaunchAgents/com.nodonuts.app.agent.plist</code>, <code>BundleProgram</code>, <code>RunAtLoad</code>, <code>KeepAlive { SuccessfulExit = false }</code>, <code>ThrottleInterval 10</code>), registered through <code>SMAppService.agent(plistName:)</code> from Settings › Start at login. A kill or crash relaunches within seconds. A clean Quit (exit 0) stays quit. It uses a new label so it can't collide with the legacy agent.</li>
+<li><strong>Migration:</strong></li>
+<li>The app unregisters a legacy <code>SMAppService.mainApp</code> item once, and re-registers the agent if the item was on.</li>
+<li><code>scripts/migrate-launcher.sh</code> boots out and removes the legacy <code>com.nodonuts.agent</code>.</li>
+<li><code>install-launchagent.sh</code> is deprecated in favour of <code>install-app.sh</code>.</li>
+<li><strong>Dead-man notification:</strong> while running, the app keeps one local notification (<code>nd.notRunning</code>) scheduled ~10 min ahead, refreshed every 60 s. If the process dies by any route, macOS still delivers "No Donuts isn't running". It is cancelled on sleep and re-armed on wake, and cancelled on logout/shutdown.</li>
+<li><strong>Confirmed Quit:</strong> "Stop protecting this Mac?" A confirmed Quit reschedules the notification with "was quit" copy for +30 min.</li>
 </ul>
-<p>All three inputs funnel through one <code>applyEnforcement()</code> in the app delegate. <strong>Disabling enforcement reuses the ND-013 suspend path</strong> — stop the loop and turn the camera off — so "not watching" is always signalled by the camera indicator light going dark. When disabled, the engine's <em>display</em> state is set by reason <strong>priority</strong>: session-suspended &gt; paused &gt; trusted-network (each via a dedicated engine method — <code>sessionSuspended()</code>, <code>pause()</code>, <code>disabledOnTrustedNetwork()</code> — that also resets absence accounting so re-enabling rebuilds the full consensus + grace, never a grace-less false lock).</p>
-<p><strong>Fail-safe: unknown SSID is never trusted.</strong> <code>TrustedNetworksStore.isTrusted(nil / "")</code> returns <code>false</code>, so if the SSID can't be read (Location denied/unavailable, no Wi-Fi) the app treats the network as untrusted and <strong>keeps enforcing</strong>. Declining Location never weakens protection.</p>
-<p><strong>Location is optional and lazy.</strong> <code>NSLocationWhenInUseUsageDescription</code> is declared; <code>requestWhenInUseAuthorization()</code> is called only when the user first marks a network as trusted — never at launch. Location is used <em>solely</em> to read the SSID; no coordinates are read, stored, or transmitted, and the SSID itself never leaves the device (it is compared against a local <code>UserDefaults</code> list).</p>
-<p><strong>Trusted-list management via the menu, not a settings window.</strong> A checkable "Trust this Wi-Fi network" item toggles the <em>current</em> SSID only (add/remove). A full settings pane (ND-040) stays deferred.</p>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>One code path decides whether to run; the three reasons compose cleanly and can't race. New "don't enforce" reasons later (e.g. a calendar hook) drop into the same gate.</li>
-<li>Pause and trusted-network both get honest, distinct menu-bar states; the camera light is an out-of-band trust signal that enforcement is off.</li>
-<li>New permission surface: Location (when-in-use). Mitigated by being optional, lazy, SSID-only, on-device, and fail-safe. Documented in SECURITY_PRIVACY.md.</li>
-<li>Pause is in-memory: it does <strong>not</strong> survive an app relaunch/reboot (a rebooted machine comes back protecting — a safe default). The trusted list <em>is</em> persisted (UserDefaults).</li>
-<li>A timed-pause <code>Timer</code> may fire late across sleep; acceptable because <code>applyEnforcement()</code> re-evaluates on every session/pause/network change (including wake).</li>
-<li>New edge case EC-20 (trusted network); EC-15 (pause) now IMPLEMENTED.</li>
-<li><strong>Pause is App-gate-only (no engine latch).</strong> The engine deliberately keeps <em>no</em> <code>isPaused</code> flag: pausing is enforced solely by the App stopping the loop and suspending the camera. This is a fail-<em>safe</em> choice — there is no latch that could get stuck "paused" and silently stop locking forever; a stray tick while paused sees the camera suspended and cannot lock. <code>PresenceEngine.pause()</code> only sets honest display state + resets absence accounting.</li>
-<li><strong>Accepted residual (in-flight lock at the instant of disable):</strong> if a lock was <em>already dispatched</em> by an in-flight tick at the exact moment the user pauses / joins a trusted network, it still completes and the screen locks. Reaching a lock dispatch requires ~10s of continuous absence, so this is practically unreachable while a user is actively toggling — accepted, not guarded. (Manual "Lock now" is unaffected and always works.)</li>
+<li>A killed or crashed app comes back on its own, and the user is told when it can't.</li>
+<li><strong>Handover:</strong> a copy not started by launchd (manual <code>open</code>, <code>install-app.sh</code>, or enabling mid-session) hands over to the agent when it is enabled. It releases the single-instance lock, runs <code>launchctl kickstart</code>, and exits only once launchd reports a new pid holding the lock. On any failure it re-acquires the lock and keeps running, so it never ends with zero instances. The agent-managed copy never hands over (no loops).</li>
+<li><strong>Turning Start at login off</strong> from the agent-managed copy would stop the running job, so Settings confirms first ("No Donuts will quit now…") and goes through the confirmed-Quit path.</li>
+<li>SMAppService may need <strong>user approval</strong> (Login Items). With dev signing, approval may be asked again after rebuilds.</li>
+<li><code>NoDonuts --unregister</code> (handled before the single-instance guard, no UI) unregisters the agent and the legacy login item and clears pending <code>nd.*</code> notifications. <code>uninstall-launchagent.sh</code> uses it.</li>
+<li>A cancelled logout no longer disables the dead-man heartbeat.</li>
+<li>Without notification permission the dead-man path can't fire. Diagnostics report it.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Gating inside the PresenceEngine (Core).</strong> Rejected: both new inputs (pause timers, CoreWLAN/CoreLocation) live in the App/AppKit layer, like <code>SessionStateMonitor</code>. Keeping the engine a pure ticking machine preserves the AppKit-free, testable Core split (ADR-0007). The engine only exposes intent methods that set display state + reset accounting.</li>
-<li><strong>Keep the camera running while paused/trusted (just skip locking).</strong> Rejected: leaving the camera light on while "paused" is dishonest and wastes power. Reusing the suspend path makes "off" unambiguous.</li>
-<li><strong>Persist pause across relaunch.</strong> Rejected for MVP: a machine that reboots should come back protecting; a forgotten indefinite pause surviving a reboot is a silent fail-open.</li>
-<li><strong>IP/subnet or geofence instead of SSID.</strong> Rejected: SSID is the user's mental model of "a network"; geofencing needs stronger Location use. SSID via CoreWLAN is the least-privilege fit.</li>
-<li><strong>A full settings window now (ND-040).</strong> Deferred: the current-SSID menu toggle covers the MVP need with far less surface.</li>
+<li><strong>Keep <code>mainApp</code> + a script agent:</strong> two launchers and no KeepAlive on the login-item path. Rejected.</li>
+<li><strong>Always-relaunch (KeepAlive true):</strong> Quit would be impossible. Rejected in favour of a confirmed Quit plus the dead-man reminder.</li>
 </ul>
 
 

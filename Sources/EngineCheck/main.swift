@@ -2835,6 +2835,87 @@ func runAll() async -> Bool {
                  "ND-063 policy: 5 distinct vectors, cap 10, 10 s timeout, FaceNet floors from the descriptor")
     }
 
+    print("\nND-080 / ND-082 — pause + liveness policy")
+    do {
+        c.expect(PausePolicy.endsOnSessionSuspend(.indefinite),
+                 "ND-080: an indefinite pause ENDS when the session suspends (user returns protected)")
+        c.expect(!PausePolicy.endsOnSessionSuspend(.timed),
+                 "ND-080: a timed pause survives a session suspend (bounded; expires on its own)")
+        c.expect(PausePolicy.remindsWhilePaused(.indefinite) && !PausePolicy.remindsWhilePaused(.timed),
+                 "ND-080: only indefinite pauses get the periodic reminder")
+        c.expect(PausePolicy.pausedReminderInterval == 30 * 60,
+                 "ND-080: paused reminder every 30 min")
+        c.expect(DeadManPolicy.heartbeatKeepsAhead(),
+                 "ND-082: shipped heartbeat (60 s) re-arms the dead-man (10 min) with >= 3 beats of slack")
+        c.expect(!DeadManPolicy.heartbeatKeepsAhead(heartbeat: 300, fireDelay: 600)
+                 && !DeadManPolicy.heartbeatKeepsAhead(heartbeat: 0, fireDelay: 600),
+                 "ND-082: a heartbeat too slow (or zero) for the fire delay is rejected")
+        c.expect(DeadManPolicy.quitReminderDelay == 30 * 60 && DeadManPolicy.fireDelay == 10 * 60,
+                 "ND-082: not-running fires <= 10 min after death; after a menu Quit, +30 min")
+    }
+
+    print("\nND-082 — launcher handover (ADR-0018)")
+    do {
+        typealias H = LauncherHandoverPolicy
+        let running = """
+        gui/503/com.nodonuts.app.agent = {
+        	active count = 1
+        	path = /Applications/NoDonuts.app/Contents/Library/LaunchAgents/com.nodonuts.app.agent.plist
+        	type = LaunchAgent
+        	state = running
+
+        	program identifier = Contents/MacOS/NoDonuts (mode: 2)
+        	pid = 28408
+        	immediate reason = inefficient
+        	last exit code = 0
+        }
+        """
+        c.expect(H.parsePID(fromLaunchctlPrint: running) == 28408,
+                 "ND-082: parses `pid = N` from launchctl print of a running job")
+        let loadedNotRunning = """
+        gui/503/com.nodonuts.app.agent = {
+        	active count = 0
+        	state = not running
+        	last exit code = 0
+        }
+        """
+        c.expect(H.parsePID(fromLaunchctlPrint: loadedNotRunning) == nil,
+                 "ND-082: a loaded-but-not-running job has no pid")
+        c.expect(H.parsePID(fromLaunchctlPrint: "Could not find service \"com.nodonuts.app.agent\" in domain for user gui: 503") == nil
+                 && H.parsePID(fromLaunchctlPrint: "") == nil,
+                 "ND-082: 'not found' / empty output → no pid")
+        c.expect(H.parsePID(fromLaunchctlPrint: "\tpid = 0\n") == nil
+                 && H.parsePID(fromLaunchctlPrint: "\tpid = abc\n") == nil
+                 && H.parsePID(fromLaunchctlPrint: "\tpid = -4\n") == nil,
+                 "ND-082: pid 0 / garbage / negative is not a live pid")
+        c.expect(H.parsePID(fromLaunchctlPrint: "\tparent pid = 1\n\tpid = 77\n") == 77,
+                 "ND-082: `parent pid` lines don't count; the job's own `pid =` does")
+
+        let label = "com.nodonuts.app.agent"
+        c.expect(H.isAgentManaged(serviceNameEnv: label, label: label, jobPID: nil, ownPID: 10),
+                 "ND-082: XPC_SERVICE_NAME == label → managed (even if launchctl can't be read)")
+        c.expect(H.isAgentManaged(serviceNameEnv: "0", label: label, jobPID: 10, ownPID: 10),
+                 "ND-082: launchd's job pid == ours → managed")
+        c.expect(!H.isAgentManaged(serviceNameEnv: "application.com.nodonuts.app.1.2", label: label, jobPID: nil, ownPID: 10)
+                 && !H.isAgentManaged(serviceNameEnv: nil, label: label, jobPID: 11, ownPID: 10)
+                 && !H.isAgentManaged(serviceNameEnv: "com.nodonuts.agent", label: label, jobPID: nil, ownPID: 10),
+                 "ND-082: `open` / other pid / legacy agent label → NOT managed")
+
+        c.expect(H.shouldHandOver(agentEnabled: true, isAgentManaged: false),
+                 "ND-082: enabled agent + unmanaged copy → hand over")
+        c.expect(!H.shouldHandOver(agentEnabled: true, isAgentManaged: true),
+                 "ND-082: the managed copy never hands over (loop guard)")
+        c.expect(!H.shouldHandOver(agentEnabled: false, isAgentManaged: false),
+                 "ND-082: agent not enabled (off / needs approval) → keep running")
+
+        c.expect(H.handoverConfirmed(jobPID: 11, ownPID: 10),
+                 "ND-082: a live job pid that isn't ours confirms the handover")
+        c.expect(!H.handoverConfirmed(jobPID: nil, ownPID: 10)
+                 && !H.handoverConfirmed(jobPID: 10, ownPID: 10)
+                 && !H.handoverConfirmed(jobPID: 0, ownPID: 10),
+                 "ND-082: no pid / our own pid / 0 never confirms (don't exit into nothing)")
+    }
+
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0
 }

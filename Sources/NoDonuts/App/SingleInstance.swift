@@ -4,8 +4,8 @@ import NoDonutsCore
 
 // Owner: krusty (app shell) — single-instance guard (ND-083).
 //
-// Two copies of No Donuts (e.g. the ND-016 LaunchAgent AND the SMAppService login
-// item, or a manual `open -n`) would each run a camera session, a presence loop and
+// Two copies of No Donuts (e.g. the bundled KeepAlive agent relaunching while a
+// hand-opened copy runs, a leftover legacy ND-016 agent, or a manual `open -n`) would each run a camera session, a presence loop and
 // a status item — double glyphs, fighting camera clients, duplicate locks. launchd
 // does NOT coalesce the two launch mechanisms, so we enforce it ourselves.
 //
@@ -32,12 +32,14 @@ enum SingleInstance {
 
     /// Acquire the single-instance lock, or exit(0) if another instance holds it.
     /// Must be called at the very top of launch, before any camera/status-item setup.
-    static func acquireOrExit() {
+    /// `~/Library/Application Support/NoDonuts/instance.lock`, creating the directory.
+    /// nil (logged) when that fails: callers fail open.
+    private static func lockPath() -> String? {
         let fm = FileManager.default
         guard let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             os_log("single-instance: no Application Support dir; continuing without guard",
                    log: log, type: .error)
-            return
+            return nil
         }
         let dir = support.appendingPathComponent("NoDonuts", isDirectory: true)
         do {
@@ -45,9 +47,13 @@ enum SingleInstance {
         } catch {
             os_log("single-instance: can't create %{public}@ (%{public}@); continuing without guard",
                    log: log, type: .error, dir.path, error.localizedDescription)
-            return
+            return nil
         }
-        let path = dir.appendingPathComponent("instance.lock").path
+        return dir.appendingPathComponent("instance.lock").path
+    }
+
+    static func acquireOrExit() {
+        guard let path = lockPath() else { return }
 
         let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard fd >= 0 else {
@@ -69,7 +75,39 @@ enum SingleInstance {
             return
         }
 
-        // Hold the fd (and thus the lock) until the process dies. Never closed.
+        // Hold the fd (and thus the lock) until the process dies, or until a
+        // launcher handover (LauncherHandover.swift) releases it on purpose.
         lockFD = fd
+    }
+
+    /// True only when ANOTHER live process holds the lock (a probe `flock` gets
+    /// EWOULDBLOCK). Used by the handover to confirm the new copy is really up. The
+    /// probe is released at once if it succeeds; false on any error.
+    static func isHeldByAnotherProcess() -> Bool {
+        guard lockFD < 0, let path = lockPath() else { return false }
+        let fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+            flock(fd, LOCK_UN)
+            return false
+        }
+        return errno == EWOULDBLOCK
+    }
+
+    /// Whether this process currently holds the lock.
+    static var isHeld: Bool { lockFD >= 0 }
+
+    /// Drop the lock so the launchd-managed copy can take over (ND-082 handover).
+    /// Only the handover calls this, and it either exits right after a confirmed
+    /// handover or calls `acquireOrExit()` again. If the lock is then held by the
+    /// new copy, that re-acquire exits 0: a live instance exists, so we never end
+    /// with zero instances. No-op when the lock isn't held (guard failed open).
+    static func release() {
+        guard lockFD >= 0 else { return }
+        flock(lockFD, LOCK_UN)
+        close(lockFD)
+        lockFD = -1
+        os_log("single-instance: lock released for launcher handover", log: log, type: .default)
     }
 }

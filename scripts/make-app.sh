@@ -99,6 +99,22 @@ else
     echo "         model, see Resources/Models/README.md (convert_facenet.py). (ND-021 Phase 2)" >&2
 fi
 
+# --- bundled LaunchAgent (ND-082 / ND-083) -----------------------------------
+# The app's single launcher: Settings › "Start at login" registers this plist via
+# SMAppService.agent(plistName:) (LoginItem.swift). It MUST sit at
+# Contents/Library/LaunchAgents/ and be copied BEFORE codesign so it is sealed by
+# the bundle signature. Unlike the model, this is REQUIRED: fail the build if absent.
+AGENT_PLIST_NAME="com.nodonuts.app.agent.plist"
+AGENT_PLIST_SRC="Resources/LaunchAgents/${AGENT_PLIST_NAME}"
+if [ ! -f "${AGENT_PLIST_SRC}" ]; then
+    echo "error: ${AGENT_PLIST_SRC} not found (the bundled launch agent)" >&2
+    exit 1
+fi
+plutil -lint -s "${AGENT_PLIST_SRC}"
+echo "==> bundling launch agent ${AGENT_PLIST_NAME} -> Contents/Library/LaunchAgents/"
+mkdir -p "${APP_DIR}/Contents/Library/LaunchAgents"
+cp "${AGENT_PLIST_SRC}" "${APP_DIR}/Contents/Library/LaunchAgents/${AGENT_PLIST_NAME}"
+
 # --- codesign (local dev) ---------------------------------------------------
 # Prefer the stable self-signed "No Donuts Dev" identity (scripts/make-dev-cert.sh):
 # its designated requirement survives rebuilds, so the login-keychain ACL and the

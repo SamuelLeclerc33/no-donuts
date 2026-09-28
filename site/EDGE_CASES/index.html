@@ -911,6 +911,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0018-bundled-keepalive-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0018 — Bundled KeepAlive agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1199,7 +1227,7 @@
 <tr>
 <td>EC-15</td>
 <td><strong>App paused by user, then walks away</strong></td>
-<td>Respect pause; don't lock. Pause is a first-class "enforcement off" reason in the single gate (<a href="../adr/0011-enforcement-gating/">ADR-0011</a>): pausing stops the loop <strong>and turns the camera off</strong> (honest "not watching"), and the menu bar shows a paused state. Options: <strong>15 min</strong> / <strong>1 hr</strong> (auto-resume via timer) / <strong>until I resume</strong> (indefinite). Pause is <strong>in-memory only</strong> — a relaunch/reboot comes back protecting (safe default). ND-035.</td>
+<td>Respect pause; don't lock. Pause is a first-class "enforcement off" reason in the single gate (<a href="../adr/0011-enforcement-gating/">ADR-0011</a>): pausing stops the loop <strong>and turns the camera off</strong> (honest "not watching"), and the menu bar shows a paused state. Options: <strong>15 min</strong> / <strong>1 hr</strong> (auto-resume via timer) / <strong>until I resume</strong> (indefinite). Pause is <strong>in-memory only</strong> — a relaunch/reboot comes back protecting (safe default). ND-035. <strong>ND-080 (2026-09-28):</strong> an <strong>indefinite</strong> pause now ends when the session suspends (lock, sleep, off-console), so you come back protected, and it posts a reminder every 30 min while active. Timed pauses (15 min / 1 hr) deliberately survive a lock and expire on schedule.</td>
 <td>IMPLEMENTED</td>
 <td>krusty/homer</td>
 </tr>
@@ -1238,6 +1266,7 @@
 <p>| EC-22 | <strong>Multi-display: menu-bar icon only shows on the active display</strong> | The status-item glyph must be a <strong>STATIC</strong> image — either a plain template (adaptive, monochrome) or a colored image with the tint <strong>baked into the pixels</strong>. A runtime-tinted status button (setting <code>button.contentTintColor</code> to a non-nil color) draws only on the <strong>currently-active display's</strong> menu bar and is NOT replicated to inactive displays' menu bars, so on a multi-monitor setup the icon appears to vanish (or renders black) everywhere except the active screen — a trust hazard, since the app must always be visible. Fixed in <code>MenuBarController.render(state:)</code> (ND-071): never set a non-nil <code>contentTintColor</code>; for tinted states bake the color into a non-template symbol via <code>NSImage.SymbolConfiguration(paletteColors:)</code> (with a <code>lockFocus</code>/<code>.sourceAtop</code> fallback), and leave nil-tint states (starting/away/locked) as plain adaptive templates. Confirmed on-device: colored glyph now renders on every display's menu bar simultaneously. | IMPLEMENTED | krusty |</p>
 <p>| EC-23 | <strong>Two app instances at once</strong> (LaunchAgent + login item, or a manual <code>open -n</code>) | Two copies each ran a camera session, a presence loop and a status item: duplicate glyphs, competing camera clients, duplicate locks. launchd does NOT merge the two launch mechanisms. <strong>Fix (ND-083):</strong> <code>SingleInstance</code> takes an exclusive <code>flock</code> on <code>~/Library/Application Support/NoDonuts/instance.lock</code> before any camera or UI setup. A second copy exits 0 (so the LaunchAgent's <code>KeepAlive SuccessfulExit=false</code> doesn't respawn it). The kernel drops the lock on exit or crash, so there is no stale lock. Any other lock-file error → continue (never block protection). Choosing one launcher per install is still open (ND-053/ND-111). | IMPLEMENTED | krusty/gordon |</p>
 <p>| EC-24 | <strong>Camera stops delivering frames while the session still reports running</strong> (external/Continuity camera unplugged, wedged virtual/DAL camera, capture runtime error) | Previously the last cached frame, usually showing the user, was served forever, so the Mac never locked. <strong>Fix (ND-055):</strong> each frame is stamped with host-clock time. Only frames younger than 3s count, and frames stamped before the last suspend/resume are rejected (ND-084a). A disconnect of the active device or a session runtime error tears the session down, and so does ≥10s with no fresh frame while running (wedged). The next tick reconfigures, and falls back to the built-in camera if needed. Until frames return, the outcome is honest: busy (a call) or <code>cameraUnavailable</code>, with its notification. Interruptions during calls are log-only (ADR-0003). A failed configuration now removes any half-added input/output so retries can succeed (ND-084b). | IMPLEMENTED | blart |</p>
+<p>| EC-25 | <strong>App killed, crashed, or quit</strong> | Protection ends silently when the process dies. <strong>ND-082 (2026-09-28):</strong> (1) <strong>Dead-man notification:</strong> while alive, the app keeps one <code>nd.notRunning</code> local notification scheduled ~10 min ahead, refreshed every 60 s. If the process dies, macOS still delivers it ("No Donuts isn't running — your Mac isn't protected"). It is cancelled on sleep and re-armed on wake, and cancelled on logout/shutdown. (2) A <strong>confirmed</strong> menu Quit ("Stop protecting this Mac?") reschedules it with "was quit" copy for +30 min. (3) A <strong>bundled LaunchAgent with KeepAlive</strong> (SuccessfulExit=false) relaunches after a kill or crash but honors a clean Quit. It is the single "Start at login" launcher (ND-083). Without notification permission the dead-man path can't fire; diagnostics say so. | IMPLEMENTED | krusty/gordon |</p>
 <h2 id="how-to-use-this-file">How to use this file<a class="headerlink" href="#how-to-use-this-file" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Add a row when a new edge case surfaces. Keep it OPEN until we agree on policy.</li>

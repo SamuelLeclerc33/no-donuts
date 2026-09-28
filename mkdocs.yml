@@ -52,5 +52,6 @@ nav:
       - "ADR-0015 — Camera trust: built-in only": adr/0015-camera-trust-built-in-only.md
       - "ADR-0016 — Bounded camera-unavailable window": adr/0016-bounded-camera-unavailable.md
       - "ADR-0017 — Stranger fast lock": adr/0017-stranger-fast-lock.md
+      - "ADR-0018 — Bundled KeepAlive agent": adr/0018-bundled-keepalive-agent.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

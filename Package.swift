@@ -2,9 +2,10 @@
 import PackageDescription
 
 // No Donuts — macOS menu-bar presence guard.
-// NOTE: SPM is used for fast iteration on logic. The shippable, signed menu-bar
-// .app bundle (Info.plist + camera entitlement + LSUIElement) requires full Xcode.
-// See .claude/skills/build-run/SKILL.md and ADR-0001.
+// NOTE: SPM builds the code. scripts/make-app.sh wraps the NoDonuts product into the
+// signed menu-bar .app (Info.plist, camera entitlement, Core ML model, bundled
+// LaunchAgent) with Command Line Tools only (ADR-0008).
+// See .claude/skills/build-run/SKILL.md.
 let package = Package(
     name: "NoDonuts",
     platforms: [.macOS(.v15)],

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner: gordon. The app's single launcher (ND-082 / ND-083).
+
+     Bundled at NoDonuts.app/Contents/Library/LaunchAgents/ by scripts/make-app.sh
+     and registered/unregistered by Settings › "Start at login" through
+     SMAppService.agent(plistName: "com.nodonuts.app.agent.plist") (LoginItem.swift).
+     Never copy this file into ~/Library/LaunchAgents by hand: BundleProgram is
+     resolved relative to the app bundle and only works via SMAppService.
+
+     The Label is deliberately NOT the legacy script-installed "com.nodonuts.agent"
+     (ND-016): two jobs with one label in gui/<uid> would collide. Remove the legacy
+     agent with scripts/migrate-launcher.sh. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nodonuts.app.agent</string>
+    <!-- Path relative to the .app bundle root; follows the app wherever it lives. -->
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/NoDonuts</string>
+    <!-- Lets System Settings › Login Items attribute the job to the app. -->
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.nodonuts.app</string>
+    </array>
+    <!-- Start at login (and when first registered). -->
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- Security enforcer: a crash, kill, or non-zero exit is relaunched. The
+         menu "Quit" (NSApplication.terminate -> exit 0) is a clean exit and is NOT
+         relaunched, so a deliberate Quit stays quit until next login. The
+         single-instance guard's "another copy is running" exit is also exit 0
+         (SingleInstance.swift), so a duplicate launch doesn't loop. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <!-- Minimum seconds between relaunches, so a crash-at-launch bug can't spin. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <!-- A user-facing app: don't let launchd apply background resource throttling. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <!-- GUI login sessions only. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>

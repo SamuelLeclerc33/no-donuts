@@ -8,9 +8,30 @@ import os.log
 // NOTE: For the real camera prompt + LSUIElement behavior, this must run as a
 // signed .app bundle built with Xcode (see ADR-0001, build-run skill).
 
+// ND-052 / ADR-0018: `NoDonuts --unregister` (used by scripts/uninstall-launchagent.sh).
+// Handled BEFORE the single-instance guard so it works while (or after) the app runs.
+// No UI, no camera: drop both launcher registrations (bundled agent + legacy mainApp)
+// and every pending/delivered nd.* notification, so no "isn't running" alert fires
+// ~10 min after an uninstall. Scripts can't do this themselves (SMAppService).
+if CommandLine.arguments.dropFirst().contains("--unregister") {
+    let lines = MainActor.assumeIsolated { LoginItem.unregisterAllForUninstall() }
+    let removed = LifecycleNotifier.removeAllForUninstall()
+    for line in lines { print("NoDonuts --unregister: \(line)") }
+    print("NoDonuts --unregister: removed \(removed) pending/delivered notification(s)")
+    exit(0)
+}
+
 // ND-083: single-instance guard FIRST — before NSApplication, the status item or the
 // camera exist. A second copy exits(0) here; any lock-file error fails open.
 SingleInstance.acquireOrExit()
+// ND-082: one-time migration from the legacy SMAppService.mainApp login item to the
+// bundled KeepAlive agent (keeps the user's "Start at login" choice). Runs AFTER the
+// single-instance guard so a duplicate copy exits before touching registration.
+MainActor.assumeIsolated { LoginItem.migrateLegacyLoginItemIfNeeded() }
+// ND-082: a copy NOT started by launchd (open, install-app.sh) has no KeepAlive. If
+// the agent is enabled, hand over to it and exit 0 here; otherwise (not enabled, we
+// ARE the agent copy, or the handover can't be confirmed) keep going.
+MainActor.assumeIsolated { LauncherHandover.handOverIfNeeded(trigger: "launch") }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -24,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (camera unavailable) and clears it on recovery. Held so its repeat timer
     /// survives between ticks.
     private let notProtectingNotifier = NotProtectingNotifier()
+    /// ND-082 dead-man "isn't running" heartbeat + ND-080 indefinite-pause reminder.
+    /// Independent of the enforcement loop (it's about the PROCESS being alive).
+    private let lifecycleNotifier = LifecycleNotifier()
+    /// ND-082: set once the user confirmed Quit, so a double click can't re-enter.
+    private var isQuitting = false
     // All held in stored properties so they aren't deallocated while observing.
     private var sessionMonitor: SessionStateMonitor?
     private let trustedNetworks = TrustedNetworksStore()
@@ -139,6 +165,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ND-057: refresh dynamic labels (pause remaining, trust item, protection audit)
         // every time the menu opens, not only at the last gate pass.
         menuBar.onMenuWillOpen = { [weak self] in self?.refreshMenuItems() }
+        // ND-082: menu Quit asks first (non-blocking window, loop keeps running).
+        menuBar.onQuitRequested = { [weak self] in self?.confirmQuit() }
+        // ND-082: arm the dead-man notification + heartbeat as early as possible.
+        lifecycleNotifier.start()
 
         // Wiring: real camera (ND-012) + identity recognizer (M2/ND-021, ADR-0012).
         // The IdentityRecognizer falls back to presence-only while the store is empty,
@@ -219,6 +249,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let monitor = SessionStateMonitor()
         self.sessionMonitor = monitor
         monitor.onChange = { [weak self] active in
+            // ND-080 / EC-15: an INDEFINITE pause ends when the session suspends
+            // (lock / display sleep / switched away) so the user comes back protected.
+            // Timed pauses keep their own expiry (PausePolicy). Resuming fires the
+            // pause onChange → applyEnforcement(); the call below is idempotent.
+            if !active { self?.pauseController?.sessionDidSuspend() }
             self?.applyEnforcement()
             // ND-058: re-check on every unlock/wake (e.g. an OS update applied while
             // asleep). Resolve-only, so cheap and safe.
@@ -234,6 +269,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // session isn't active, applyEnforcement() suspends the loop/camera and
         // sets .suspended; priming defers to the first active transition.
         applyEnforcement()
+
+        // ND-082: the previous copy handed over to us after "Start at login" was
+        // switched on in Settings; put the Settings window back where the user was.
+        if UserDefaults.standard.bool(forKey: LauncherHandover.reopenSettingsKey) {
+            UserDefaults.standard.removeObject(forKey: LauncherHandover.reopenSettingsKey)
+            openSettings()
+        }
     }
 
     /// THE single enforcement gate. Enforcement is ON only when the session is
@@ -327,6 +369,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // alert would never clear. Because update() is transition-gated on lastState,
         // calling it here and from the loop is idempotent (safe on unchanged state).
         notProtectingNotifier.update(state: engine.state, lockFailureCount: engine.lockFailureCount)
+        // ND-080: 30-min "still paused" reminder while an indefinite pause is active;
+        // cleared on resume (incl. the suspend-ends-pause path above).
+        lifecycleNotifier.updatePause(indefinitelyPaused: pauseController.isIndefinitelyPaused)
+    }
+
+    /// ND-082: confirm before a menu Quit stops protection. Hosted in a normal window
+    /// (AppWindows) rather than NSAlert.runModal so the loop/heartbeat keep running
+    /// while the user decides. Closing the window = Cancel.
+    private func confirmQuit() {
+        guard !isQuitting else { return }
+        appWindows.show(.quitConfirm, title: "Quit No Donuts") {
+            QuitConfirmView(
+                onQuit: { [weak self] in self?.performUserQuit() },
+                onCancel: { [weak self] in self?.appWindows.close(.quitConfirm) }
+            )
+        }
+    }
+
+    /// ND-082: confirmed Quit. Re-schedule the "was quit" reminder (+30 min) and only
+    /// terminate once it's registered (bounded by a short timeout in the notifier).
+    private func performUserQuit() {
+        guard !isQuitting else { return }
+        isQuitting = true
+        appWindows.close(.quitConfirm)
+        lifecycleNotifier.prepareForUserQuit {
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// ND-082: turning OFF "Start at login" while THIS process is the launchd-managed
+    /// agent copy. Unregistering makes launchd stop the job, i.e. kill us with no
+    /// relaunch, so it is a Quit: confirm it the same way, then go through the same
+    /// clean path ("was quit" reminder at +30 min) and only then unregister.
+    private func confirmDisableStartAtLogin() {
+        guard !isQuitting else { return }
+        appWindows.show(.disableLoginConfirm, title: "Turn Off Start at Login") {
+            QuitConfirmView(
+                title: "Turn off Start at login and quit?",
+                message: "No Donuts will quit now and won\u{2019}t start at login. Protection stops until you open it again.",
+                quitButtonTitle: "Turn Off and Quit",
+                onQuit: { [weak self] in self?.performDisableStartAtLoginAndQuit() },
+                onCancel: { [weak self] in self?.appWindows.close(.disableLoginConfirm) }
+            )
+        }
+    }
+
+    private func performDisableStartAtLoginAndQuit() {
+        guard !isQuitting else { return }
+        isQuitting = true
+        appWindows.close(.disableLoginConfirm)
+        lifecycleNotifier.prepareForUserQuit { [weak self] in
+            guard let self else { return }
+            do {
+                // launchd may terminate us inside this call; the "was quit" reminder is
+                // already registered, and the job is gone, so nothing relaunches us.
+                try LoginItem.setEnabled(false)
+                NSApp.terminate(nil)
+            } catch {
+                // Still registered → still managed: stay up and protecting.
+                Self.appLog.error("turning off start at login failed: \(error.localizedDescription, privacy: .public)")
+                self.isQuitting = false
+                self.lifecycleNotifier.cancelUserQuit()
+                self.settingsStore?.refresh()
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Couldn\u{2019}t turn off Start at login"
+                alert.informativeText = "No Donuts is still running and protecting this Mac. You can also remove it in System Settings \u{203A} General \u{203A} Login Items."
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
+        }
     }
 
     /// Push current pause + trusted-Wi-Fi state into the menu items so labels,
@@ -666,7 +779,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.applyEnforcement()
                 return self.trustedNetworks.all()
             },
-            copyDiagnostics: { [weak self] in self?.copyDiagnostics() }
+            copyDiagnostics: { [weak self] in self?.copyDiagnostics() },
+            // ND-082: disabling from the managed copy = quitting; everything else is a
+            // plain unregister inside the view.
+            isAgentManaged: { LauncherHandover.isAgentManaged() },
+            confirmDisableStartAtLogin: { [weak self] in self?.confirmDisableStartAtLogin() },
+            // ND-082: just enabled while running unmanaged → hand over to the agent
+            // copy now (exits this process on success; reopens Settings there).
+            didEnableStartAtLogin: { [weak self] in
+                guard let self, !self.isQuitting, !self.isEnrolling else { return }
+                LauncherHandover.handOverIfNeeded(trigger: "enable", reopenSettings: true)
+            }
         )
         // Refresh externally-sourced state (login-item registration + trusted list) BEFORE
         // presenting, EVERY time — a re-fronted retained window won't re-fire SwiftUI's
@@ -680,8 +803,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Gather the live inputs and copy a privacy-safe diagnostics summary to the
-    /// pasteboard (ND-044). Notification status isn't exposed by the notifier, so it's
-    /// omitted (the reporter treats a nil description as absent).
+    /// pasteboard (ND-044), including the notification-permission status (ND-082).
     private func copyDiagnostics() {
         guard engine != nil, wifiMonitor != nil else { return }
         // ND-102: fetch the enrollment state off main (a Keychain read can block on an
@@ -691,6 +813,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let enrollment = await Task.detached(priority: .userInitiated) {
                 store.enrollmentState()
             }.value
+            // ND-082: when notifications are off, the dead-man / paused reminders can't
+            // reach the user — surface that in diagnostics.
+            let notificationStatus = await LifecycleNotifier.authorizationDescription()
             guard let self, let engine = self.engine, let wifiMonitor = self.wifiMonitor else { return }
             DiagnosticsReporter().copyToPasteboard(
                 state: engine.state,
@@ -703,7 +828,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     markerVersion: self.enrollmentMarker.markerVersion),
                 locationStatus: wifiMonitor.authorizationStatus(),
                 trustedNetworkCount: self.trustedNetworks.all().count,
-                notificationStatusDescription: nil,
+                notificationStatusDescription: notificationStatus,
                 lockCapability: self.locker.selfTest(),   // resolve-only; reports the REAL result
                 cameraUnavailableReason: self.camera?.lastUnavailableReason
             )

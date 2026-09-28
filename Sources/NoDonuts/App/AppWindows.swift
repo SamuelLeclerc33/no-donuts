@@ -20,6 +20,8 @@ final class AppWindows {
     enum Kind: Hashable {
         case settings
         case onboarding   // first-run walkthrough (ND-043); hosting is identical
+        case quitConfirm  // ND-082: non-blocking "Stop protecting this Mac?" confirmation
+        case disableLoginConfirm  // ND-082: "Turn off Start at login and quit?" (managed copy)
     }
 
     private var windows: [Kind: NSWindow] = [:]

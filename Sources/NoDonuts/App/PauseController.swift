@@ -1,4 +1,5 @@
 import Foundation
+import NoDonutsCore
 
 // Owner: krusty — pause enforcement UX (ND-035).
 // Trust rule: pausing is user-initiated and visible. This controller owns ONLY
@@ -14,6 +15,10 @@ public final class PauseController {
     public private(set) var isPaused = false
     /// When a timed pause auto-resumes; nil for indefinite pauses or when active.
     public private(set) var expiry: Date?
+    /// The active pause's kind (nil when not paused). Policy lives in Core `PausePolicy`.
+    public private(set) var kind: PauseKind?
+    /// True while an indefinite ("until I resume") pause is active.
+    public var isIndefinitelyPaused: Bool { kind == .indefinite }
 
     /// Fired whenever the pause state changes. main.swift sets this to call
     /// applyEnforcement(). The single enforcement gate does the real work.
@@ -32,6 +37,7 @@ public final class PauseController {
         timer?.invalidate()
         timer = nil
         isPaused = true
+        kind = seconds == nil ? .indefinite : .timed
         if let seconds {
             expiry = Date().addingTimeInterval(seconds)
             let t = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in
@@ -52,7 +58,18 @@ public final class PauseController {
         guard isPaused else { return }
         isPaused = false
         expiry = nil
+        kind = nil
         onChange?()
+    }
+
+    /// ND-080 / EC-15: the session suspended (lock / display sleep / switched away).
+    /// Ends the pause if `PausePolicy` says this kind ends on suspend (indefinite
+    /// does; timed keeps its own expiry). Returns true if it resumed.
+    @discardableResult
+    public func sessionDidSuspend() -> Bool {
+        guard isPaused, let kind, PausePolicy.endsOnSessionSuspend(kind) else { return false }
+        resume()
+        return true
     }
 
     /// A short remaining-time string for the menu: "14 min left" for a timed

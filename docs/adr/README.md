@@ -24,6 +24,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0015](0015-camera-trust-built-in-only.md) — Camera trust: built-in camera only; external, Continuity and virtual cameras are never used — **Accepted**
 - [ADR-0016](0016-bounded-camera-unavailable.md) — Bounded camera-unavailable window (lock after 2 min with the lid open; not with the lid closed); busy-camera cap 10 min — **Accepted**
 - [ADR-0017](0017-stranger-fast-lock.md) — Stranger at the keyboard locks after 3 ticks with no grace — **Accepted**
+- [ADR-0018](0018-bundled-keepalive-agent.md) — Single launcher: bundled KeepAlive agent via SMAppService.agent; dead-man notification; confirmed Quit — **Accepted** (supersedes the launcher part of ADR-0013)
 
 ## Template
 

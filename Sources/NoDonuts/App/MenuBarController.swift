@@ -16,6 +16,9 @@ public final class MenuBarController: NSObject {
     /// ND-057: called from `menuWillOpen` so the AppDelegate can push fresh dynamic state
     /// (pause remaining time, trust item, protection audit) right before the menu shows.
     public var onMenuWillOpen: (@MainActor () -> Void)?
+    /// ND-082: menu Quit forwards here so the AppDelegate can confirm first. If unset,
+    /// Quit terminates immediately (previous behavior).
+    public var onQuitRequested: (@MainActor () -> Void)?
     /// Injected lock action — the UI never owns lock policy (decision lives with homer/wiggum).
     private let onLockNow: @MainActor () -> Void
     /// Injected pause actions (ND-035). The UI never owns PauseController; it just
@@ -146,8 +149,8 @@ public final class MenuBarController: NSObject {
         lockNowItem.target = self
         lockNowItem.isEnabled = true
         menu.addItem(lockNowItem)
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quitItem.target = NSApp
+        let quitItem = NSMenuItem(title: "Quit No Donuts\u{2026}", action: #selector(quitClicked), keyEquivalent: "q")
+        quitItem.target = self
         quitItem.isEnabled = true
         menu.addItem(quitItem)
         statusItem.menu = menu
@@ -162,6 +165,9 @@ public final class MenuBarController: NSObject {
     @objc private func pause1hClicked() { onPause(60 * 60) }
     @objc private func pauseIndefiniteClicked() { onPause(nil) }
     @objc private func resumeClicked() { onResume() }
+    @objc private func quitClicked() {
+        if let onQuitRequested { onQuitRequested() } else { NSApp.terminate(nil) }
+    }
     @objc private func trustClicked() { onToggleTrustCurrentNetwork() }
     @objc private func enrollClicked() { onEnroll() }
     @objc private func resetEnrollmentClicked() { onResetEnrollment() }

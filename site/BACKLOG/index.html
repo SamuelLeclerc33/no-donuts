@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0017-stranger-fast-lock/">
+        <link rel="prev" href="../adr/0018-bundled-keepalive-agent/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -913,6 +913,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0018-bundled-keepalive-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0018 — Bundled KeepAlive agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1335,9 +1363,9 @@
 16. ND-059 — multi-face matching (after ND-056) — cooper
 17. ✅ ND-061 — stranger-at-keyboard urgency (ADR) — homer + cooper</p>
 <p><strong>Tier 2 — tamper resistance &amp; correctness:</strong>
-18. ND-082 — app kill/quit watchdog + "No Donuts stopped" notification — gordon + wiggum
+18. ✅ ND-082 — app kill/quit watchdog + "No Donuts stopped" notification — gordon + wiggum
 19. ✅ ND-083 — single-instance guard (launcher choice → ND-053/ND-111) — gordon
-20. ND-080 — indefinite pause: reminder + clear on unlock — krusty + homer
+20. ✅ ND-080 — indefinite pause: reminder + clear on unlock — krusty + homer
 21. ND-081 — trusted Wi-Fi bound to SSID + BSSID/gateway, not SSID alone — krusty + wiggum
 22. ✅ ND-084 — camera: post-suspend stale frame + failed <code>addOutput</code> leaves input attached — blart
 23. ND-090 — display-asleep ≠ locked in <code>SessionStateMonitor</code> — blart + homer
@@ -1469,7 +1497,7 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <ul>
 <li>[ ] ND-050 Codesign + notarization pipeline — gordon (needs a decision ADR first: signing account (personal/Chrono — <strong>not</strong> the Serko account), final bundle id, hardened-runtime entitlement audit, <code>notarytool</code> flow. <strong>Blocked on ND-065</strong> — renaming the bundle id without the Keychain-service migration plan silently orphans enrollments)</li>
 <li>[ ] ND-051 Signed <code>.app</code> + DMG/installer — gordon</li>
-<li>[ ] ND-052 Uninstall path (remove LaunchAgent + data) — gordon (scope from review: <code>uninstall.sh --purge</code> = agent + <code>/Applications</code> app + Keychain enrollment item + <code>defaults delete com.nodonuts.app</code> + <code>tccutil reset Camera</code> + unregister the <code>SMAppService</code> login item (today the app returns at next login after "uninstall") — a trust/privacy story this app markets on)</li>
+<li>[ ] ND-052 Uninstall path (remove LaunchAgent + data) <strong>Progress 2026-09-28:</strong> <code>NoDonuts --unregister</code> exists and <code>uninstall-launchagent.sh</code> calls it (agent + legacy login item unregistered, pending notifications cleared); <code>--purge</code> of the Keychain, defaults and TCC is still to do — gordon (scope from review: <code>uninstall.sh --purge</code> = agent + <code>/Applications</code> app + Keychain enrollment item + <code>defaults delete com.nodonuts.app</code> + <code>tccutil reset Camera</code> + unregister the <code>SMAppService</code> login item (today the app returns at next login after "uninstall") — a trust/privacy story this app markets on)</li>
 <li>[ ] ND-053 MDM/enterprise deployment notes — gordon. <strong>Now in scope (internal distribution, ND-111):</strong> if colleagues' Macs are company-managed, deploy via MDM. Note that a PPPC profile can pre-DENY but cannot pre-GRANT camera access, so each user still clicks Allow once. Document the LaunchAgent vs login-item choice for managed installs (ND-083).</li>
 </ul>
 <h2 id="m6-v12-hardening-from-the-2026-07-02-full-review">M6 — v1.2 Hardening (from the 2026-07-02 full review)<a class="headerlink" href="#m6-v12-hardening-from-the-2026-07-02-full-review" title="Permanent link">&para;</a></h2>
@@ -1519,10 +1547,10 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <li>[x] ND-077 Tamper-visible tunables — <code>defaults write com.nodonuts.app matchThreshold 0.01</code>, <code>spoofTextureFloor 0.0001</code>, <code>antiSpoofEnabled false</code> all apply silently (<code>FaceEmbedding.swift:153</code>, <code>FaceLiveness.swift:88</code>). A colleague with 10 s of access can neuter identity with no UI trace. Fix: show "protection reduced" in the menu header when any security tunable differs from its default. <strong>DONE 2026-09-25:</strong> <code>reducedProtectionReasons</code> (Core, pure, uses the same resolvers as the recognizer) flags a threshold below the model default, anti-spoof turned off, or a floor below 12; the menu shows "⚠️ Protection reduced: …" (refreshed on menu open, after each gate pass and on Settings change); diagnostics too. Stricter values are never flagged — krusty + wiggum</li>
 <li>[x] ND-078 Bounded camera-unavailable policy — <code>.unavailable</code> resets absence accounting with no time limit (<code>PresenceEngine.swift:53-56</code>), so an unplugged/wedged/removed camera keeps the Mac unlocked forever (only a 5-min notification). It also clears <code>callAssumedSince</code>, so interleaved unavailable ticks restart the ND-033 call cap (<code>:55</code>, <code>:131</code>). Fix: ADR for a capped unavailable window (like <code>maxCallAssumedPresentSeconds</code>) then escalate to absence; don't reset the call cap on <code>.unavailable</code>. Revisits EC-07/08/09 (needs ADR — clamshell must not lock out the user unfairly). <strong>DONE 2026-09-25 (ADR-0016):</strong> with the lid open, 120s of continuous unavailability escalates to absence, then grace, then lock (with retries); before the cap, unavailable ticks HOLD rather than reset; lid closed or desktop (<code>LidState</code> .closed/.noLid) never escalates; the display stays <code>cameraUnavailable</code> until the lock resolves; unavailable ticks no longer reset the call cap; the notification text depends on lid state. Security review closed two fail-open interleavings (unavailable+busy/noFace, and the pre-existing busy+noFace/error). EngineCheck 173/173 — homer</li>
 <li>[x] ND-079 Manual lock swallows auto-lock — if <code>lockNow()</code> is in flight when grace expires, the auto path sets <code>lockAttempted = true</code> (<code>PresenceEngine.swift:217</code>) then is skipped by <code>isLocking</code> (<code>:171</code>); if the manual lock fails, nothing retries this episode. Fix: set <code>lockAttempted</code> only when <code>attemptLock</code> actually runs; EngineCheck it. Pair with ND-054. <strong>DONE 2026-09-24 (with ND-054):</strong> an auto attempt is skipped without being recorded while a manual lock is in flight; the next tick attempts — homer</li>
-<li>[ ] ND-080 Indefinite pause never ends — "Pause until I resume" (<code>PauseController.swift:31-45</code>) has no reminder and survives lock/unlock. Fix: clear on session unlock (or cap), nag every N minutes while paused. EC-15. — krusty + homer</li>
+<li>[x] ND-080 Indefinite pause never ends — "Pause until I resume" (<code>PauseController.swift:31-45</code>) has no reminder and survives lock/unlock. Fix: clear on session unlock (or cap), nag every N minutes while paused. EC-15. <strong>DONE 2026-09-28:</strong> an indefinite pause ends on session suspend and sends a 30-min <code>nd.pausedReminder</code>; timed pauses survive a lock (PausePolicy, EngineCheck-covered) — krusty + homer</li>
 <li>[ ] ND-081 Trusted Wi-Fi keyed on SSID only — <code>WiFiMonitor.swift:83</code>; anyone can broadcast the office/home SSID from a hotspot, and <code>trustedWiFiSSIDs</code> is editable via <code>defaults write</code>. Fix: bind trust to SSID + BSSID (or gateway MAC). EC-20. — krusty + wiggum</li>
-<li>[ ] ND-082 Kill/quit watchdog — the <code>SMAppService</code> login-item path has no KeepAlive, so a single <code>kill</code> leaves the Mac unprotected until next login; on the LaunchAgent path a scripted Quit (exit 0) isn't relaunched (<code>MenuBarController.swift:111</code>). Nothing notifies the user. Fix: KeepAlive/watchdog on the login-item path + "No Donuts stopped" notification on Quit. — gordon + wiggum</li>
-<li>[x] ND-083 Single instance + one launcher — <code>LoginItem.swift:18-20</code> claims launchd coalesces the LaunchAgent and <code>SMAppService.mainApp</code>; they're separate jobs and there's no single-instance guard → two app copies can run (two cameras sessions, two menu icons). Fix: <code>NSRunningApplication</code> singleton check at launch + pick one mechanism per install. <strong>DONE 2026-09-24 (guard):</strong> <code>SingleInstance.swift</code> takes a <code>flock</code> on <code>~/Library/Application Support/NoDonuts/instance.lock</code> before any camera or UI; a second copy exits 0; other errors fail open. EC-23. Choosing one launcher per install moved to ND-053/ND-111 — gordon</li>
+<li>[x] ND-082 Kill/quit watchdog — the <code>SMAppService</code> login-item path has no KeepAlive, so a single <code>kill</code> leaves the Mac unprotected until next login; on the LaunchAgent path a scripted Quit (exit 0) isn't relaunched (<code>MenuBarController.swift:111</code>). Nothing notifies the user. Fix: KeepAlive/watchdog on the login-item path + "No Donuts stopped" notification on Quit. <strong>DONE 2026-09-28 (ADR-0018):</strong> bundled <code>com.nodonuts.app.agent</code> with KeepAlive, registered via <code>SMAppService.agent</code> (Settings › Start at login), plus a one-time <code>mainApp</code> migration and <code>migrate-launcher.sh</code>; <code>nd.notRunning</code> dead-man notification refreshed every 60s; confirmed Quit ("Stop protecting this Mac?") that reschedules the +30 min "was quit" reminder — gordon + wiggum</li>
+<li>[x] ND-083 Single instance + one launcher — <code>LoginItem.swift:18-20</code> claims launchd coalesces the LaunchAgent and <code>SMAppService.mainApp</code>; they're separate jobs and there's no single-instance guard → two app copies can run (two cameras sessions, two menu icons). Fix: <code>NSRunningApplication</code> singleton check at launch + pick one mechanism per install. <strong>DONE 2026-09-24 (guard):</strong> <code>SingleInstance.swift</code> takes a <code>flock</code> on <code>~/Library/Application Support/NoDonuts/instance.lock</code> before any camera or UI; a second copy exits 0; other errors fail open. EC-23. Choosing one launcher per install moved to ND-053/ND-111 <strong>Launcher choice resolved 2026-09-28 (ADR-0018):</strong> there is now a single bundled SMAppService agent — gordon</li>
 <li>[x] ND-084 Camera session correctness — (a) frames already queued on <code>sessionQueue</code> land after <code>suspend()</code> clears the buffer (<code>CameraController.swift:256-260</code>), so the first post-resume tick can read a pre-suspend frame as "present"; clear on <code>resume()</code> + drop frames timestamped before resume (shares ND-055 timestamps). (b) a failed <code>addOutput</code> leaves the input attached (<code>:164-172</code>), so every retry fails <code>canAddInput</code> until restart; remove the input on every failure path. <strong>DONE 2026-09-25 (with ND-055):</strong> (a) suspend/resume clear the buffer with a notBefore cutoff, so queued pre-suspend frames are dropped; (b) every configure failure path removes the input/output it half-added. Also a sticky <code>suspended</code> flag: nothing but resume() restarts the camera, closing the ND-096 camera-behind-lock-screen gap — blart</li>
 <li>[x] ND-085 Face quality gate — no minimum face size/quality (<code>CoreMLFaceEmbedder.swift:155</code>); crops clipped at the frame edge are stretched non-uniformly (<code>:230-231</code>) → garbage embeddings (false-accept and false-reject). Fix: minimum face fraction of frame, keep the crop square (pad instead of stretch). <strong>DONE 2026-09-25:</strong> minimum face size of 12% of the frame's shorter side → <code>.noFace</code>; square, black-padded, uniformly scaled 160×160 crop; version bumped to <code>facenet-vggface2-v2</code> (forced re-enroll through the ND-073 state). ADR-0014 amended — cooper</li>
 <li>[x] ND-086 Onboarding honesty — the Done step says "now watching for you and will lock" even if camera access was denied/never asked (<code>OnboardingView.swift:150</code>); "Enroll" is tappable before camera authorization (<code>:133</code>) → guaranteed failure modal. Fix: permission-conditional copy; disable Enroll until authorized. <strong>DONE 2026-09-25:</strong> the Done step copy depends on camera authorization (orange "not protecting until you allow camera access" when not granted); Enroll is disabled until the camera is authorized, with a hint; authorization is polled once a second while onboarding is open — krusty</li>

@@ -58,11 +58,12 @@ scripts/make-app.sh        # add --debug for a faster compile
 open build/NoDonuts.app
 ```
 
-**Install to start at login:** `scripts/install-launchagent.sh` builds the app, copies it to `/Applications/NoDonuts.app`, and loads a `RunAtLoad` LaunchAgent so No Donuts starts automatically at login (idempotent, no sudo). Undo with `scripts/uninstall-launchagent.sh` (removes the agent; leaves the app and data — ND-052):
+**Install + start at login:** `scripts/install-app.sh` builds the app, copies it to `/Applications/NoDonuts.app`, removes any legacy script-installed LaunchAgent, and opens the app (idempotent, no sudo). Then turn on **Settings › Start at login**: this registers the LaunchAgent bundled inside the app (`com.nodonuts.app.agent`), which starts No Donuts at login and relaunches it after a crash or kill. Menu Quit stays quit. macOS may ask you to approve it in System Settings › General › Login Items.
 
 ```sh
-scripts/install-launchagent.sh     # install + auto-start at login
-scripts/uninstall-launchagent.sh   # stop auto-starting
+scripts/install-app.sh             # build + install to /Applications + open
+scripts/migrate-launcher.sh        # one-time: remove the old ~/Library/LaunchAgents/com.nodonuts.agent.plist
+scripts/uninstall-launchagent.sh   # stop the app + legacy agent (then turn off Settings › Start at login)
 ```
 
 Distribution (Developer-ID signing + notarization) needs more — see ND-050. Details in the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).

@@ -21,6 +21,15 @@ struct SettingsActions {
     var removeTrustedNetwork: (String) -> [String]
     /// Copy the privacy-safe diagnostics summary to the pasteboard.
     var copyDiagnostics: () -> Void
+    /// ND-082: whether this process is the launchd-managed agent copy. Turning "Start
+    /// at login" off from that copy stops the job, i.e. quits the app.
+    var isAgentManaged: () -> Bool
+    /// ND-082: show the "turn off and quit" confirmation; the AppDelegate runs the
+    /// clean Quit path and unregisters on confirm.
+    var confirmDisableStartAtLogin: () -> Void
+    /// ND-082: called after a successful enable so an unmanaged copy can hand over
+    /// to the agent (may exit this process).
+    var didEnableStartAtLogin: () -> Void
 }
 
 @MainActor
@@ -150,6 +159,13 @@ struct SettingsView: View {
     }
 
     private func setStartAtLogin(_ enabled: Bool) {
+        // ND-082: from the launchd-managed copy, "off" means quitting now. Leave the
+        // toggle on (store unchanged) until the user confirms in that window.
+        if !enabled, actions.isAgentManaged() {
+            loginError = nil
+            actions.confirmDisableStartAtLogin()
+            return
+        }
         do {
             try LoginItem.setEnabled(enabled)
             // Reflect the effective status (may be .requiresApproval even after a
@@ -159,6 +175,14 @@ struct SettingsView: View {
                 loginError = "Needs approval in System Settings › General › Login Items."
             } else {
                 loginError = nil
+            }
+            if enabled && store.startAtLogin {
+                // Let SwiftUI draw the toggle as on before a possible handover exit.
+                let didEnable = actions.didEnableStartAtLogin
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    didEnable()
+                }
             }
         } catch {
             // Keep the toggle honest: reflect actual status, surface the reason.
