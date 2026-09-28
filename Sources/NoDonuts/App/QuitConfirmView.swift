@@ -19,6 +19,7 @@ struct QuitConfirmView: View {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 48, height: 48)
+                    .accessibilityHidden(true)   // ND-100: decorative
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
                         .font(.headline)

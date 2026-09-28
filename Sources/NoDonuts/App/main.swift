@@ -473,12 +473,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.isQuitting = false
                 self.lifecycleNotifier.cancelUserQuit()
                 self.settingsStore?.refresh()
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Couldn\u{2019}t turn off Start at login"
-                alert.informativeText = "No Donuts is still running and protecting this Mac. You can also remove it in System Settings \u{203A} General \u{203A} Login Items."
-                alert.addButton(withTitle: "OK")
-                alert.runModal()
+                // ND-070: non-blocking (the loop keeps protecting while this is up).
+                self.showMessage(.startAtLoginError,
+                                 windowTitle: "Start at Login",
+                                 style: .warning,
+                                 title: "Couldn\u{2019}t turn off Start at login",
+                                 message: "No Donuts is still running and protecting this Mac. You can also remove it in System Settings \u{203A} General \u{203A} Login Items.")
             }
         }
     }
@@ -535,14 +535,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One-time Keychain explainer (macOS's Keychain-access prompt has no custom-text
         // hook like camera/Location, so we set expectations ourselves before the first
         // enrollment write). Shown before capture so it precedes any system prompt.
+        // ND-070: a non-blocking window instead of runModal — enforcement keeps running
+        // while it's up, and capture starts only on Continue (closing the window backs
+        // out). Marked as explained on Continue, so
+        // clicking "Enroll my face…" again while it's open just re-fronts it.
         if !Permissions.hasExplainedKeychain {
-            Permissions.hasExplainedKeychain = true
-            let alert = NSAlert()
-            alert.alertStyle = .informational
-            alert.messageText = "No Donuts stores your face signature in your Keychain"
-            alert.informativeText = "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again."
-            alert.addButton(withTitle: "Continue")
-            alert.runModal()
+            showMessage(.keychainExplainer,
+                        windowTitle: "Enroll My Face",
+                        style: .informational,
+                        title: "No Donuts stores your face signature in your Keychain",
+                        message: "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again.",
+                        buttonTitle: "Continue",
+                        // Review fix: closing the window (red button / Escape) backs out —
+                        // no capture, and the note shows again next time. Only Continue
+                        // marks it explained and starts enrollment.
+                        onConfirm: { [weak self] in
+                            Permissions.hasExplainedKeychain = true
+                            // Don't start the camera if the session went away meanwhile.
+                            guard let self, self.sessionMonitor?.isActive ?? false else { return }
+                            self.startEnrollment()
+                        })
+            return
         }
 
         isEnrolling = true
@@ -577,7 +590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if case .cancelled = result { return }
             // ND-102: the Keychain write runs in a detached task that cancellation can't
             // interrupt; if the session suspended/locked meanwhile, keep the stored
-            // enrollment but don't pop a modal over the lock screen.
+            // enrollment but don't pop a window over the lock screen.
             if Task.isCancelled { return }
             self.showEnrollmentResult(result)
         }
@@ -689,43 +702,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         notProtectingNotifier.update(lockCapability: display)
     }
 
-    /// Lightweight, honest NSAlert for the enrollment outcome.
+    /// Honest enrollment outcome (ND-022), shown in a non-blocking window (ND-070):
+    /// it appears right as enforcement resumes, so a modal here would stall the loop
+    /// (no ticks, no lock) for as long as the user left it open.
     private func showEnrollmentResult(_ result: EnrollmentCoordinator.Result) {
-        let alert = NSAlert()
+        let style: MessageView.Style
+        let title: String
+        let message: String
         switch result {
         case .success(let count):
-            alert.alertStyle = .informational
-            alert.messageText = "You're enrolled"
-            alert.informativeText = "No Donuts captured \(count) reference \(count == 1 ? "image" : "images") of your face. It will now stay unlocked only for you — a different face triggers a lock after the grace period. Everything is stored encrypted on this Mac; no images are kept."
+            style = .informational
+            title = "You're enrolled"
+            message = "No Donuts captured \(count) reference \(count == 1 ? "image" : "images") of your face. It will now stay unlocked only for you — a different face triggers a lock after the grace period. Everything is stored encrypted on this Mac; no images are kept."
         case .notEnoughFaces:
-            alert.alertStyle = .warning
-            alert.messageText = "Couldn't see your face"
-            alert.informativeText = "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
+            style = .warning
+            title = "Couldn't see your face"
+            message = "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
         case .inconsistent:
             // ND-063: enough faces, but they didn't agree with each other.
-            alert.alertStyle = .warning
-            alert.messageText = "Couldn't get a consistent capture"
-            alert.informativeText = "The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
+            style = .warning
+            title = "Couldn't get a consistent capture"
+            message = "The captured images didn't all look like the same face. Make sure only your face is in view, in good light, and hold still for about 6 seconds, then try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged."
         case .cameraUnavailable:
-            alert.alertStyle = .warning
-            alert.messageText = "Camera unavailable"
+            style = .warning
+            title = "Camera unavailable"
             // ND-075: only the built-in camera is trusted (ADR-0015) — say so when that's why.
-            alert.informativeText = camera?.lastUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
+            message = camera?.lastUnavailableReason == CameraTrustPolicy.noTrustedCameraReason
                 ? "No Donuts only uses the Mac\u{2019}s built-in camera (external and virtual cameras aren\u{2019}t trusted), and none is available. Open the lid, then try again."
                 : "No Donuts couldn't get a frame from the camera. Check camera permission and that no other app is blocking it, then try again."
         case .saveFailed:
-            alert.alertStyle = .warning
-            alert.messageText = "Couldn't save your enrollment"
-            alert.informativeText = "No Donuts saw your face but couldn't save your enrollment. Please try again. Your previous enrollment (if any) was left unchanged."
+            style = .warning
+            title = "Couldn't save your enrollment"
+            message = "No Donuts saw your face but couldn't save your enrollment. Please try again. Your previous enrollment (if any) was left unchanged."
         case .cancelled:
             // Cancelled captures are handled silently by the caller (no alert over the
             // lock screen); this case keeps the switch exhaustive.
-            alert.alertStyle = .informational
-            alert.messageText = "Enrollment cancelled"
-            alert.informativeText = "Enrollment was interrupted. Your previous enrollment (if any) was left unchanged."
+            style = .informational
+            title = "Enrollment cancelled"
+            message = "Enrollment was interrupted. Your previous enrollment (if any) was left unchanged."
         }
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        showMessage(.enrollmentResult, windowTitle: "Enroll My Face",
+                    style: style, title: title, message: message)
+    }
+
+    /// ND-070: present a message in a non-blocking window (replaces NSAlert.runModal).
+    /// Re-showing the same kind replaces its copy. `onDismiss` runs once, whether the
+    /// user pressed the button, hit Escape/Return or closed the window.
+    private func showMessage(_ kind: AppWindows.Kind,
+                             windowTitle: String,
+                             style: MessageView.Style,
+                             title: String,
+                             message: String,
+                             buttonTitle: String = "OK",
+                             onDismiss: (() -> Void)? = nil,
+                             onConfirm: (() -> Void)? = nil) {
+        // Review fix: `onConfirm` runs ONLY for the button (Return); closing the window
+        // (red button / Escape) runs just `onDismiss`. The flag is set before close so
+        // the shared onClose hook can tell the two apart.
+        final class ConfirmFlag { var confirmed = false }
+        let flag = ConfirmFlag()
+        appWindows.show(kind, title: windowTitle, replaceContent: true, onClose: {
+            onDismiss?()
+            if flag.confirmed { onConfirm?() }
+        }) {
+            MessageView(style: style, title: title, message: message, buttonTitle: buttonTitle,
+                        onDismiss: { [weak self] in self?.appWindows.close(kind) },
+                        onConfirm: { [weak self] in flag.confirmed = true; self?.appWindows.close(kind) })
+        }
     }
 
     /// First-run priming. On the very first active launch this shows the guided
@@ -850,6 +893,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             didEnableStartAtLogin: { [weak self] in
                 guard let self, !self.isQuitting, !self.isEnrolling else { return }
                 LauncherHandover.handOverIfNeeded(trigger: "enable", reopenSettings: true)
+            },
+            // ND-099: read-only Recognition section.
+            recognitionInfo: { [weak self] in
+                self?.currentRecognitionInfo() ?? RecognitionInfo(
+                    modelName: "unknown", modelVersion: "unknown", modelLoading: false,
+                    thresholdIsTuned: false, effectiveThreshold: 0, defaultThreshold: 0,
+                    identity: .unknown, antiSpoofEnabled: resolvedAntiSpoofEnabled(),
+                    antiSpoofSupportedByModel: nil, cameraName: nil,
+                    cameraUnavailableReason: nil, lockMechanisms: [])
             }
         )
         // Refresh externally-sourced state (login-item registration + trusted list) BEFORE
@@ -861,6 +913,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appWindows.show(.settings, title: "No Donuts Settings") {
             SettingsView(store: settingsStore, actions: actions)
         }
+    }
+
+    /// ND-099: snapshot for the Settings "Recognition" section, from the same live
+    /// sources diagnostics uses. No Keychain read: identity comes from the last pushed
+    /// status (itself from the off-main store read + the recognizer), so opening
+    /// Settings can never block on an ACL prompt (ND-102).
+    private func currentRecognitionInfo() -> RecognitionInfo {
+        let descriptor = embedder.descriptor   // live: a deferred load may have resolved/fallen back
+        let loading = (embedder as? DeferredFaceEmbedder).map { !$0.isResolved } ?? false
+        // Anti-spoof coverage per model, verified against the embedders (ND-072): both
+        // CoreMLFaceEmbedder and VisionFeaturePrintEmbedder return a real texture score
+        // when the toggle is on. An unrecognized model is reported as unknown, not assumed.
+        let supported: Bool?
+        switch descriptor.version {
+        case FaceEmbeddingModelDescriptor.facenetVGGFace2.version,
+             FaceEmbeddingModelDescriptor.visionFeaturePrint.version:
+            supported = true
+        default:
+            supported = nil
+        }
+        let capability = lastLockCapability ?? locker.selfTest()   // resolve-only
+        return RecognitionInfo(
+            modelName: descriptor.displayName,
+            modelVersion: descriptor.version,
+            modelLoading: loading,
+            thresholdIsTuned: descriptor.thresholdIsTuned,
+            effectiveThreshold: resolvedMatchThreshold(for: descriptor),
+            defaultThreshold: descriptor.defaultMatchThreshold,
+            identity: lastPushedIdentity,
+            antiSpoofEnabled: resolvedAntiSpoofEnabled(),
+            antiSpoofSupportedByModel: supported,
+            cameraName: camera?.lastDeviceName,
+            cameraUnavailableReason: camera?.lastUnavailableReason,
+            lockMechanisms: capability.available.map(\.symbolName))
     }
 
     /// Gather the live inputs and copy a privacy-safe diagnostics summary to the

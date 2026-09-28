@@ -198,6 +198,7 @@ struct OnboardingView: View {
                     .font(.system(size: 28))
                     .foregroundStyle(.tint)
                     .frame(width: 36)
+                    .accessibilityHidden(true)   // ND-100: decorative; the title says it
                 Text(title).font(.title2).bold()
             }
             VStack(alignment: .leading, spacing: 10, content: body)
@@ -236,6 +237,10 @@ struct OnboardingView: View {
                     .frame(width: 7, height: 7)
             }
         }
+        // ND-100: the dots are decorative for sighted users; VoiceOver gets one
+        // element with the position instead of four unlabeled circles.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(step.rawValue + 1) of \(Step.allCases.count)")
     }
 
     private func goForward() {

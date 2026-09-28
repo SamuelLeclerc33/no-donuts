@@ -100,6 +100,8 @@ struct DiagnosticsReporter {
         }
         lines.append("  Enrolled: \(enrolledLabel)")
         lines.append("  Identity: \(Self.identityStatusDescription(identity))")
+        // ND-099: the model the stored enrollment is compared against (version strings only).
+        lines.append("  Active model: \(descriptor.displayName) (\(descriptor.version), \(descriptor.thresholdIsTuned ? "tuned" : "not yet tuned"))")
         lines.append("")
 
         // --- Presence + effective config ---

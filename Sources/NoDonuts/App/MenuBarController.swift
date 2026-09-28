@@ -380,9 +380,14 @@ public final class MenuBarController: NSObject {
         // State-driven, always-visible menu-bar glyph (ND-017). Trust rule: the
         // glyph must read honestly at a glance — warnings/locked get a tint.
         let glyph = glyph(for: state)
+        // ND-100: VoiceOver reads the status item among OTHER apps' menu extras, so the
+        // label names the app first ("No Donuts: present"), not just the state.
+        let accessibilityLabel = "No Donuts: \(glyph.label)"
         if let button = statusItem.button {
+            button.setAccessibilityLabel(accessibilityLabel)
+            button.toolTip = accessibilityLabel
             if let base = NSImage(systemSymbolName: glyph.symbolName,
-                                  accessibilityDescription: glyph.label) {
+                                  accessibilityDescription: accessibilityLabel) {
                 // EXPERIMENTAL (multi-display bug): never set button.contentTintColor
                 // to a non-nil value. A runtime-tinted status-item button only draws on
                 // the active display's menu bar; a STATIC colored (non-template) image
@@ -392,7 +397,7 @@ public final class MenuBarController: NSObject {
                 button.contentTintColor = nil
                 if let tint = glyph.tint {
                     let colored = coloredSymbol(base, tint: tint,
-                                                accessibilityDescription: glyph.label)
+                                                accessibilityDescription: accessibilityLabel)
                     colored.isTemplate = false     // static color; do NOT adapt/tint at draw time
                     button.image = colored
                 } else {

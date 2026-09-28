@@ -22,6 +22,10 @@ final class AppWindows {
         case onboarding   // first-run walkthrough (ND-043); hosting is identical
         case quitConfirm  // ND-082: non-blocking "Stop protecting this Mac?" confirmation
         case disableLoginConfirm  // ND-082: "Turn off Start at login and quit?" (managed copy)
+        // ND-070: non-blocking replacements for the old NSAlert.runModal() sites.
+        case enrollmentResult     // outcome of "Enroll my face…"
+        case keychainExplainer    // one-time "stored in your Keychain" note before the first enroll
+        case startAtLoginError    // "Couldn't turn off Start at login"
     }
 
     private var windows: [Kind: NSWindow] = [:]
@@ -39,11 +43,15 @@ final class AppWindows {
     ///     window's red close button, not just a programmatic `close(_:)`. Onboarding
     ///     uses this to guarantee the camera prompt on any exit (code-review #1). Set on
     ///     first creation and refreshed on every show so the latest closure is used.
+    ///   - replaceContent: when true, an existing window gets the NEW `content` (and
+    ///     title) instead of keeping its old view. Message windows (ND-070) need this:
+    ///     their copy differs per show. Settings/onboarding leave it false.
     ///   - content: the SwiftUI root view (rebuilt each call for a fresh window; an
     ///     existing window keeps its already-hosted view so live @ObservedObject state
-    ///     is preserved).
+    ///     is preserved, unless `replaceContent`).
     func show<Content: View>(_ kind: Kind,
                              title: String,
+                             replaceContent: Bool = false,
                              onClose: (() -> Void)? = nil,
                              @ViewBuilder content: () -> Content) {
         NSApp.activate(ignoringOtherApps: true)
@@ -51,6 +59,13 @@ final class AppWindows {
         if let existing = windows[kind] {
             delegates[kind]?.onClose = onClose
             delegates[kind]?.resetForReopen()   // allow onClose to fire again this session
+            if replaceContent {
+                let hosting = NSHostingController(rootView: content())
+                existing.contentViewController = hosting
+                existing.title = title
+                existing.setContentSize(hosting.view.fittingSize)
+                if !existing.isVisible { existing.center() }
+            }
             existing.makeKeyAndOrderFront(nil)
             return
         }
@@ -81,6 +96,11 @@ final class AppWindows {
     /// `onClose` hook still fires via the delegate's `windowWillClose`.
     func close(_ kind: Kind) {
         windows[kind]?.close()
+    }
+
+    /// Whether the retained window of `kind` is currently on screen.
+    func isShowing(_ kind: Kind) -> Bool {
+        windows[kind]?.isVisible ?? false
     }
 }
 

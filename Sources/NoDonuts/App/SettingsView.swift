@@ -11,6 +11,36 @@ import NoDonutsCore
 // router MAC's last two octets) only in the local UI (they already live in the user's
 // UserDefaults); diagnostics is the privacy-safe reporter (counts only, never SSIDs/MACs).
 
+/// ND-099: read-only snapshot of what recognition is ACTUALLY doing right now, for the
+/// Settings "Recognition" section. Built by the AppDelegate from the same live sources
+/// diagnostics uses (active embedder descriptor, threshold resolver, identity status,
+/// camera, lock self-test). Model version strings and device names only; never face data.
+struct RecognitionInfo: Equatable {
+    /// Active model's display name + version tag (e.g. FaceNet / "facenet-vggface2-v2").
+    var modelName: String
+    var modelVersion: String
+    /// True while the Core ML model is still loading off-main (ND-095).
+    var modelLoading: Bool
+    /// The active model's default threshold is measured (ND-056), not a provisional guess.
+    var thresholdIsTuned: Bool
+    /// The threshold the recognizer uses this tick (override if valid, else the default).
+    var effectiveThreshold: Double
+    var defaultThreshold: Double
+    /// Identity status (ND-073): drives the enrollment-version row.
+    var identity: IdentityStatus
+    /// Anti-spoof toggle state (the resolver's live value, so a `defaults write` shows).
+    var antiSpoofEnabled: Bool
+    /// Whether the active model's embedder computes the texture score the anti-spoof
+    /// gate needs. nil = unknown model (shown as such rather than guessed).
+    var antiSpoofSupportedByModel: Bool?
+    /// Name of the camera No Donuts opened, nil before the first capture.
+    var cameraName: String?
+    /// Last camera-unavailable reason, nil when frames are flowing.
+    var cameraUnavailableReason: String?
+    /// Lock self-test (ND-058): mechanism names available on this macOS.
+    var lockMechanisms: [String]
+}
+
 /// Dependencies the Settings view needs that don't belong to the SettingsStore.
 /// All are injected by the AppDelegate so the view reaches into no singletons.
 @MainActor
@@ -31,6 +61,9 @@ struct SettingsActions {
     /// ND-082: called after a successful enable so an unmanaged copy can hand over
     /// to the agent (may exit this process).
     var didEnableStartAtLogin: () -> Void
+    /// ND-099: current recognition facts for the read-only "Recognition" section.
+    /// Cheap (UserDefaults reads + cached state); polled while the window is open.
+    var recognitionInfo: () -> RecognitionInfo
 }
 
 @MainActor
@@ -48,6 +81,7 @@ struct SettingsView: View {
         Form {
             behaviorSection
             antiSpoofSection
+            recognitionSection
             startupSection
             trustedNetworksSection
             diagnosticsSection
@@ -88,6 +122,7 @@ struct SettingsView: View {
                 }
                 .accessibilityLabel("Lock sensitivity")
                 .accessibilityValue(String(format: "%.2f", store.matchThreshold))
+                .accessibilityHint("Higher is stricter.")
                 Text("How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -113,6 +148,8 @@ struct SettingsView: View {
                 Slider(value: $store.graceSeconds,
                        in: SettingsStore.Range.grace,
                        step: 1)
+                .accessibilityLabel("Grace period")
+                .accessibilityValue("\(Int(store.graceSeconds.rounded())) seconds")
                 Text("How long you can be away before the Mac locks.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -128,6 +165,8 @@ struct SettingsView: View {
                 Slider(value: $store.tickIntervalSeconds,
                        in: SettingsStore.Range.tick,
                        step: 0.5)
+                .accessibilityLabel("Check interval")
+                .accessibilityValue(String(format: "%.1f seconds", store.tickIntervalSeconds))
                 Text("How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -139,9 +178,119 @@ struct SettingsView: View {
     private var antiSpoofSection: some View {
         Section("Security") {
             Toggle("Reject photos of me (anti-spoofing)", isOn: $store.antiSpoofEnabled)
-            Text("Tries to ignore a printed or on-screen photo of your face. This check is conservative and not fully hardened — turn it off if a live face is ever rejected.")
+            // ND-099: honest now that ND-072 landed — the texture check runs on both
+            // recognition models. Still a basic check (no blink/motion liveness), and its
+            // floor hasn't been re-measured against a clean spoof test yet.
+            Text("Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It\u{2019}s a basic, conservative check (no blink or motion test) and isn\u{2019}t fully hardened — turn it off if a live face is ever rejected.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - Recognition (read-only, ND-099)
+
+    /// What recognition is actually doing, so the user never has to trust a claim they
+    /// can't check. Read-only; polled every 2 s because a retained window doesn't re-fire
+    /// `.onAppear`, and model load / camera / identity can change while it's open.
+    private var recognitionSection: some View {
+        Section("Recognition") {
+            TimelineView(.periodic(from: .now, by: 2)) { _ in
+                let info = actions.recognitionInfo()
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Self.recognitionRows(info), id: \.label) { row in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(row.label)
+                            Spacer(minLength: 12)
+                            Text(row.value)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(row.warning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                                .textSelection(.enabled)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            Text("Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    struct RecognitionRow {
+        let label: String
+        let value: String
+        /// Rendered in orange: something here weakens or disables protection.
+        var warning = false
+    }
+
+    /// Pure mapping from the snapshot to display rows (kept static so it has no view state).
+    static func recognitionRows(_ info: RecognitionInfo) -> [RecognitionRow] {
+        var rows: [RecognitionRow] = []
+
+        let model = info.modelLoading
+            ? "\(info.modelName) (\(info.modelVersion)), loading\u{2026}"
+            : "\(info.modelName) (\(info.modelVersion))"
+        rows.append(RecognitionRow(label: "Model", value: model))
+
+        rows.append(RecognitionRow(label: "Threshold tuned",
+                                   value: info.thresholdIsTuned ? "Yes" : "No (provisional default)",
+                                   warning: !info.thresholdIsTuned))
+
+        let threshold: String
+        if abs(info.effectiveThreshold - info.defaultThreshold) < 0.000_5 {
+            threshold = String(format: "%.2f (model default)", info.effectiveThreshold)
+        } else {
+            threshold = String(format: "%.2f (custom; default %.2f)", info.effectiveThreshold, info.defaultThreshold)
+        }
+        rows.append(RecognitionRow(label: "Effective threshold", value: threshold))
+
+        let enrollment: String
+        var enrollmentWarning = false
+        switch info.identity {
+        case .active:
+            enrollment = "\(info.modelVersion), matches the active model"
+        case .notEnrolled:
+            enrollment = "Not enrolled (any face keeps the Mac unlocked)"
+            enrollmentWarning = true
+        case .off(.modelMismatch(let stored, _)):
+            enrollment = "\(stored ?? "legacy, unversioned"): re-enroll needed (identity check off)"
+            enrollmentWarning = true
+        case .off(.enrollmentMissing(let expected)):
+            enrollment = "Missing (was \(expected)): re-enroll needed (identity check off)"
+            enrollmentWarning = true
+        case .unknown:
+            enrollment = "Checking\u{2026}"
+        }
+        rows.append(RecognitionRow(label: "Enrollment", value: enrollment, warning: enrollmentWarning))
+
+        let antiSpoof: String
+        var antiSpoofWarning = false
+        switch (info.antiSpoofEnabled, info.antiSpoofSupportedByModel) {
+        case (false, _):
+            antiSpoof = "Off (turned off above)"
+            antiSpoofWarning = true
+        case (true, true?):
+            antiSpoof = "Active on this model"
+        case (true, false?):
+            antiSpoof = "Not supported by this model"
+            antiSpoofWarning = true
+        case (true, nil):
+            antiSpoof = "Unknown for this model"
+            antiSpoofWarning = true
+        }
+        rows.append(RecognitionRow(label: "Photo rejection", value: antiSpoof, warning: antiSpoofWarning))
+
+        var camera = info.cameraName ?? "Built-in camera (not opened yet)"
+        if let reason = info.cameraUnavailableReason {
+            camera += ", unavailable: \(reason)"
+        }
+        rows.append(RecognitionRow(label: "Camera", value: camera,
+                                   warning: info.cameraUnavailableReason != nil))
+
+        rows.append(RecognitionRow(label: "Lock mechanisms",
+                                   value: info.lockMechanisms.isEmpty
+                                       ? "None: can\u{2019}t lock on this macOS"
+                                       : info.lockMechanisms.joined(separator: ", "),
+                                   warning: info.lockMechanisms.isEmpty))
+        return rows
     }
 
     // MARK: - Start at login
@@ -203,6 +352,7 @@ struct SettingsView: View {
                 ForEach(store.trustedNetworks) { network in
                     HStack {
                         Image(systemName: "wifi").foregroundStyle(.secondary)
+                            .accessibilityHidden(true)   // ND-100: decorative
                         VStack(alignment: .leading, spacing: 1) {
                             Text(network.ssid)
                             Text(Self.routerLabel(for: network))
@@ -214,6 +364,7 @@ struct SettingsView: View {
                             store.trustedNetworks = actions.removeTrustedNetwork(network)
                         }
                         .buttonStyle(.borderless)
+                        .accessibilityLabel("Remove \(network.ssid)")   // ND-100: which one
                     }
                 }
                 Text("A network is trusted only on the router it was trusted on (Wi-Fi name + router address), so a hotspot using the same name isn\u{2019}t trusted.")

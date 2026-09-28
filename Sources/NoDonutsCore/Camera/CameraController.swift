@@ -163,6 +163,17 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     private let reasonLock = NSLock()
     private var _lastUnavailableReason: String?
     private var _lastCaptureDuration: TimeInterval?
+    private var _lastDeviceName: String?
+
+    /// Localized name of the camera most recently configured for capture (ND-099),
+    /// or nil before the first configure. Kept after a tear-down (it names the camera
+    /// No Donuts uses, which the trust policy pins to the built-in one). Thread-safe.
+    /// For the read-only Settings "Recognition" section only.
+    public var lastDeviceName: String? {
+        reasonLock.lock()
+        defer { reasonLock.unlock() }
+        return _lastDeviceName
+    }
 
     /// Wall time of the most recent `capture()` call, in seconds (ND-042e), or
     /// nil before the first. Thread-safe. The loop logs it with the tick's total
@@ -438,6 +449,9 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         running = true
         runningSince = hostNow()
         activeDevice = device
+        reasonLock.lock()
+        _lastDeviceName = device.localizedName
+        reasonLock.unlock()
         interruptedSince = nil
         configured = true
         cameraLog.notice("Camera: using \(device.localizedName, privacy: .public) (transport \(CameraTrustPolicy.fourCC(device.transportType), privacy: .public))")
