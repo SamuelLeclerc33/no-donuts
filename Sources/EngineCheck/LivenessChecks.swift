@@ -226,62 +226,97 @@ func runLivenessChecks(_ c: Checks) async {
         }
     }
 
-    // MARK: Face track — evidence bound to one continuous face (review fix)
+    // MARK: Face track — evidence bound to one continuous face (review fixes)
     do {
         let dt = 1.0 / 7
         let base = CGRect(x: 0.35, y: 0.3, width: 0.3, height: 0.4)
-        // Continuous live face drifting ~0.02/frame + IOD ±3%: one track, evidence kept.
-        var tr = FaceTrack(); var resets = 0
+        // Continuous live face drifting + IOD ±3%: one track, evidence kept.
+        var tr = FaceTracker(); var breaks = 0
         for i in 0..<210 {
             let t = Double(i) * dt
             let b = base.offsetBy(dx: 0.08 * sin(t), dy: 0.05 * sin(t * 0.7))
-            if !tr.observe(box: b, interOcular: 70 * (1 + 0.03 * sin(t * 1.3)), time: t), i > 0 { resets += 1 }
+            if tr.observe(box: b, interOcular: 70 * (1 + 0.03 * sin(t * 1.3)), time: t) != nil { breaks += 1 }
             if i == 20 { tr.recordEvidence(at: t) }
         }
-        let now = 209 * dt
-        let v = LivenessVerdict.evaluate(now: now, track: tr, matchedBox: tr.lastBox, windowStart: nil)
-        c.expect(resets == 0 && v.live && v.trackBound == true, "track: continuous moving live face → one track, its evidence counts")
-        // Jump / scale / gap each start a new track and drop its evidence.
-        func fresh() -> FaceTrack {
-            var t = FaceTrack(); t.observe(box: base, interOcular: 70, time: 0); t.recordEvidence(at: 0); return t
+        let v = tr.verdict(now: 209 * dt, matchedBox: tr.current?.lastBox, windowStart: nil)
+        c.expect(breaks == 1 && tr.tracksStarted == 1 && v.live && v.trackBound == true && !v.probation,
+                 "track: continuous moving live face → one track, its evidence counts")
+        /// A tracker whose track has own evidence, optionally verified by a tick match.
+        func fresh(verified: Bool = false) -> FaceTracker {
+            var t = FaceTracker(); t.observe(box: base, interOcular: 70, time: 0); t.recordEvidence(at: 0)
+            if verified { _ = t.verdict(now: 0, matchedBox: base, windowStart: nil) }
+            return t
         }
         var j = fresh()
-        let jumped = !j.observe(box: base.offsetBy(dx: 0.2, dy: 0), interOcular: 70, time: dt)
-        c.expect(jumped && j.evidenceAt == nil, "track: box jump (IoU < 0.4) → new track, evidence dropped")
+        let jb = j.observe(box: base.offsetBy(dx: 0.2, dy: 0), interOcular: 70, time: dt)
+        c.expect(jb?.reason == .overlap && jb?.handoff == TrackBreak.Handoff.none && j.current?.evidenceAt == nil,
+                 "track: box jump (IoU < 0.3) → new track, own evidence dropped")
         var sc = fresh()
-        let scaled = !sc.observe(box: base, interOcular: 90, time: dt)
-        c.expect(scaled && sc.evidenceAt == nil, "track: inter-ocular jump > 25% → new track, evidence dropped")
-        var g = fresh()
-        let gapBroke = !g.observe(box: base, interOcular: 70, time: 0.6)
-        var g2 = fresh()
-        let gapOk = g2.observe(box: base, interOcular: 70, time: 0.45)
-        c.expect(gapBroke && g.evidenceAt == nil && gapOk && g2.evidenceAt == 0,
-                 "track: > 0.5 s gap → new track; ≤ 0.5 s (missed detections) → same track")
+        c.expect(sc.observe(box: base, interOcular: 90, time: dt)?.reason == .scale && sc.current?.evidenceAt == nil,
+                 "track: inter-ocular jump > 25% → new track")
+        var g = fresh(), g2 = fresh()
+        let gb = g.observe(box: base, interOcular: 70, time: 1.2)
+        let g2b = g2.observe(box: base, interOcular: 70, time: 0.9)
+        c.expect(gb?.reason == .gap && g2b == nil && g2.current?.evidenceAt == 0,
+                 "track: > 1 s gap → new track; ≤ 1 s (missed detections) → same track")
         // Verdict binding.
-        let t1 = fresh()
         let other = base.offsetBy(dx: 0.25, dy: 0)
-        c.expect(!LivenessVerdict.evaluate(now: 0.1, track: t1, matchedBox: other, windowStart: nil).live,
+        var t1 = fresh()
+        c.expect(!t1.verdict(now: 0.1, matchedBox: other, windowStart: nil).live,
                  "verdict: matched box not overlapping the current track → NOT live")
-        c.expect(!LivenessVerdict.evaluate(now: 0.1, track: t1, matchedBox: nil, windowStart: nil).live,
+        c.expect(!t1.verdict(now: 0.1, matchedBox: nil, windowStart: nil).live,
                  "verdict: no matched box → NOT live (fail-safe)")
-        c.expect(LivenessVerdict.evaluate(now: 0.1, track: t1, matchedBox: nil, windowStart: 0).live,
+        c.expect(t1.verdict(now: 0.1, matchedBox: nil, windowStart: 0).live,
                  "verdict: no matched box but inside the enforcement-start window → live")
-        c.expect(!LivenessVerdict.evaluate(now: 2, track: t1, matchedBox: base, windowStart: nil).live,
-                 "verdict: track not seen for > 0.5 s (stale) → NOT live")
-        c.expect(LivenessVerdict.evaluate(now: 0.1, track: t1, matchedBox: base.offsetBy(dx: 0.03, dy: 0), windowStart: nil).live,
+        c.expect(!t1.verdict(now: 2, matchedBox: base, windowStart: nil).live,
+                 "verdict: track not seen for > 1 s (stale) → NOT live")
+        c.expect(t1.verdict(now: 0.1, matchedBox: base.offsetBy(dx: 0.03, dy: 0), windowStart: nil).live,
                  "verdict: matched box on the tracked face with evidence → live")
         c.expect(abs(intersectionOverUnion(base, base) - 1) < 1e-9 && intersectionOverUnion(base, base.offsetBy(dx: 0.4, dy: 0)) == 0
                  && intersectionOverUnion(.zero, base) == 0, "IoU: identity 1, disjoint 0, degenerate 0")
+
+        // Handoff rules.
+        var h1 = fresh(verified: true)
+        let hb = h1.observe(box: base, interOcular: 95, time: dt)                  // spurious scale break
+        let hv = h1.verdict(now: 1, matchedBox: base, windowStart: nil)
+        c.expect(hb?.handoff == .fresh && hv.live && hv.probation,
+                 "handoff: break on a VERIFIED track with own evidence → fresh probation, still live")
+        var h2 = fresh(verified: false)
+        let h2b = h2.observe(box: base, interOcular: 95, time: dt)
+        c.expect(h2b?.handoff == TrackBreak.Handoff.none && !h2.verdict(now: 1, matchedBox: base, windowStart: nil).live,
+                 "handoff: predecessor never matched (a stranger's live face) → no probation")
+        var h3 = FaceTracker(); h3.observe(box: base, interOcular: 70, time: 0)
+        _ = h3.verdict(now: 0, matchedBox: base, windowStart: nil)                  // verified, but no evidence (a photo)
+        let h3b = h3.observe(box: base, interOcular: 95, time: dt)
+        c.expect(h3b?.handoff == TrackBreak.Handoff.none, "handoff: verified but evidence-free predecessor (a photo) → no probation")
+        var h4 = fresh(verified: true)
+        let h4b = h4.observe(box: base.offsetBy(dx: 0.3, dy: 0), interOcular: 70, time: dt)
+        c.expect(h4b?.handoff == TrackBreak.Handoff.none, "handoff: new face elsewhere (IoU < 0.2) → no probation")
+        var h5 = fresh(verified: true)
+        _ = h5.observe(box: base, interOcular: 95, time: dt)                        // fresh probation until dt + 20
+        _ = h5.verdict(now: 0.3, matchedBox: base, windowStart: nil)                // verified (a match) but no own evidence
+        let h5b = h5.observe(box: base, interOcular: 70, time: 0.5)                 // break again
+        c.expect(h5b?.handoff == .inherited && h5.current?.probationUntil == dt + FaceTrack.probationSeconds,
+                 "handoff: a probation-only track passes on the SAME deadline (never extended)")
+        var tt = 0.5 + dt; var liveAt19_9 = false, liveAt20_3 = true
+        while tt < 21 {                                                         // keep the (probation-only) face in view
+            h5.observe(box: base, interOcular: 70, time: tt)
+            let v = h5.verdict(now: tt, matchedBox: base, windowStart: nil)
+            if tt > 19.7, tt <= 19.9 + dt { liveAt19_9 = v.live }
+            if tt > 20.3, tt <= 20.3 + dt { liveAt20_3 = v.live }
+            tt += dt
+        }
+        c.expect(liveAt19_9 && !liveAt20_3,
+                 "handoff: probation expires after 20 s without own evidence")
     }
 
-    // MARK: Attack — phone photo at each tick, attacker's own face blinking between ticks
+    // MARK: Attacks — must stay NOT live
     do {
         let dt = 1.0 / 7
-        let attacker = CGRect(x: 0.2, y: 0.3, width: 0.3, height: 0.4)     // real face, beside the phone
-        let phone = CGRect(x: 0.5, y: 0.3, width: 0.3, height: 0.4)        // photo held up at ticks
-        let samePlace = CGRect(x: 0.2, y: 0.3, width: 0.3, height: 0.4)    // photo swapped into the same box…
-        for (label, photoBox, photoIOD) in [("side by side", phone, 70.0), ("same box, smaller photo", samePlace, 50.0)] {
-            var tr = FaceTrack(); var anyLive = false; var ticks = 0
+        let attacker = CGRect(x: 0.2, y: 0.3, width: 0.3, height: 0.4)     // real face
+        let phone = CGRect(x: 0.5, y: 0.3, width: 0.3, height: 0.4)        // photo held up beside it
+        for (label, photoBox, photoIOD) in [("side by side", phone, 70.0), ("same box, smaller photo", attacker, 50.0)] {
+            var tr = FaceTracker(); var liveTicks = 0; var ticks = 0
             for i in 0..<420 {                                              // 60 s at 7 fps
                 let t = Double(i) * dt
                 let phase = i % 7                                           // 1 s tick cycle
@@ -289,15 +324,62 @@ func runLivenessChecks(_ c: Checks) async {
                     tr.observe(box: photoBox, interOcular: photoIOD, time: t)   // photo in view around the tick
                     if phase == 1 {                                          // the tick: recognizer matched the photo
                         ticks += 1
-                        if LivenessVerdict.evaluate(now: t, track: tr, matchedBox: photoBox, windowStart: nil).live { anyLive = true }
+                        if tr.verdict(now: t, matchedBox: photoBox, windowStart: nil).live { liveTicks += 1 }
                     }
                 } else {
                     tr.observe(box: attacker, interOcular: 70, time: t)      // attacker's face, blinking
                     tr.recordEvidence(at: t)
                 }
             }
-            c.expect(!anyLive && ticks == 60, "attack (\(label)): photo at ticks + live stranger between → never live")
+            c.expect(liveTicks == 0 && ticks == 60,
+                     "attack (\(label)): photo at ticks + live stranger between → never live (handoffs \(tr.freshHandoffs)/\(tr.inheritedHandoffs))")
         }
+        // Bounded case: the REAL user's live, matched face is replaced by a photo in the
+        // same place within 1 s → at most one 20 s probation, then not live.
+        var tr = FaceTracker(); var lastLive = -1.0
+        var t = 0.0
+        while t < 10 { tr.observe(box: attacker, interOcular: 70, time: t); tr.recordEvidence(at: t)
+                       _ = tr.verdict(now: t, matchedBox: attacker, windowStart: nil); t += dt }
+        while t < 120 {
+            tr.observe(box: attacker, interOcular: 52, time: t)            // photo (different scale) from now on
+            if tr.verdict(now: t, matchedBox: attacker, windowStart: nil).live { lastLive = t }
+            t += dt
+        }
+        c.expect(lastLive < 10 + FaceTrack.probationSeconds + 0.5,
+                 "attack (user swapped for a photo in place): live ≤ 20 s probation, then never (last live at \(String(format: "%.1f", lastLive)) s)")
+    }
+
+    // MARK: Regression — on-device Test A (2026-09-28): real user, spurious track breaks
+    do {
+        // 7 fps, recognizer tick every 1 s matching the tracked face; own motion evidence
+        // every ~10 s; TWO discontinuities 2 s apart (a scale glitch, then a box jump
+        // that still overlaps ≥ 0.2) — the second before the new track has evidence.
+        let dt = 1.0 / 7
+        let base = CGRect(x: 0.35, y: 0.3, width: 0.3, height: 0.4)
+        var tr = FaceTracker(); var results: [RecognitionResult] = []
+        var i = 0; var t = 0.0; var nextTick = 0.5
+        while t < 172 {
+            var box = base.offsetBy(dx: 0.02 * sin(t), dy: 0)
+            var iod = 70.0
+            if abs(t - 110) < dt / 2 { iod = 95 }                           // scale glitch at 110 s
+            if t >= 110 + dt / 2 { iod = 72 }
+            if t >= 112, t < 112.6 { box = box.offsetBy(dx: 0.17, dy: 0.05) } // box jump at 112 s (IoU ≈ 0.23)
+            tr.observe(box: box, interOcular: iod, time: t)
+            if i % 70 == 5, !(t > 109 && t < 120) { tr.recordEvidence(at: t) } // evidence ~10 s, none around the breaks
+            if t >= nextTick {
+                // Enforcement started at 0; the breaks are well past the 60 s startup window.
+                let v = tr.verdict(now: t, matchedBox: box, windowStart: 0)
+                results.append(v.live ? .enrolledUserPresent(confidence: 0.75) : .notLive)
+                nextTick += 1
+            }
+            i += 1; t += dt
+        }
+        let notLive = results.filter { $0 == .notLive }.count
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), SeqRecognizer(results), locker)
+        for k in 0..<results.count { await e.tick(now: t0.addingTimeInterval(Double(k))) }
+        c.expect(tr.tracksStarted >= 3 && notLive == 0 && locker.lockCallCount == 0,
+                 "regression Test A: live user, 2 track breaks 2 s apart → never .notLive, no lock (tracks \(tr.tracksStarted), notLive ticks \(notLive))")
     }
 
     // MARK: Homography residual
@@ -469,7 +551,7 @@ func runLivenessChecks(_ c: Checks) async {
         try? await Task.sleep(nanoseconds: 50_000_000)
         c.expect(a.diagnostics().framesAnalyzed + a.diagnostics().framesDropped == before,
                  "analyzer: anti-spoof off → frames are not analyzed (no power cost)")
-        c.expect(a.diagnostics().lines.count == 5, "analyzer: diagnostics lines (numbers only)")
+        c.expect(a.diagnostics().lines.count == 6, "analyzer: diagnostics lines (numbers only)")
     }
 }
 

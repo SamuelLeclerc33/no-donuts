@@ -28,6 +28,9 @@ public struct LivenessDiagnostics: Sendable, Equatable {
     public var framesWithFace: Int
     /// Face tracks started (each discontinuity drops the previous track's evidence).
     public var tracksStarted: Int
+    /// Track handoffs: fresh probations issued / probations inherited (FaceTracker).
+    public var freshHandoffs: Int = 0
+    public var inheritedHandoffs: Int = 0
     /// Mean / max wall time of one landmark analysis, milliseconds.
     public var meanAnalysisMs: Double?
     public var maxAnalysisMs: Double?
@@ -40,7 +43,8 @@ public struct LivenessDiagnostics: Sendable, Equatable {
         return [
             "  last live evidence: \(age(lastEvidenceAge)) (window \(Int(defaultLivenessWindowSeconds))s)",
             "  window (re)started: \(age(windowAge))",
-            "  blinks: \(blinks), non-rigid motion events: \(motionEvents), face tracks started: \(tracksStarted)",
+            "  blinks: \(blinks), non-rigid motion events: \(motionEvents)",
+            "  face tracks started: \(tracksStarted), handoffs: \(freshHandoffs) fresh / \(inheritedHandoffs) inherited",
             "  frames analyzed: \(framesAnalyzed) (with face: \(framesWithFace)), dropped busy: \(framesDropped)",
             "  analysis cost: \(ms), \(mx)",
         ]
@@ -54,7 +58,7 @@ public protocol LiveFrameSink: AnyObject, Sendable {
 }
 
 /// Live-evidence analyzer (ND-116). Evidence is bound to a continuous FACE TRACK
-/// (`FaceTrack`): a discontinuity (box jump, scale jump, > 0.5 s gap) starts a new track
+/// (`FaceTracker`): a discontinuity (box jump, scale jump, > 1 s gap) starts a new track
 /// with no evidence and resets both detectors, and `currentVerdict(matchedFaceBox:)` only
 /// counts the current track's evidence when the recognizer's matched box is that track.
 /// Receives ~7 fps frames from `CameraController`'s
@@ -73,8 +77,7 @@ public protocol LiveFrameSink: AnyObject, Sendable {
 public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecked Sendable {
     private struct Shared {
         var busy = false
-        var track = FaceTrack()
-        var tracksStarted = 0
+        var tracker = FaceTracker()
         var windowStart: TimeInterval?
         var blinks = 0
         var motionEvents = 0
@@ -96,6 +99,9 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
     private var motion = NonRigidMotionDetector()
     private var periodStart: TimeInterval = 0
     private var periodMaxMotionRatio = 0.0
+    /// One landmarks request reused for every frame (queue-confined). Measured on the
+    /// dev Mac at 7 fps pacing, `.utility`: ~7 ms median vs ~9 ms with a fresh request.
+    private let landmarksRequest = VNDetectFaceLandmarksRequest()
 
     public init(window: TimeInterval = defaultLivenessWindowSeconds,
                 antiSpoofEnabled: @escaping @Sendable () -> Bool = { resolvedAntiSpoofEnabled() }) {
@@ -107,15 +113,15 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
     /// and drops the detectors' history (the frames before a suspend are another moment).
     public func beginWindow() {
         let now = livenessHostNow()
-        shared.withLock { $0.windowStart = now; $0.track.end() }
+        shared.withLock { $0.windowStart = now; $0.tracker.end() }
         queue.async { [self] in blink.reset(); motion.reset() }
     }
 
     public func currentVerdict(matchedFaceBox: CGRect?) -> LivenessVerdict {
         let now = livenessHostNow()
-        return shared.withLock {
-            LivenessVerdict.evaluate(now: now, track: $0.track, matchedBox: matchedFaceBox,
-                                     windowStart: $0.windowStart, window: window)
+        return shared.withLock { s in
+            s.tracker.window = window
+            return s.tracker.verdict(now: now, matchedBox: matchedFaceBox, windowStart: s.windowStart)
         }
     }
 
@@ -123,11 +129,12 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         let now = livenessHostNow()
         return shared.withLock { s in
             LivenessDiagnostics(
-                lastEvidenceAge: s.track.evidenceAt.map { max(0, now - $0) },
+                lastEvidenceAge: s.tracker.current?.evidenceAt.map { max(0, now - $0) },
                 windowAge: s.windowStart.map { max(0, now - $0) },
                 blinks: s.blinks, motionEvents: s.motionEvents,
                 framesAnalyzed: s.analyzed, framesDropped: s.dropped, framesWithFace: s.withFace,
-                tracksStarted: s.tracksStarted,
+                tracksStarted: s.tracker.tracksStarted,
+                freshHandoffs: s.tracker.freshHandoffs, inheritedHandoffs: s.tracker.inheritedHandoffs,
                 meanAnalysisMs: s.analyzed > 0 ? s.totalMs / Double(s.analyzed) : nil,
                 maxAnalysisMs: s.analyzed > 0 ? s.maxMs : nil)
         }
@@ -171,14 +178,11 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
 
         // Track continuity first: a new track owns no evidence, and history from the
         // previous face must never feed this one's blink baseline / motion references.
-        let continued = shared.withLock { s -> Bool in
-            let c = s.track.observe(box: sample.box, interOcular: sample.interOcular, time: time)
-            if !c { s.tracksStarted += 1 }
-            return c
-        }
-        if !continued {
+        let broke = shared.withLock { $0.tracker.observe(box: sample.box, interOcular: sample.interOcular, time: time) }
+        if let b = broke {
             blink.reset(); motion.reset()
-            log.debug("liveness: new face track (discontinuity) — evidence reset")
+            // Numbers only: why the track broke and what it inherited (tuning, ND-116).
+            log.debug("liveness: new face track (\(b.reason.rawValue, privacy: .public); gap \(b.gap ?? -1, format: .fixed(precision: 2), privacy: .public)s, IoU \(b.iou ?? -1, format: .fixed(precision: 2), privacy: .public), IOD change \(b.iodChange ?? -1, format: .fixed(precision: 2), privacy: .public)) — own evidence reset; handoff \(b.handoff.rawValue, privacy: .public)")
         }
 
         var evidence: String?
@@ -198,7 +202,7 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
             }
         }
         if evidence != nil {
-            shared.withLock { $0.track.recordEvidence(at: time) }
+            shared.withLock { $0.tracker.recordEvidence(at: time) }
         }
 
         // Tuning summary every 30 s (numbers only): how close the signals came.
@@ -222,7 +226,7 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
     /// (no evidence either way; the detectors' gap handling copes).
     private func landmarks(in buffer: CVPixelBuffer) -> Sample? {
         let orientation = resolvedVisionOrientation()
-        let request = VNDetectFaceLandmarksRequest()
+        let request = landmarksRequest
         let handler = VNImageRequestHandler(cvPixelBuffer: buffer, orientation: orientation, options: [:])
         do { try handler.perform([request]) } catch { return nil }
         guard let faces = request.results,

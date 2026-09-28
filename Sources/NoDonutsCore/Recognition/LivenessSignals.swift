@@ -67,12 +67,16 @@ public struct LivenessVerdict: Equatable, Sendable {
     /// ND-116 review: whether the matched face is the analyzer's CURRENT face track.
     /// `nil` = not evaluated (the plain `evaluate`). False → evidence can't count.
     public let trackBound: Bool?
+    /// True when `live` holds only because of a track-handoff probation (`FaceTracker`).
+    public let probation: Bool
 
-    public init(live: Bool, evidenceAge: TimeInterval?, bootstrap: Bool, trackBound: Bool? = nil) {
+    public init(live: Bool, evidenceAge: TimeInterval?, bootstrap: Bool,
+                trackBound: Bool? = nil, probation: Bool = false) {
         self.live = live
         self.evidenceAge = evidenceAge
         self.bootstrap = bootstrap
         self.trackBound = trackBound
+        self.probation = probation
     }
 
     /// Pure constructor from the policy inputs.
@@ -91,33 +95,10 @@ public struct LivenessVerdict: Equatable, Sendable {
         var age = evidenceAge.map { String(format: "last evidence %.1fs ago", $0) } ?? "no evidence yet"
         if trackBound == false { age += "; matched face is not the tracked face" }
         if bootstrap { return "yes (startup window; \(age))" }
+        if probation { return "yes (track handoff probation; \(age))" }
         return "\(live ? "yes" : "no") (\(age))"
     }
 
-    /// Track-bound verdict (ND-116 review fix). Live evidence only counts if it belongs
-    /// to the face that was MATCHED: the analyzer's current track must be fresh
-    /// (last seen ≤ `FaceTrack.maxGap` ago) and its latest box must overlap
-    /// `matchedBox` (IoU ≥ `FaceTrack.minIoU`), and THAT track's evidence must be within
-    /// `window`. No matched box → no binding → not live (fail-safe).
-    ///
-    /// The enforcement-start window is deliberately NOT track-bound: it exists for the
-    /// moments before the analyzer has any track or evidence (camera just started, first
-    /// landmark pass ~80 ms cold), and it only opens after an OS unlock or the user's own
-    /// pause / Wi-Fi / enrollment action on an unlocked Mac — the person at the keyboard
-    /// was just the user. Binding it would add false locks right after unlock and no
-    /// security (an attacker would already have needed to unlock).
-    public static func evaluate(now: TimeInterval, track: FaceTrack, matchedBox: CGRect?,
-                                windowStart: TimeInterval?,
-                                window: TimeInterval = defaultLivenessWindowSeconds) -> LivenessVerdict {
-        let bound = track.isCurrent(now: now) && matchedBox.map { track.overlaps($0) } == true
-        let evidence = bound ? track.evidenceAt : nil
-        let byEvidence = isLive(now: now, lastEvidence: evidence, windowStart: nil, window: window)
-        let byWindow = isLive(now: now, lastEvidence: nil, windowStart: windowStart, window: window)
-        return LivenessVerdict(live: byEvidence || byWindow,
-                               evidenceAge: evidence.map { max(0, now - $0) },
-                               bootstrap: byWindow && !byEvidence,
-                               trackBound: bound)
-    }
 }
 
 // MARK: - Face track (binds evidence to one continuous face)
@@ -133,92 +114,184 @@ public func intersectionOverUnion(_ a: CGRect, _ b: CGRect) -> Double {
     return union > 0 ? inter / union : 0
 }
 
-/// One continuous track of the largest face (ND-116 review fix). Evidence (blinks /
-/// motion) belongs to a TRACK, never to "whoever is in front of the camera": any
-/// discontinuity starts a new track with NO evidence, and the analyzer resets the blink
-/// baseline and motion references with it.
-///
-/// Attack this closes: a phone photo of the user shown at each 1 s recognition tick while
-/// the attacker's own face blinks between ticks. Swapping photo ↔ face moves or resizes
-/// the largest face box, which breaks the track and drops its evidence; the matched
-/// (photo) box then belongs to a track with no evidence → not live.
-///
-/// Continuity — a new observation continues the track only when ALL hold:
-/// - `time − lastSeen ≤ maxGap` (0.5 s ≈ 3 missed frames at ~7 fps): rides over a
-///   dropped detection or motion blur, but not over a hide-and-swap;
-/// - IoU(box, lastBox) ≥ `minIoU` (0.4): a live head moving even ~200 px/s shifts a
-///   ~200 px face box ~30 px per 143 ms frame (IoU ≈ 0.75); IoU < 0.4 needs a shift
-///   of ~40% of the face width in one frame, i.e. a jump to another face;
-/// - inter-ocular distance within ±`maxIODChange` (25%) of the last frame: a live
-///   face changes IOD by at most a few % per frame (a 0→40° turn is −23% in total, over
-///   many frames); a different face / a photo at another scale usually differs more.
-///
-/// Residual (documented for the ADR): an attacker who places a same-size photo exactly
-/// where their face was, within 0.5 s, in the same box (IoU ≥ 0.4, IOD ±25%) keeps the
-/// track. In practice the swap occludes or displaces the face box by more than that.
+/// One continuous track of the largest face (ND-116). Evidence (blinks / motion)
+/// belongs to a TRACK, never to "whoever is in front of the camera".
 public struct FaceTrack: Sendable, Equatable {
-    public static let maxGap: TimeInterval = 0.5
-    public static let minIoU: Double = 0.4
+    /// Continuity: max time between two observations of the same track. 1.0 s (was
+    /// 0.5 s; on-device Test A 2026-09-28 reset twice in 2 s on the real user) rides
+    /// over a few missed detections (looking down at the keyboard, a hand at the face).
+    public static let maxGap: TimeInterval = 1.0
+    /// Continuity: min IoU with the previous box. 0.3 (was 0.4): Vision's box changes
+    /// size with pose (frontal ↔ three-quarter) as well as moving. A side-by-side swap
+    /// (photo next to the attacker's face) is IoU ≈ 0.
+    public static let minIoU: Double = 0.3
+    /// Continuity: max frame-to-frame inter-ocular change. Kept at 25%: it is what
+    /// separates a same-box swap to a photo at another scale (EngineCheck attack: 70 →
+    /// 50 px, −29%). A real-user reset it causes is absorbed by the handoff below.
     public static let maxIODChange: Double = 0.25
+    /// Handoff: a new track that starts within this time of the previous track's last
+    /// sighting AND overlaps its last box (IoU ≥ `handoffMinIoU`) may be handed a
+    /// probation (see `FaceTracker`).
+    public static let handoffGap: TimeInterval = 1.0
+    public static let handoffMinIoU: Double = 0.2
+    /// Probation length: a handed-off track counts as live for this long without its own
+    /// evidence. 20 s: on-device the real user produced evidence every ~10 s (motion)
+    /// and ~15 s (blinks); well under the 60 s evidence window, so it never extends the
+    /// ADR-0022 bound.
+    public static let probationSeconds: TimeInterval = 20
 
-    /// Monotonic track number (diagnostics); 0 = no track yet.
-    public private(set) var id: Int = 0
-    public private(set) var lastBox: CGRect?
-    public private(set) var lastIOD: Double?
-    public private(set) var lastSeen: TimeInterval?
-    public private(set) var startedAt: TimeInterval?
-    /// Time of this track's latest blink / motion event; nil = none on this track.
-    public private(set) var evidenceAt: TimeInterval?
+    public fileprivate(set) var id: Int
+    public fileprivate(set) var lastBox: CGRect
+    public fileprivate(set) var lastIOD: Double
+    public fileprivate(set) var lastSeen: TimeInterval
+    public fileprivate(set) var startedAt: TimeInterval
+    /// This track's OWN latest blink / motion event (never inherited).
+    public fileprivate(set) var evidenceAt: TimeInterval?
+    /// The recognizer MATCHED the enrolled user on this track at a tick. Never inherited.
+    public fileprivate(set) var verified: Bool = false
+    /// Handoff probation deadline (nil = none).
+    public fileprivate(set) var probationUntil: TimeInterval?
 
-    public init() {}
+    func isFresh(at now: TimeInterval) -> Bool {
+        now.isFinite && abs(now - lastSeen) <= Self.maxGap
+    }
+    func overlaps(_ box: CGRect, minIoU: Double = FaceTrack.minIoU) -> Bool {
+        intersectionOverUnion(lastBox, box) >= minIoU
+    }
+}
 
-    /// Observe the largest face (Vision-normalized box + IOD in pixels). Returns `true`
-    /// if it CONTINUES the current track, `false` if it started a new one (the caller
-    /// must then reset its detectors). Non-finite / degenerate input ends the track.
+/// Why a new track started (numbers only, for the `.debug` log / tuning).
+public struct TrackBreak: Sendable, Equatable {
+    public enum Reason: String, Sendable { case first, gap, overlap, scale }
+    public enum Handoff: String, Sendable { case none, fresh, inherited }
+    public let reason: Reason
+    public let gap: TimeInterval?
+    public let iou: Double?
+    public let iodChange: Double?
+    public let handoff: Handoff
+}
+
+/// Face-track state machine (ND-116; pure value type, EngineCheck-covered).
+///
+/// **Why tracks** (security review): a phone photo shown at each 1 s recognition tick
+/// while the attacker's own face blinks between ticks. Swapping photo ↔ face moves or
+/// rescales the largest face box, which breaks the track; the matched (photo) box then
+/// belongs to a track with no evidence → not live.
+///
+/// **Handoff** (on-device Test A: two spurious track breaks 2 s apart on the real user
+/// → 9 `.notLive` ticks → false lock). A new track that starts within `handoffGap` of
+/// the previous track's last sighting and overlaps its last box (IoU ≥ 0.2) gets a
+/// probation — live for `probationSeconds` without evidence of its own:
+/// - FRESH probation (now + 20 s) only from a predecessor that was VERIFIED (matched
+///   as the enrolled user at a tick) AND live by its OWN evidence (≤ 60 s old);
+/// - otherwise it INHERITS the predecessor's probation deadline unchanged (so rapid
+///   repeated breaks are covered) — a deadline is never extended by inheritance.
+///
+/// Why this can't be farmed: `verified` and own evidence are never inherited, and no
+/// single track has both unless it is the enrolled user's live face. A photo track can
+/// be verified (it matches) but never has own evidence; the attacker's own face track
+/// can have evidence but is never verified (it doesn't match). So in the alternation
+/// loop no track can issue a fresh probation. The only case that gains anything is the
+/// REAL user's live face replaced by a photo in the same place within 1 s: ≤ 20 s once
+/// (then the photo track needs evidence of its own, which it can't produce).
+///
+/// Why not "don't count `.notLive` as absence for N s on a new track" (option (c)):
+/// new tracks are free to create (hide the photo, show it again), so that grace would
+/// hold the Mac unlocked indefinitely unless it were bound to a verified live
+/// predecessor — which is exactly this handoff.
+public struct FaceTracker: Sendable, Equatable {
+    public private(set) var current: FaceTrack?
+    public private(set) var tracksStarted = 0
+    public private(set) var freshHandoffs = 0
+    public private(set) var inheritedHandoffs = 0
+    public var window: TimeInterval
+    private var nextID = 1
+
+    public init(window: TimeInterval = defaultLivenessWindowSeconds) { self.window = window }
+
+    /// Observe the largest face (Vision-normalized box, inter-ocular distance in pixels).
+    /// Returns `nil` if it continues the current track, else the `TrackBreak` that
+    /// started a new one (the caller must then reset its detectors). Invalid input
+    /// (non-finite, empty box) ends the current track and returns `nil`.
     @discardableResult
-    public mutating func observe(box: CGRect, interOcular: Double, time: TimeInterval) -> Bool {
-        let valid = time.isFinite && interOcular.isFinite && interOcular > 0
-            && intersectionOverUnion(box, box) > 0
-        var continues = false
-        if valid, let lb = lastBox, let li = lastIOD, let ls = lastSeen {
-            let dt = time - ls
-            continues = dt >= 0 && dt <= Self.maxGap
-                && intersectionOverUnion(box, lb) >= Self.minIoU
-                && abs(interOcular - li) <= Self.maxIODChange * li
+    public mutating func observe(box: CGRect, interOcular: Double, time: TimeInterval) -> TrackBreak? {
+        guard time.isFinite, interOcular.isFinite, interOcular > 0,
+              intersectionOverUnion(box, box) > 0 else { current = nil; return nil }
+        var reason = TrackBreak.Reason.first
+        var gap: TimeInterval?, iou: Double?, iodChange: Double?
+        if var t = current {
+            let dt = time - t.lastSeen
+            let o = intersectionOverUnion(box, t.lastBox)
+            let dIOD = abs(interOcular - t.lastIOD) / t.lastIOD
+            gap = dt; iou = o; iodChange = dIOD
+            if dt < 0 { return nil }                                     // out of order: ignore
+            if dt > FaceTrack.maxGap { reason = .gap }
+            else if o < FaceTrack.minIoU { reason = .overlap }
+            else if dIOD > FaceTrack.maxIODChange { reason = .scale }
+            else {
+                t.lastBox = box; t.lastIOD = interOcular; t.lastSeen = time
+                current = t
+                return nil
+            }
         }
-        if !continues {
-            id &+= 1
-            startedAt = valid ? time : nil
-            evidenceAt = nil
+        // New track; decide the handoff from the predecessor's state at the break.
+        var handoff = TrackBreak.Handoff.none
+        var probation: TimeInterval?
+        if let p = current, time - p.lastSeen <= FaceTrack.handoffGap,
+           p.overlaps(box, minIoU: FaceTrack.handoffMinIoU) {
+            if p.verified, isLive(now: time, lastEvidence: p.evidenceAt, windowStart: nil, window: window) {
+                probation = time + FaceTrack.probationSeconds
+                handoff = .fresh; freshHandoffs += 1
+            } else if let d = p.probationUntil, time <= d {
+                probation = d
+                handoff = .inherited; inheritedHandoffs += 1
+            }
         }
-        lastBox = valid ? box : nil
-        lastIOD = valid ? interOcular : nil
-        lastSeen = valid ? time : nil
-        return continues
+        current = FaceTrack(id: nextID, lastBox: box, lastIOD: interOcular, lastSeen: time,
+                            startedAt: time, evidenceAt: nil, verified: false, probationUntil: probation)
+        nextID &+= 1
+        tracksStarted += 1
+        return TrackBreak(reason: reason, gap: gap, iou: iou, iodChange: iodChange, handoff: handoff)
     }
 
     /// Record live evidence on the current track (ignored if there is none).
     public mutating func recordEvidence(at time: TimeInterval) {
-        guard lastSeen != nil, time.isFinite else { return }
-        evidenceAt = max(evidenceAt ?? time, time)
+        guard var t = current, time.isFinite else { return }
+        t.evidenceAt = max(t.evidenceAt ?? time, time)
+        current = t
     }
 
-    /// Drop the track entirely (enforcement restart).
-    public mutating func end() {
-        id &+= 1
-        lastBox = nil; lastIOD = nil; lastSeen = nil; startedAt = nil; evidenceAt = nil
-    }
+    /// Drop the track (enforcement restart). No handoff survives it.
+    public mutating func end() { current = nil }
 
-    /// The track was seen within `maxGap` of `now`.
-    public func isCurrent(now: TimeInterval) -> Bool {
-        guard let ls = lastSeen, now.isFinite else { return false }
-        return now - ls <= Self.maxGap && now - ls >= -Self.maxGap
-    }
-
-    /// The track's latest box overlaps `box` (IoU ≥ `minIoU`).
-    public func overlaps(_ box: CGRect) -> Bool {
-        guard let lb = lastBox else { return false }
-        return intersectionOverUnion(lb, box) >= Self.minIoU
+    /// Track-bound verdict for a face the recognizer MATCHED at `matchedBox`. Also marks
+    /// that track `verified` (the only way a track becomes verified).
+    ///
+    /// Live when the current track is fresh (seen ≤ `maxGap` ago), overlaps `matchedBox`
+    /// (IoU ≥ `minIoU`) and has its own evidence ≤ `window` old or an unexpired
+    /// probation; or when inside the enforcement-start window. No box → not bound.
+    ///
+    /// The enforcement-start window is deliberately NOT track-bound: it covers the
+    /// moments before the analyzer has any track (camera just started, first landmark
+    /// pass cold) and only opens after an OS unlock or the user's own pause / Wi-Fi /
+    /// enrollment action on an unlocked Mac. Binding it adds false locks, no security.
+    public mutating func verdict(now: TimeInterval, matchedBox: CGRect?,
+                                 windowStart: TimeInterval?) -> LivenessVerdict {
+        var bound = false
+        if var t = current, t.isFresh(at: now), let m = matchedBox, t.overlaps(m) {
+            bound = true
+            t.verified = true
+            current = t
+        }
+        let evidence = bound ? current?.evidenceAt : nil
+        let byEvidence = isLive(now: now, lastEvidence: evidence, windowStart: nil, window: window)
+        let byProbation = bound && (current?.probationUntil.map { now <= $0 } ?? false)
+        let byWindow = isLive(now: now, lastEvidence: nil, windowStart: windowStart, window: window)
+        return LivenessVerdict(live: byEvidence || byProbation || byWindow,
+                               evidenceAge: evidence.map { max(0, now - $0) },
+                               bootstrap: byWindow && !byEvidence && !byProbation,
+                               trackBound: bound,
+                               probation: byProbation && !byEvidence)
     }
 }
 
