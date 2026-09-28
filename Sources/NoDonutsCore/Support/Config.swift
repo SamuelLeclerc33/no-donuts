@@ -17,6 +17,23 @@ public struct Config: Codable, Equatable {
     /// at the 1s default tick). Effective walk-away→lock ≈ consensus (5 × tick) +
     /// grace ≈ 5 + 5 = ~10s.
     public var consecutiveAbsentTicksToLock: Int = 5
+    /// ND-061 (ADR-0017): stranger-at-keyboard fast path. A face that does NOT
+    /// match the enrolled user (`RecognitionResult.strangerOnly`, incl. an
+    /// anti-spoof-flagged match) is the highest-threat observable state, so after
+    /// this many CONSECUTIVE stranger ticks the engine locks without waiting for
+    /// the normal consensus + grace (≈3s at the 1s default tick, vs ~10s for an
+    /// empty desk). Only reachable once enrolled (the recognizer never reports a
+    /// stranger in presence-only mode). A no-face / present / busy / escalated
+    /// tick breaks the streak; a transient recognizer error or a lid-open
+    /// camera-unavailable hold leaves it untouched (EC-10 HOLD). Stranger ticks
+    /// also count toward `consecutiveAbsentTicksToLock`, so mixed stranger /
+    /// no-face absence still locks on the normal path. Values < 1 behave as 1.
+    public var consecutiveStrangerTicksToLock: Int = 3
+    /// ND-061 (ADR-0017): grace after the stranger streak reaches
+    /// `consecutiveStrangerTicksToLock` before locking. Default 0 = lock on the
+    /// threshold tick. Grace exists to absorb the enrolled user turning away (an
+    /// empty desk), not to give a stranger time at the keyboard. Negative = 0.
+    public var strangerGraceSeconds: Double = 0
     /// A transient recognition error is held (presence unchanged), but after this
     /// many CONSECUTIVE errors the engine escalates to treating the tick as
     /// absence — so a wedged recognizer still locks rather than holding unlocked

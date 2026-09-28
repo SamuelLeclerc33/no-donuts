@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0005-docs-site/">
+        <link rel="prev" href="../0016-bounded-camera-unavailable/">
       
       
-        <link rel="next" href="../0007-package-layout-testable-core/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0006 — Screen-lock mechanism - No Donuts</title>
+        <title>ADR-0017 — Stranger fast lock - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript" class="md-skip">
+        <a href="#adr-0017-stranger-at-the-keyboard-locks-fast-3-ticks-no-grace" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0006 — Screen-lock mechanism
+              ADR-0017 — Stranger fast lock
             
           </span>
         </div>
@@ -583,37 +583,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0006 — Screen-lock mechanism
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0006-screen-lock-mechanism/" class="md-nav__link">
         
   
   
@@ -629,98 +602,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#known-limitations-guarantee" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Known limitations / guarantee
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Known limitations / guarantee">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#remaining-caveats-follow-up" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Remaining caveats / follow-up
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1010,10 +891,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0017-stranger-fast-lock/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0017 — Stranger fast lock
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1029,6 +937,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1155,34 +1127,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#known-limitations-guarantee" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Known limitations / guarantee
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Known limitations / guarantee">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#remaining-caveats-follow-up" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Remaining caveats / follow-up
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#alternatives-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1210,102 +1154,33 @@
 
 
 
-<h1 id="adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript">ADR-0006 — Screen-lock mechanism: synthetic Ctrl-Cmd-Q via osascript<a class="headerlink" href="#adr-0006-screen-lock-mechanism-synthetic-ctrl-cmd-q-via-osascript" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0017-stranger-at-the-keyboard-locks-fast-3-ticks-no-grace">ADR-0017 — Stranger at the keyboard locks fast (3 ticks, no grace)<a class="headerlink" href="#adr-0017-stranger-at-the-keyboard-locks-fast-3-ticks-no-grace" title="Permanent link">&para;</a></h1>
 <ul>
-<li>Status: Superseded by ADR-0010</li>
-<li>Date: 2026-06-30</li>
-<li>Owner: wiggum</li>
+<li>Status: Accepted</li>
+<li>Date: 2026-09-28</li>
+<li>Owner: homer (with cooper)</li>
 </ul>
-<blockquote>
-<p><strong>Superseded by <a href="../0010-screen-lock-no-accessibility/">ADR-0010</a>.</strong> The
-osascript / Ctrl-Cmd-Q path required Accessibility, which was unreliable
-(especially on ad-hoc-signed builds) and did not lock on the target Mac. The
-lock is now a layered, no-Accessibility mechanism
-(<code>SACLockScreenImmediate</code> → <code>CGSession -suspend</code>), CGSession-verified and
-async. The record below is kept for history.</p>
-</blockquote>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>The core action of No Donuts is to lock the Mac when the enrolled user is absent
-(ND-014). We need a <strong>reliable programmatic screen lock</strong> that works under our
-sandbox/entitlement posture. We lock only — unlock always stays with macOS
-(Touch ID / password). Whatever mechanism we pick, a lock request must either
-lock or <strong>loudly report failure</strong>; it must never silently fail open (a failed
-lock that is reported as success would leave an unattended machine unprotected).</p>
+<p>A sustained <code>.strangerOnly</code> reading means a face is at the keyboard and it is not the enrolled user, or it was flagged as a spoof. It used to get the same absence consensus (5 ticks) and grace (5 s) as an empty desk: about 10 s of access. Grace exists so the enrolled user can turn their head or glance away without being locked. It was never meant to hand a stranger 10 seconds at an unlocked Mac, and this is the highest-threat state the app can observe.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p>The lock is issued by <strong>synthesizing the macOS Lock Screen shortcut
-Ctrl-Cmd-Q</strong> via <code>osascript</code> / System Events:</p>
-<div class="highlight"><pre><span></span><code>/usr/bin/osascript -e &#39;tell application &quot;System Events&quot; to key code 12 using {control down, command down}&#39;
-</code></pre></div>
-<p>(<code>key code 12</code> is the <code>Q</code> key; Ctrl-Cmd-Q is the system Lock Screen shortcut.)</p>
-<p><code>ScreenLocker.lock()</code> runs this through <code>Process</code>, calls <code>waitUntilExit()</code>, and
-then <strong>verifies the screen actually locked</strong> before returning <code>true</code>. A throw
-from <code>run()</code> or a non-zero exit status is logged via <code>os_log</code>
-(<code>Logger(subsystem: "com.nodonuts.app", category: "lock")</code>) and returns <code>false</code>.
-It <strong>never</strong> returns <code>true</code> on failure. The protocol is
-<code>@discardableResult func lock() -&gt; Bool</code> so callers (the presence engine / UI)
-can surface honest "not protecting" status.</p>
-<p><strong>CGSession verification.</strong> osascript exiting 0 only proves the keystroke was
-<em>dispatched</em>, not that the screen locked. After a 0 exit, <code>lock()</code> polls
-<code>CGSessionCopyCurrentDictionary()</code> for the <code>CGSSessionScreenIsLocked</code> flag (raw
-string key — the constant is not bridged to Swift) every ~0.1s up to a 1s
-timeout, and returns <code>true</code> <strong>only</strong> once the session reports locked. So the
-Bool now reflects a <strong>confirmed lock</strong>, not mere keystroke dispatch.</p>
+<ul>
+<li><strong>3 consecutive stranger ticks (~3 s at the 1 s tick) → lock with no grace</strong> (<code>consecutiveStrangerTicksToLock = 3</code>, <code>strangerGraceSeconds = 0</code>).</li>
+<li>The stranger streak is reset by a no-face tick or a present tick. A recognition error holds it (EC-10), neither advancing nor resetting.</li>
+<li>Stranger ticks <strong>also</strong> count toward the normal absence consensus, so alternating stranger and no-face readings still lock on the normal ~10 s path.</li>
+<li>The fast lock uses the same lock path as normal absence: ND-054 retry and backoff, the ND-079 in-flight guard, and the episode-generation guard.</li>
+<li>Only applies once enrolled. Before enrollment, any face counts as present.</li>
+</ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Requires a new TCC permission: Accessibility.</strong> Sending synthetic keystrokes
-  requires the app to be granted Accessibility (System Settings → Privacy &amp;
-  Security → Accessibility). This is a permission <strong>beyond</strong> the camera grant the
-  user already has to give. If Accessibility is <strong>denied</strong>, macOS drops the
-  keystroke and the screen does not lock — but <code>lock()</code> detects this (non-zero
-  status / dropped key path) and returns <code>false</code>, so the failure is <strong>surfaced,
-  never silent</strong> (see EC-19). gordon/krusty own prompting for and explaining this
-  grant.</li>
-<li>Spawns a <strong>short-lived <code>osascript</code> process</strong> per lock. Cheap, but it is an
-  out-of-process dependency on <code>/usr/bin/osascript</code> and AppleScript/System Events.</li>
-<li>No private API and no login-window switch — uses the same path a user would
-  use by hand.</li>
-</ul>
-<h2 id="known-limitations-guarantee">Known limitations / guarantee<a class="headerlink" href="#known-limitations-guarantee" title="Permanent link">&para;</a></h2>
-<p>The lock is now <strong>CGSession-verified</strong>, which closes the previously
-"undetectable" fail-open for everything we can observe after the fact:</p>
-<ul>
-<li><strong><code>lock()</code> returns a confirmed lock, not just keystroke dispatch.</strong> After
-  <code>osascript</code> exits <code>0</code>, <code>lock()</code> polls CGSession's <code>CGSSessionScreenIsLocked</code>
-  and only returns <code>true</code> once the session reports locked. osascript exiting 0
-  no longer counts as success on its own.</li>
-<li><strong>Remapped/disabled shortcut is now detected.</strong> If the user has remapped or
-  disabled the Ctrl-Cmd-Q Lock-Screen shortcut (System Settings → Keyboard →
-  Keyboard Shortcuts), or Accessibility is denied so the keystroke is dropped,
-  the keystroke can still be dispatched with a 0 exit — but the session never
-  reports locked, so <code>lock()</code> returns <code>false</code> → the engine surfaces
-  <code>.lockFailed</code>. The prior "exit 0 while nothing locks → wrongly returns <code>true</code>"
-  gap (which produced a stuck fake <code>.suspended</code>) is closed (EC-19).</li>
-<li><strong>Detectable-up-front failures are still surfaced.</strong> A throw from <code>run()</code> or a
-  non-zero exit is still caught and returns <code>false</code>.</li>
-</ul>
-<h3 id="remaining-caveats-follow-up">Remaining caveats / follow-up<a class="headerlink" href="#remaining-caveats-follow-up" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Bounded blocking.</strong> Verification calls <code>waitUntilExit()</code> synchronously and
-  then polls for up to ~1s, so <code>lock()</code> briefly blocks the caller (~≤1s).
-  Making <code>lock()</code> async / non-blocking (do the poll off the calling actor)
-  remains a tracked follow-up (ND-014).</li>
-<li><strong>Not anti-spoofing.</strong> This verification is about <em>did the screen lock</em>, not
-  about defeating a determined attacker; v1 anti-spoofing scope is unchanged
-  (EC-12, SECURITY_PRIVACY.md).</li>
+<li>A stranger gets about 3 s instead of about 10 s.</li>
+<li><strong>False-lock risk rises for the enrolled user</strong> if they are misread as a stranger three times in a row (bad lighting, extreme angle, an untuned threshold). Mitigations: ND-085 face quality gate, ND-063 enrollment consistency, and the threshold study ND-056. Multi-face matching (ND-059) will stop a colleague leaning in from counting as a stranger while the user is also in frame.</li>
+<li>The unlock is a normal macOS unlock, so a false lock is an annoyance, not data loss.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>SACLockScreenimmediate</code> (login.framework private API):</strong> locks immediately
-  with <strong>no Accessibility grant</strong> required. Rejected for v1 because it is a
-  <strong>private symbol</strong> — fragile across macOS releases and a code-signing/notarization
-  risk. Kept as a <strong>fallback</strong> if osascript proves unreliable.</li>
-<li><strong><code>/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession -suspend</code>:</strong>
-  public, switches to the login window. Also <strong>avoids the Accessibility grant</strong>.
-  Slightly different UX (fast-user-switch login window vs. lock screen). Kept as a
-  <strong>fallback</strong> alongside <code>SACLockScreenimmediate</code> if the osascript path is unreliable.</li>
+<li><strong>3 ticks + 2 s grace (~5 s).</strong> More tolerant of misreads. Rejected: the threat state deserves the shortest window, and the misread risk is addressed at the recognition layer.</li>
+<li><strong>Keep ~10 s.</strong> Rejected as giving strangers the grace meant for the user.</li>
 </ul>
-<p>Both fallbacks avoid the Accessibility permission; we accept the Accessibility
-cost for v1 in exchange for using only public, stable, hand-equivalent APIs.</p>
 
 
 

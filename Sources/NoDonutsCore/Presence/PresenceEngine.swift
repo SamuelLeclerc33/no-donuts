@@ -29,6 +29,13 @@ public final class PresenceEngine {
     private var consecutiveAbsentTicks = 0
     private var consecutiveErrorTicks = 0
     private var absentSince: Date?
+    /// ND-061 (ADR-0017): unbroken run of `.strangerOnly` ticks, and the tick it
+    /// reached `consecutiveStrangerTicksToLock` (start of the stranger grace).
+    /// Broken by any non-stranger reading that reaches markAbsent (noFace, busy /
+    /// unavailable / error escalation) and by every full reset; left untouched by
+    /// the EC-10 error hold and the lid-open unavailable hold.
+    private var consecutiveStrangerTicks = 0
+    private var strangerSince: Date?
     // ND-054: per-absence-episode auto-lock state. Replaces the old one-shot
     // `lockAttempted` latch (which gave up after a single failure = silent
     // fail-open). A failed auto-lock is retried with bounded backoff
@@ -121,8 +128,12 @@ public final class PresenceEngine {
             switch await recognizer.recognize(frame) {
             case .enrolledUserPresent:
                 markPresent(.present)
-            case .strangerOnly, .noFace:
-                await markAbsent(now: now)            // stranger never counts as present (EC-03)
+            case .strangerOnly:
+                // EC-03: a stranger is never present. Counts toward the normal
+                // absence consensus AND the ND-061 stranger fast path.
+                await markAbsent(now: now, stranger: true)
+            case .noFace:
+                await markAbsent(now: now)
             case .error:
                 // EC-10 conservative HOLD (bounded): a transient Vision error
                 // neither advances nor resets the absence consensus — we do NOT
@@ -134,9 +145,13 @@ public final class PresenceEngine {
                 if consecutiveErrorTicks >= config.maxConsecutiveErrorsBeforeAbsent {
                     // Sustained recognizer failure: stop holding unlocked — treat as absence
                     // so the normal grace→lock path runs (EC-10, no indefinite fail-open).
-                    await markAbsent(now: now)
+                    await markAbsent(now: now, holdStrangerStreak: true)
                 }
-                // else: transient glitch → conservative hold (presence + absence counters untouched).
+                // else: transient glitch → conservative hold (presence + absence
+                // counters untouched — incl. the ND-061 stranger streak; an escalated
+                // error tick above also holds it). Each held tick still adds wall-clock
+                // time before the next stranger reading — bounded, and the normal
+                // absence path keeps counting.
             }
         }
     }
@@ -248,6 +263,8 @@ public final class PresenceEngine {
         nextLockRetryAt = nil
         episodeGeneration &+= 1
         consecutiveErrorTicks = 0
+        consecutiveStrangerTicks = 0
+        strangerSince = nil
         if endingWindows {
             callAssumedSince = nil
             unavailableSince = nil
@@ -306,6 +323,8 @@ public final class PresenceEngine {
             state = .suspended
             consecutiveAbsentTicks = 0   // reset stale absence accounting on successful lock
             absentSince = nil
+            consecutiveStrangerTicks = 0
+            strangerSince = nil
             return true
         } else {
             state = .lockFailed          // honest status; do NOT pretend suspended (no fail-open)
@@ -313,9 +332,26 @@ public final class PresenceEngine {
         }
     }
 
-    private func markAbsent(now: Date) async {
+    /// One absence-class tick. `stranger` = the reading was `.strangerOnly`
+    /// (ND-061); every other caller (noFace, EC-10 error escalation, busy past the
+    /// call cap, lid-open unavailable past its cap) is a non-stranger absence and
+    /// breaks the stranger streak. Two independent triggers can make the lock due;
+    /// both go through the single `maybeLock(now:)`.
+    /// - Parameter holdStrangerStreak: an ESCALATED error tick (EC-10) is not a real
+    ///   no-face reading, so it must neither advance nor break the ND-061 stranger
+    ///   streak (ADR-0017: "a recognition error holds it") — otherwise a stranger whose
+    ///   face intermittently fails to embed would dodge the fast lock.
+    private func markAbsent(now: Date, stranger: Bool = false, holdStrangerStreak: Bool = false) async {
         consecutiveErrorTicks = 0    // a real (or escalated) reading clears the error streak
         consecutiveAbsentTicks += 1
+        if stranger {
+            consecutiveStrangerTicks += 1
+        } else if holdStrangerStreak {
+            // EC-10 escalation: leave the stranger streak (and its clock) untouched.
+        } else {
+            consecutiveStrangerTicks = 0
+            strangerSince = nil
+        }
         if lockSucceeded {
             // Locked this episode (.suspended already set) — don't overwrite with
             // .absent and don't re-lock.
@@ -327,9 +363,36 @@ public final class PresenceEngine {
         // awaiting retry, or from a failed manual lockNow()) with .absent — that would
         // hide the "couldn't lock" status. markPresent() still clears it.
         if state != .lockFailed { state = .absent }
-        if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return }
+        // Evaluate BOTH (no short-circuit): each starts its own grace clock on the
+        // tick its consensus is reached.
+        let absenceDue = normalAbsenceLockDue(now: now)
+        let strangerDue = strangerLockDue(now: now)
+        guard absenceDue || strangerDue else { return }
+        await maybeLock(now: now)
+    }
+
+    /// Normal path: `consecutiveAbsentTicksToLock` absence ticks, then `graceSeconds`.
+    private func normalAbsenceLockDue(now: Date) -> Bool {
+        if consecutiveAbsentTicks < config.consecutiveAbsentTicksToLock { return false }
         if absentSince == nil { absentSince = now }
-        guard let since = absentSince, now.timeIntervalSince(since) >= config.graceSeconds else { return }
+        guard let since = absentSince else { return false }
+        return now.timeIntervalSince(since) >= config.graceSeconds
+    }
+
+    /// ND-061 fast path: `consecutiveStrangerTicksToLock` UNBROKEN stranger ticks,
+    /// then `strangerGraceSeconds` (default 0 → due on the threshold tick).
+    private func strangerLockDue(now: Date) -> Bool {
+        if consecutiveStrangerTicks < max(1, config.consecutiveStrangerTicksToLock) { return false }
+        if strangerSince == nil { strangerSince = now }
+        guard let since = strangerSince else { return false }
+        return now.timeIntervalSince(since) >= max(0, config.strangerGraceSeconds)
+    }
+
+    /// The single auto-lock path, shared by every trigger (normal absence consensus
+    /// + grace, ND-061 stranger fast path). Owns the ND-054 retry/backoff, the
+    /// cancellation guard, the ND-079 in-flight skip and the episode-generation
+    /// check — so no trigger can bypass them.
+    private func maybeLock(now: Date) async {
         // ND-054: bounded-backoff retry. Attempt on first grace expiry, then only
         // once the backoff after the last failure has elapsed (no lock storm).
         if let retryAt = nextLockRetryAt, now < retryAt { return }
@@ -340,10 +403,10 @@ public final class PresenceEngine {
         // Bail before locking (recording nothing). This gate is placed here — NOT
         // inside attemptLock() — because the manual `lockNow()` path runs in its OWN
         // uncancelled Task and MUST still lock. All auto callers reach locking via
-        // markAbsent (.strangerOnly/.noFace, EC-10 error escalation, the bounded
-        // busy/callAssumedPresent escalation, and the bounded lid-open
-        // camera-unavailable escalation, ND-078), so this single guard — and the retry
-        // policy below — covers them all consistently.
+        // markAbsent → maybeLock (.strangerOnly fast path + consensus, .noFace, EC-10
+        // error escalation, the bounded busy/callAssumedPresent escalation, and the
+        // bounded lid-open camera-unavailable escalation, ND-078), so this single
+        // guard — and the retry policy — covers them all consistently.
         guard !Task.isCancelled else { return }
         // ND-079: a manual lockNow() is in flight. Skip WITHOUT recording an attempt
         // (attemptLock would return false, indistinguishable from a real failure) so

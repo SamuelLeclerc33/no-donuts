@@ -754,6 +754,134 @@ func runAll() async -> Bool {
         await driveUntilGraceElapsed(e, config)
         c.expect(e.state == .suspended && locker.lockCallCount == 1, "stranger counts as absent → locks (EC-03)")
     }
+
+    // MARK: ND-061 stranger-at-keyboard fast path (ADR-0017)
+    /// Scripted recognizer: returns results in order (last one repeats).
+    final class SeqRecognizer: FaceRecognizing, @unchecked Sendable {
+        var script: [RecognitionResult]; var i = 0
+        init(_ s: [RecognitionResult]) { script = s }
+        func recognize(_ frame: CapturedFrame) async -> RecognitionResult {
+            defer { i += 1 }; return script[min(i, script.count - 1)]
+        }
+    }
+    do {
+        let d = Config()
+        c.expect(d.consecutiveStrangerTicksToLock == 3 && d.strangerGraceSeconds == 0
+                 && d.consecutiveAbsentTicksToLock == 5 && d.graceSeconds == 5,
+                 "ND-061 defaults: stranger 3 ticks + 0s grace; empty desk unchanged 5 ticks + 5s")
+    }
+    do {
+        // 3 consecutive stranger ticks → lock AT tick 3, no grace.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(1))
+        let noLockAt2 = locker.lockCallCount == 0 && e.state == .absent
+        await e.tick(now: t0.addingTimeInterval(2))
+        let lockedAt3 = locker.lockCallCount == 1 && e.state == .suspended
+        for i in 3..<30 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        c.expect(noLockAt2 && lockedAt3 && locker.lockCallCount == 1,
+                 "ND-061: 3 stranger ticks → locks at tick 3 (no grace), once; not at tick 2")
+    }
+    do {
+        // stranger, stranger, noFace, noFace... → no fast lock; normal path still
+        // locks at consensus (5 ticks, strangers counted) + 5s grace.
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())),
+                           SeqRecognizer([.strangerOnly, .strangerOnly, .noFace]), locker, config)
+        var firstLockAt: Double?
+        for i in 0..<30 {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+            if firstLockAt == nil && locker.lockCallCount > 0 { firstLockAt = Double(i) }
+        }
+        let expected = Double(config.consecutiveAbsentTicksToLock - 1) + config.graceSeconds  // consensus tick 4, +5s
+        c.expect(firstLockAt == expected && locker.lockCallCount == 1,
+                 "ND-061: 2 stranger + noFace → no fast lock; normal consensus+grace locks at t=\(expected), got \(firstLockAt.map { String($0) } ?? "never")")
+    }
+    do {
+        // stranger, noFace, stranger, stranger → streak broken by noFace → no fast lock at tick 4.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())),
+                           SeqRecognizer([.strangerOnly, .noFace, .strangerOnly, .strangerOnly, .noFace]), locker)
+        for i in 0..<4 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        c.expect(locker.lockCallCount == 0 && e.state == .absent,
+                 "ND-061: noFace breaks the stranger streak (stranger, noFace, stranger, stranger → no fast lock)")
+    }
+    do {
+        // stranger, error, stranger, stranger → error HOLDS the streak (EC-10) → locks on the 3rd stranger.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())),
+                           SeqRecognizer([.strangerOnly, .error("vision"), .strangerOnly, .strangerOnly]), locker)
+        for i in 0..<3 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let noLockYet = locker.lockCallCount == 0
+        await e.tick(now: t0.addingTimeInterval(3))
+        c.expect(noLockYet && locker.lockCallCount == 1 && e.state == .suspended,
+                 "ND-061: stranger, error, stranger, stranger → error holds streak → locks at 3rd stranger (EC-10)")
+    }
+    do {
+        // stranger, stranger, present, stranger, stranger → present resets everything → no lock.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())),
+                           SeqRecognizer([.strangerOnly, .strangerOnly, .enrolledUserPresent(confidence: 1),
+                                          .strangerOnly, .strangerOnly]), locker)
+        for i in 0..<5 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        c.expect(locker.lockCallCount == 0 && e.state == .absent,
+                 "ND-061: stranger, stranger, present, stranger, stranger → present resets streak → no lock")
+    }
+    do {
+        // Failed fast lock → ND-054 backoff: no retry before +10s, retry at +10s.
+        let locker = ScriptedLocker([false])
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        for i in 0..<3 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let failed = locker.lockCallCount == 1 && e.state == .lockFailed && e.lockFailureCount == 1
+        var early = false
+        for i in 3..<12 {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+            if locker.lockCallCount != 1 { early = true }
+        }
+        await e.tick(now: t0.addingTimeInterval(12))
+        c.expect(failed && !early && locker.lockCallCount == 2 && e.lockFailureCount == 2 && e.state == .lockFailed,
+                 "ND-061: failed fast lock → .lockFailed, retried on ND-054 backoff at +10s, not before")
+    }
+    do {
+        // Fast lock succeeds → the session-suspend it causes resets; a later
+        // stranger run needs a fresh 3-tick streak (no carry-over).
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        for i in 0..<3 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        e.sessionSuspended()
+        await e.tick(now: t0.addingTimeInterval(100))
+        await e.tick(now: t0.addingTimeInterval(101))
+        let noCarry = locker.lockCallCount == 1
+        await e.tick(now: t0.addingTimeInterval(102))
+        c.expect(noCarry && locker.lockCallCount == 2,
+                 "ND-061: after lock + sessionSuspended, a new stranger run needs a fresh 3-tick streak")
+    }
+    do {
+        // Non-zero stranger grace is honored: 3 ticks + 2s.
+        var config = Config()
+        config.strangerGraceSeconds = 2
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker, config)
+        for i in 0..<4 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let noLockInGrace = locker.lockCallCount == 0
+        await e.tick(now: t0.addingTimeInterval(4))
+        c.expect(noLockInGrace && locker.lockCallCount == 1,
+                 "ND-061: strangerGraceSeconds=2 → locks 2s after the 3rd stranger tick, not before")
+    }
+    do {
+        // Cancelled tick never fast-locks (shared maybeLock cancellation guard).
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        for i in 0..<2 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let task = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            await e.tick(now: t0.addingTimeInterval(2))
+        }
+        await task.value
+        c.expect(locker.lockCallCount == 0, "ND-061: cancelled tick at the stranger threshold does not lock")
+    }
     do {
         let config = Config()
         let locker = SpyLocker(succeed: true)
@@ -950,6 +1078,26 @@ func runAll() async -> Bool {
         await autoTick.value
         c.expect(e.state == .paused && e.lockFailureCount == 0,
                  "pause during in-flight auto-lock that fails → stays .paused, no failure recorded (ND-054)")
+    }
+
+    // ND-061 review fix: stranger, stranger, error×3 (escalated), stranger → still
+    // fast-locks on the 3rd stranger reading (escalated errors hold the streak).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.strangerOnly)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        await e.tick(now: t0)
+        await e.tick(now: t0.addingTimeInterval(1))
+        recognizer.result = .error("blur")
+        for i in 0..<config.maxConsecutiveErrorsBeforeAbsent {
+            await e.tick(now: t0.addingTimeInterval(2 + Double(i)))
+        }
+        c.expect(locker.lockCallCount == 0, "escalated errors between strangers don't lock by themselves (ND-061)")
+        recognizer.result = .strangerOnly
+        await e.tick(now: t0.addingTimeInterval(2 + Double(config.maxConsecutiveErrorsBeforeAbsent)))
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended,
+                 "escalated error ticks hold the stranger streak → 3rd stranger fast-locks (ND-061)")
     }
 
     // Recognition error → conservative HOLD (EC-10)
