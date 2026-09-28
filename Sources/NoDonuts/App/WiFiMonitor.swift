@@ -16,7 +16,13 @@ import os.log
 // Router reads (ND-081 review):
 //   - They run OFF the main actor (detached task). The gate and the menu read the last
 //     landed result and re-evaluate (onChange) when a new one lands. While a read is
-//     pending, the answer is "not trusted".
+//     pending, the answer is "not trusted" — EXCEPT the periodic 15 s re-verification
+//     of an unchanged key {interface, SSID, BSSID} with a fresh verified read: that
+//     answer is HELD for at most `RouterReadCache.holdWindow` (5 s, > the resolver's
+//     2 s tool timeouts) while the re-read runs. Otherwise the gate flipped to
+//     enforcing for every re-read and the camera resumed every 15 s on a trusted
+//     network. A mismatching/unreadable re-read drops trust at once; an expired hold
+//     re-evaluates the gate (not trusted). Wi-Fi events, wake and Trust never hold.
 //   - TRUST NEEDS A FRESH READ: a result counts toward "trusted" only if it was
 //     started after the last invalidation (`generation`) and is under
 //     `freshnessLimit` old. Invalidation happens on every 15 s poll, on wake
@@ -65,7 +71,9 @@ public final class WiFiMonitor: NSObject {
     private let pollInterval: TimeInterval = 15
     /// Fresh-read + negative-cache rules (Core, EngineCheck-covered): a verified read
     /// counts for 25 s at most and only within its generation; failures are cached 30 s.
-    private var cache = RouterReadCache(freshnessLimit: 25, negativeLifetime: 30)
+    private var cache = RouterReadCache(freshnessLimit: 25, negativeLifetime: 30, holdWindow: 5)
+    /// Re-evaluates the gate when a poll's hold expires without a landed re-read.
+    private var holdExpiryWork: DispatchWorkItem?
 
     /// Last SSID we observed, used to fire onChange on a change.
     private var lastSSID: String?
@@ -122,6 +130,8 @@ public final class WiFiMonitor: NSObject {
         pollTimer = nil
         followUpWork.forEach { $0.cancel() }
         followUpWork.removeAll()
+        holdExpiryWork?.cancel()
+        holdExpiryWork = nil
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
         wakeObserver = nil
         try? CWWiFiClient.shared().stopMonitoringAllEvents()
@@ -170,6 +180,10 @@ public final class WiFiMonitor: NSObject {
         guard let (key, interface) = currentKey() else { return isRelevant(ssid) ? .unreadable : .notChecked }
         switch cache.lookup(key: key, now: Date()) {
         case .fresh(let mac): return .verified(mac)
+        case .held(let mac):
+            // Periodic re-read of an unchanged key: keep the previous answer while it runs.
+            startRead(key: key, interface: interface)
+            return .verified(mac)
         case .recentlyFailed: return .unreadable
         case .none: break
         }
@@ -335,12 +349,19 @@ public final class WiFiMonitor: NSObject {
     }
 
     /// 15 s poll: new generation (a fresh read is required for trust), then re-read if
-    /// relevant. Failures stay negative-cached so a failing router isn't re-spawned
-    /// more than every `negativeCacheLifetime`.
+    /// relevant. The previous verified answer is held (≤ holdWindow) for an unchanged
+    /// key so the gate doesn't flap. Failures stay negative-cached so a failing router
+    /// isn't re-spawned more than every `negativeCacheLifetime`.
     private func poll() {
-        invalidate(clearFailures: false)
+        cache.reverify(now: Date())
         _ = routerCheck(for: currentSSID())
         notifyIfChanged()
+        holdExpiryWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.notifyIfChanged() }
+        }
+        holdExpiryWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + cache.holdWindow + 0.1, execute: work)
     }
 
     /// A Wi-Fi event or wake: new generation, failures cleared, re-read now, and again

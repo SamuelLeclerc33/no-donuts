@@ -132,6 +132,74 @@ func runWiFiTrustChecks(_ c: Checks) async {
                  "ND-081 cache: a later failure for the key drops the verified MAC")
     }
 
+    // Periodic re-verification hold (camera-every-15 s fix): the 15 s poll of an
+    // unchanged key holds the previous verified answer for ≤ holdWindow while the
+    // re-read is pending; nothing else ever holds.
+    do {
+        let t0 = Date(timeIntervalSince1970: 2_000_000)
+        let key = "en0|Home|aa:bb:cc:dd:ee:01"
+        let mac = "bc:df:58:e2:de:5f"
+        func verifiedCache(at t: Date) -> RouterReadCache {
+            var cache = RouterReadCache(freshnessLimit: 25, negativeLifetime: 30, holdWindow: 5)
+            cache.record(key: key, generation: cache.generation, mac: mac, now: t)
+            return cache
+        }
+
+        var cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(15))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(15)) == .held(mac)
+                 && cache.lookup(key: key, now: t0.addingTimeInterval(19.9)) == .held(mac),
+                 "hold: poll re-verify of an unchanged key holds the verified MAC while pending")
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(20)) == .none,
+                 "hold: expires after holdWindow without a result → not trusted")
+        c.expect(cache.lookup(key: "en0|Home|aa:bb:cc:dd:ee:99", now: t0.addingTimeInterval(16)) == .none,
+                 "hold: a different key (BSSID change) never sees the held MAC")
+        let gen = cache.generation
+        cache.record(key: key, generation: gen, mac: mac, now: t0.addingTimeInterval(16))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(16)) == .fresh(mac),
+                 "hold: matching re-read lands → fresh (trust continues without a flip)")
+
+        cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(15))
+        cache.record(key: key, generation: cache.generation, mac: "de:ad:be:ef:00:01", now: t0.addingTimeInterval(16))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(16)) == .fresh("de:ad:be:ef:00:01"),
+                 "hold: MISMATCHING re-read replaces the held MAC at once (store then refuses trust)")
+
+        cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(15))
+        cache.record(key: key, generation: cache.generation, mac: nil, now: t0.addingTimeInterval(16))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(16)) == .recentlyFailed,
+                 "hold: unreadable re-read drops trust at once")
+
+        cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(15))
+        cache.invalidate(clearFailures: true)   // wake / Wi-Fi event / Trust click
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(15.5)) == .none,
+                 "hold: a wake/Wi-Fi event during the hold cancels it (fail-safe)")
+
+        cache = verifiedCache(at: t0)
+        cache.invalidate(clearFailures: true)   // wake / Wi-Fi event: never holds
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(1)) == .none,
+                 "hold: wake / Wi-Fi event / Trust click never hold")
+
+        cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(15))   // re-read never lands
+        cache.reverify(now: t0.addingTimeInterval(30))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(30)) == .none,
+                 "hold: never chained — a poll holds only from a read that landed")
+
+        cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(26))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(26)) == .none,
+                 "hold: a verified read past the freshness limit is not held")
+
+        cache = verifiedCache(at: t0)
+        cache.reverify(now: t0.addingTimeInterval(15))
+        cache.record(key: key, generation: cache.generation - 1, mac: mac, now: t0.addingTimeInterval(16))
+        c.expect(cache.lookup(key: key, now: t0.addingTimeInterval(21)) == .none,
+                 "hold: a stale (pre-poll) read landing does not extend the hold")
+    }
+
     // Gateway MAC parsing (ND-081): MAC normalization, sysctl routing/ARP dumps built
     // from the real Darwin `rt_msghdr` layout, and the route(8)/arp(8) text fallbacks.
     do {
