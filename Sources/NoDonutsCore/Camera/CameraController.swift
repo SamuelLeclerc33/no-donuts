@@ -86,8 +86,10 @@ public protocol CameraCapturing: Sendable {
 /// `CVPixelBuffer` (the latest), and each delivery replaces — so releases — the
 /// previous one; the tick holds one more only for the length of recognition. At
 /// most two pool buffers are pinned, well under the data output's pool, so the
-/// pool can't be starved; no deep copy is needed (it would cost a 460 KB copy
-/// per delivered frame, 15×/s, to save nothing). `captureOutput(_:didDrop:)`
+/// pool can't be starved (ND-116: the liveness tap pins at most ONE more, for
+/// the length of one landmark pass — it drops frames while busy); no deep copy
+/// is needed (it would cost a 460 KB copy per delivered frame, 15×/s, to save
+/// nothing). `captureOutput(_:didDrop:)`
 /// logs an `OutOfBuffers` drop at `.notice` so on-device logs would show it if
 /// that ever stops holding.
 ///
@@ -718,6 +720,16 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
 
     // MARK: - Suspend / resume (ND-013)
 
+    /// ND-116: attach (or detach with `nil`) the liveness frame tap. The sink receives
+    /// every `SampleBufferDelegate.liveFrameStride`-th accepted frame (~7 fps of the
+    /// 15 fps stream) as a `CapturedFrame` (pixel buffer + host-clock stamp), on the
+    /// camera queue; it must not block (LivenessAnalyzer drops frames while busy). Only
+    /// frames that pass the ND-084a `notBefore` filter are forwarded, and the delegate
+    /// only runs while the session runs, so nothing is tapped while suspended/stopped.
+    public func setLiveFrameSink(_ sink: LiveFrameSink?) {
+        delegate.setLiveFrameSink(sink)
+    }
+
     /// ND-013: stop the running capture session so the camera indicator light
     /// goes OFF while the Mac is locked / display asleep / session inactive.
     /// Runs async on `sessionQueue`. Does NOT tear down inputs/outputs —
@@ -828,6 +840,11 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
     private var notBefore: TimeInterval?
     private var loggedStaleArrival = false
     private var loggedOutOfBuffers = false
+    /// ND-116 liveness tap (guarded by `lock`) and its frame counter.
+    private var liveSink: LiveFrameSink?
+    private var liveFrameCounter = 0
+    /// Forward every 2nd frame: ~7 fps of the 15 fps capture (ND-116 power budget).
+    static let liveFrameStride = 2
 
     /// Returns the session's synchronization clock. Called on the session queue.
     private let clockProvider: () -> CMClock?
@@ -844,17 +861,32 @@ private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSamp
         let stamp = Self.hostTime(of: sampleBuffer, clock: clockProvider(), arrival: arrival)
 
         lock.lock()
-        defer { lock.unlock() }
         // ND-084a: a frame captured before the last clear (suspend/resume/
         // tear-down) is dropped, even if it's delivered afterwards.
-        if let notBefore, stamp < notBefore { return }
-        if !FrameFreshness.isFresh(frameTime: stamp, now: arrival, notBefore: nil),
-           !loggedStaleArrival {
+        if let notBefore, stamp < notBefore { lock.unlock(); return }
+        let freshOnArrival = FrameFreshness.isFresh(frameTime: stamp, now: arrival, notBefore: nil)
+        if !freshOnArrival, !loggedStaleArrival {
             loggedStaleArrival = true
             cameraLog.notice("Camera delivered a frame that is already stale on arrival (age \(arrival - stamp, format: .fixed(precision: 2), privacy: .public)s); it will not be used")
         }
         buffer = pixelBuffer
         frameTime = stamp
+        // ND-116: pick the liveness frame under the lock, hand it off outside it.
+        var sink: LiveFrameSink?
+        if freshOnArrival, let s = liveSink {
+            liveFrameCounter &+= 1
+            if liveFrameCounter % Self.liveFrameStride == 0 { sink = s }
+        }
+        lock.unlock()
+        sink?.submit(CapturedFrame(pixelBuffer: pixelBuffer, captureTime: stamp))
+    }
+
+    /// ND-116: install / remove the liveness tap.
+    func setLiveFrameSink(_ sink: LiveFrameSink?) {
+        lock.lock()
+        liveSink = sink
+        liveFrameCounter = 0
+        lock.unlock()
     }
 
     /// ND-042d evidence hook: an `OutOfBuffers` drop means the output's pool is

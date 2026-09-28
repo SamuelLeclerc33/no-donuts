@@ -147,6 +147,14 @@ public final class PresenceEngine {
                 await markAbsent(now: now, stranger: true)
             case .noFace:
                 await markAbsent(now: now)
+            case .notLive:
+                // ND-116: a matched face with no live evidence in the window (photo /
+                // screen replay) is NOT present. It is a normal absence reading —
+                // consensus + grace, all existing guards — deliberately not the ND-061
+                // stranger fast path: the real user may just be very still, and the
+                // normal path gives them the grace to blink or move. Like noFace it
+                // breaks the stranger streak and doesn't end a busy run (ND-098).
+                await markAbsent(now: now)
             case .error:
                 // EC-10 conservative HOLD (bounded): a transient Vision error
                 // neither advances nor resets the absence consensus — we do NOT

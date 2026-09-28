@@ -36,6 +36,16 @@ public protocol FaceRecognizing: Sendable {
 ///     → presence-only fallback (STALE / cross-model — force re-enroll; NEVER cross-compare, ADR-0014)
 /// - embed `.embedding`, store `.enrolled(refs, ver)` matching version → max cosine vs refs;
 ///     `>= threshold` → `.enrolledUserPresent(max)`, else `.strangerOnly` (EC-03: non-match never present)
+/// - a MATCH with anti-spoof on: texture flagged → `.strangerOnly` (ND-041); otherwise no
+///     live evidence (blink / non-rigid motion) in the window → `.notLive` (ND-116)
+///
+/// **Liveness (ND-116, EC-12):** a phone-screen photo of the user matches and passes the
+/// texture check, so on the ENROLLED-MATCH path only, the injected `LivenessProviding`
+/// must also report live evidence within its window. Gated by the same
+/// `antiSpoofEnabled` toggle ("Reject photos of me"): off → liveness is not required.
+/// The not-enrolled / version-mismatch / empty-references presence-only paths are NOT
+/// gated (identity isn't set up; no surprise locks). `liveness == nil` (FaceScore,
+/// most checks) → not required.
 ///
 /// **Embedding versioning (ADR-0014):** the stored enrollment records the model
 /// `version` that produced it. If that differs from the active embedder's descriptor
@@ -82,6 +92,8 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     /// Optional non-secret enrollment marker (ND-073) — distinguishes "Keychain item
     /// deleted" from "never enrolled". `nil` → a `.notEnrolled` read is `.notEnrolled`.
     private let marker: EnrollmentMarkerStoring?
+    /// ND-116 live-evidence source; `nil` → liveness not required.
+    private let liveness: LivenessProviding?
     /// Last published identity status (ND-073). Lock-guarded; `OSAllocatedUnfairLock`
     /// is `Sendable`, so the class stays checked-`Sendable`.
     private let statusLock = OSAllocatedUnfairLock<IdentityStatus>(initialState: .unknown)
@@ -103,11 +115,15 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
     ///   - store: enrollment store.
     ///   - marker: optional non-secret enrollment marker (ND-073) used only to compute
     ///     `lastIdentityStatus`; it never changes a recognition result.
+    ///   - liveness: ND-116 live-evidence source (production: `LivenessAnalyzer`). Only
+    ///     consulted on an enrolled match with anti-spoof on.
     public init(embedder: FaceEmbedding, store: EnrollmentStoring,
-                marker: EnrollmentMarkerStoring? = nil) {
+                marker: EnrollmentMarkerStoring? = nil,
+                liveness: LivenessProviding? = nil) {
         self.embedder = embedder
         self.store = store
         self.marker = marker
+        self.liveness = liveness
     }
 
     public func recognize(_ frame: CapturedFrame) async -> RecognitionResult {
@@ -136,7 +152,7 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
             return .error("face embedding failed")
         case .noFace:
             return .noFace
-        case let .embedding(vector, textureScore):
+        case let .embedding(vector, textureScore, faceBox):
             switch state {
             case .notEnrolled:
                 // Presence-only fallback — only when GENUINELY not enrolled (non-breaking).
@@ -163,12 +179,18 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 }
                 // EC-03: a detected face that doesn't clear the threshold is NEVER present.
                 let present = maxSim >= threshold
+                // ND-041/ND-116: ONE toggle read per tick gates texture AND liveness.
+                let antiSpoof = resolvedAntiSpoofEnabled()
+                // ND-116 review fix: evidence must belong to the MATCHED face's track.
+                let verdict = (present && antiSpoof) ? liveness?.currentVerdict(matchedFaceBox: faceBox) : nil
+                let liveText = verdict?.logDescription ?? (antiSpoof ? "n/a" : "n/a (anti-spoof off)")
                 // ND-024 tuning: log the score/threshold/decision (numbers only — no
                 // embedding, no image — privacy). Enrolled branch only; the presence-only
                 // (not-enrolled) path is not logged. ND-072: the liveness texture score is
                 // appended (a number; `inf` = anti-spoof off or not extractable) so the
                 // spoof floor can be sanity-checked live against the real user's scores.
-                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public); texture \(textureScore, privacy: .public)")
+                // ND-116: plus the liveness verdict on a match (numbers only).
+                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public); texture \(textureScore, privacy: .public); live: \(present ? liveText : "n/a", privacy: .public)")
                 guard present else { return .strangerOnly }
 
                 // ND-041 anti-spoof (EC-12): only when the face MATCHES do we apply the
@@ -182,12 +204,18 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 // <n>` with no relaunch — and effectively disable-able by a very low
                 // positive value. When anti-spoof is off the embedder already returned the
                 // `.infinity` sentinel (never flagged), so this branch is a cheap no-op.
-                if resolvedAntiSpoofEnabled() {
+                if antiSpoof {
                     let floor = resolvedSpoofTextureFloor()
                     if isLikelySpoof(textureScore: textureScore, floor: floor) {
                         // Log the numeric score only — never an image or embedding (privacy).
                         log.notice("anti-spoof: flagged likely spoof — texture \(textureScore, privacy: .public) < floor \(floor, privacy: .public) → stranger")
                         return .strangerOnly
+                    }
+                    // ND-116: the texture check can't stop a screen replay — also require
+                    // live evidence (blink / non-rigid motion) within the window. Not
+                    // live → `.notLive` (normal absence, NOT the stranger fast lock).
+                    if let verdict, !verdict.live {
+                        return .notLive
                     }
                 }
                 return .enrolledUserPresent(confidence: maxSim)

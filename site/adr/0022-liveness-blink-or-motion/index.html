@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0014-coreml-face-embedding-model/">
+        <link rel="prev" href="../0021-updates-no-in-app-updater/">
       
       
-        <link rel="next" href="../0016-bounded-camera-unavailable/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0015 — Camera trust: built-in only - No Donuts</title>
+        <title>ADR-0022 — Liveness (blink or motion) - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0015-camera-trust-use-the-built-in-camera-only" class="md-skip">
+        <a href="#adr-0022-liveness-blink-or-non-rigid-facial-motion-within-60-s" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0015 — Camera trust: built-in only
+              ADR-0022 — Liveness (blink or motion)
             
           </span>
         </div>
@@ -834,37 +834,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0015 — Camera trust: built-in only
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0015-camera-trust-built-in-only/" class="md-nav__link">
         
   
   
@@ -880,70 +853,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1121,10 +1030,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0022-liveness-blink-or-motion/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0022 — Liveness (blink or motion)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1140,6 +1076,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-considered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives considered
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1293,33 +1293,36 @@
 
 
 
-<h1 id="adr-0015-camera-trust-use-the-built-in-camera-only">ADR-0015 — Camera trust: use the built-in camera only<a class="headerlink" href="#adr-0015-camera-trust-use-the-built-in-camera-only" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0022-liveness-blink-or-non-rigid-facial-motion-within-60-s">ADR-0022 — Liveness: blink or non-rigid facial motion within 60 s<a class="headerlink" href="#adr-0022-liveness-blink-or-non-rigid-facial-motion-within-60-s" title="Permanent link">&para;</a></h1>
 <ul>
 <li>Status: Accepted</li>
-<li>Date: 2026-09-25</li>
-<li>Owner: blart (with wiggum)</li>
+<li>Date: 2026-09-28</li>
+<li>Owner: cooper (with wiggum, blart)</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p><code>CameraController</code> captured from <code>AVCaptureDevice.default(for: .video)</code>, which is whatever camera macOS picks. That includes <strong>virtual cameras</strong>: OBS, Snap Camera, and any CMIO camera extension. They feed arbitrary video. A looped clip of the enrolled user would match every tick and keep the Mac unlocked indefinitely. That is a trivial, repeatable spoof, much stronger than the flat-photo case EC-12 addresses. Virtual cameras usually present as device type <code>.external</code>, the same as physical USB webcams. The reliable difference is their transport type.</p>
-<p>The app is meant for internal distribution to colleagues on essentially the same laptop hardware (ND-111), all of which have a built-in camera.</p>
+<p>On 2026-09-28, on-device testing showed that a <strong>photo of the enrolled user on a phone screen</strong> held to the built-in camera <strong>matched as the user</strong> (score ~0.80 vs threshold 0.50). It also <strong>passed the anti-spoof texture check</strong>, with texture 58–89 against a floor of 12; the live user's minimum is 31.6. It kept the Mac unlocked for as long as it was held (ND-116). The variance-of-Laplacian check (ND-041/072) only catches blurry prints and low-quality screens. A modern phone screen has as much fine detail as a real face, so no floor value separates them. Per-frame texture can't work; the signal has to be <strong>temporal</strong>.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p><strong>Trust only the Mac's built-in camera.</strong></p>
+<p>An enrolled identity match counts as the user <strong>only with live evidence in the last 60 s</strong>: a <strong>blink</strong>, or <strong>non-rigid / non-planar facial motion</strong>.</p>
 <ul>
-<li>Select the device through <code>AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera], …)</code>, and require <strong>both</strong> the built-in device type <strong>and</strong> a built-in transport (<code>transportType == kIOAudioDeviceTransportTypeBuiltIn</code>). Requiring both is defense in depth: a virtual device claiming a built-in type is still rejected. The pure rule lives in <code>CameraTrustPolicy</code> and is covered by EngineCheck.</li>
-<li>External USB webcams, iPhone Continuity Camera and virtual cameras are <strong>never used</strong>. They are logged once as "ignored untrusted camera".</li>
-<li>If no trusted camera is present, <code>capture()</code> returns <code>.unavailable("no trusted built-in camera …")</code>. The app shows the honest "camera unavailable" state with that reason, plus the existing not-protecting notification (EC-07/08/09 policy). It never falls back to an untrusted device.</li>
-<li>The busy probe and the wedged in-use check query the same trusted device, not <code>.default</code> (discharges ND-066b).</li>
+<li><strong>Frame tap:</strong> the camera already runs at 15 fps. Every other frame (~7 fps) goes to a <code>LivenessAnalyzer</code> on its own queue, which drops frames when busy and never blocks capture. It runs Vision face landmarks on the largest face. It only runs while the camera runs, never while suspended.</li>
+<li><strong>Blink:</strong> the eye aspect ratio of both eyes drops below a fraction of its rolling open-eye baseline and recovers within ≤ 500 ms.</li>
+<li><strong>Motion:</strong> a homography is fitted to the landmarks of frames ~0.5–1 s apart. A planar photo, even tilted or moved, fits almost exactly. A live 3D face turning or changing expression leaves a residual above a threshold, normalized by inter-ocular distance.</li>
+<li><strong>Window:</strong> evidence within the last 60 s, or within the first 60 s after a session resume or launch. Humans blink every 2–10 s even when concentrating, and 60 s leaves a wide margin.</li>
+<li><strong>Result:</strong> a match without live evidence returns <code>.notLive</code>. The engine treats it as <strong>normal absence</strong> (consensus + grace, ~10 s), <strong>not</strong> the 3-tick stranger lock (ADR-0017), so a missed blink can't cause a fast false lock.</li>
+<li><strong>Toggle:</strong> liveness is gated by the existing "Reject photos of me" setting (<code>antiSpoofEnabled</code>), together with the texture check.</li>
 </ul>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
 <ul>
-<li>A virtual-camera replay can no longer drive identity. A physical attacker would need to present a spoof to the real lens, which ND-041/ND-072 anti-spoofing covers.</li>
-<li><strong>Clamshell with an external webcam is unprotected.</strong> With the lid closed there is no built-in camera, so the app reports "camera unavailable" and doesn't lock (EC-07). This is accepted for a laptop fleet. It can be revisited, for example with an allowlist of physical USB transports, if a colleague needs it.</li>
-<li>ND-096's "follow <code>systemPreferredCamera</code>" becomes moot: the preferred camera is never followed.</li>
+<li>A still photo or screen image of the user keeps the Mac unlocked for at most ~60 s + consensus + grace, instead of indefinitely.</li>
+<li><strong>Not stopped:</strong> a replayed <strong>video</strong> of the user blinking or moving on a screen. That needs a challenge-response or depth sensing, which the built-in camera doesn't have. Recorded as a residual in the threat model.</li>
+<li><strong>False-lock risk:</strong> a user whose eyes the detector can't see (strong glasses glare, extreme angle) and who holds perfectly still for more than 60 s gets the normal ~10 s lock. Motion evidence covers most of these. The thresholds are provisional and logged for on-device tuning.</li>
+<li><strong>Cost:</strong> landmark detection at ~7 fps at 640×480. The per-frame cost is measured and reported in ND-116.</li>
 </ul>
 <h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Built-in + physical USB + Continuity; reject only virtual transports.</strong> Broader hardware support, but it relies on third-party drivers reporting their transport honestly, and it trusts an iPhone stream. It was the recommended option in the interview; the user chose the strict one.</li>
-<li><strong>Keep <code>.default</code> and detect virtual cameras by name or manufacturer.</strong> Brittle and trivially evaded. Rejected.</li>
+<li><strong>Tune the texture floor:</strong> impossible. The phone screen scored above the live user's minimum.</li>
+<li><strong>Blink only:</strong> rejected by the user in favour of blink OR motion, to reduce false locks when eyes are hard to track.</li>
+<li><strong>Challenge only at unlock:</strong> doesn't stop a photo held up while the session is still unlocked.</li>
 </ul>
 
 

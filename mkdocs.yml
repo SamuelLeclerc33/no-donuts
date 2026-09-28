@@ -56,5 +56,6 @@ nav:
       - "ADR-0019 — Validated tunables": adr/0019-validated-tunables.md
       - "ADR-0020 — Docs site": adr/0020-docs-site.md
       - "ADR-0021 — Updates (no in-app updater)": adr/0021-updates-no-in-app-updater.md
+      - "ADR-0022 — Liveness (blink or motion)": adr/0022-liveness-blink-or-motion.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

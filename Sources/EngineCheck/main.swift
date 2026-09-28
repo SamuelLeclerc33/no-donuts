@@ -22,6 +22,7 @@ func runAll() async -> Bool {
     await runIdentityStatusChecks(c)
     await runAntiSpoofChecks(c)
     await runLivenessAndRecognitionSettingsChecks(c)
+    await runLivenessChecks(c)
     await runThresholdAnalysisChecks(c)
     await runScreenLockerChainChecks(c)
     await runFrameFreshnessChecks(c)

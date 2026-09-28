@@ -21,6 +21,11 @@ public enum RecognitionResult: Equatable, Sendable {
     case enrolledUserPresent(confidence: Double)
     case strangerOnly           // face(s) detected, none match the enrolled user
     case noFace
+    /// ND-116: the enrolled user's face MATCHED, but there was no live evidence (a blink
+    /// or non-rigid facial motion) within the liveness window — e.g. a photo on a phone
+    /// screen. The engine treats it as a NORMAL absence reading (not a stranger: no
+    /// ND-061 fast lock, since the real user may simply be very still).
+    case notLive
     case error(String)
 }
 

@@ -50,6 +50,7 @@ struct DiagnosticsReporter {
     ///     passes it in). `nil` → omitted.
     ///   - lockCapability: lock self-test result (ND-058) — mechanism names only.
     ///   - cameraUnavailableReason: last camera unavailable reason (ND-075), a fixed string.
+    ///   - livenessLines: ND-116 liveness counters (`LivenessDiagnostics.lines`), numbers only.
     ///   - crashSummaryLines: ND-108 local crash summary (`CrashSummaryReport.lines`),
     ///     built off-main by the caller. Empty → section omitted.
     ///   - now: injectable clock for the timestamp (defaults to `Date()`).
@@ -67,6 +68,7 @@ struct DiagnosticsReporter {
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
         cameraUnavailableReason: String? = nil,
+        livenessLines: [String] = [],
         crashSummaryLines: [String] = [],
         now: Date = Date()
     ) -> String {
@@ -146,6 +148,12 @@ struct DiagnosticsReporter {
         lines.append("  matchThreshold override (\(descriptor.thresholdOverrideKey)): \(thresholdOverrideDescription(descriptor))")
         lines.append("  antiSpoofEnabled: \(resolvedAntiSpoofEnabled())")
         lines.append("  spoofTextureFloor: \(resolvedSpoofTextureFloor(default: defaultSpoofTextureFloor))")
+        // ND-116: liveness (blink / non-rigid motion) — required on an enrolled match
+        // while antiSpoofEnabled is on. Numbers only.
+        if !livenessLines.isEmpty {
+            lines.append("  liveness required: \(resolvedAntiSpoofEnabled() ? "yes (enrolled match needs a blink or facial motion within \(Int(defaultLivenessWindowSeconds))s)" : "no (anti-spoof off)")")
+            lines.append(contentsOf: livenessLines)
+        }
         // ND-077: same audit the menu shows — any security tunable weaker than its default.
         let reduced = reducedProtectionReasons(descriptor: descriptor)
         lines.append("  protection reduced: \(reduced.isEmpty ? "no" : reduced.joined(separator: "; "))")
@@ -208,6 +216,7 @@ struct DiagnosticsReporter {
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
         cameraUnavailableReason: String? = nil,
+        livenessLines: [String] = [],
         crashSummaryLines: [String] = [],
         now: Date = Date()
     ) -> String {
@@ -224,6 +233,7 @@ struct DiagnosticsReporter {
             notificationStatusDescription: notificationStatusDescription,
             lockCapability: lockCapability,
             cameraUnavailableReason: cameraUnavailableReason,
+            livenessLines: livenessLines,
             crashSummaryLines: crashSummaryLines,
             now: now
         )

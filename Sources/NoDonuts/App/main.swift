@@ -84,6 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let enrollmentMarker = UserDefaultsEnrollmentMarker()
     /// Held so the loop can read `lastIdentityStatus` after each tick (ND-073).
     private var recognizer: IdentityRecognizer?
+    /// ND-116: live-evidence analyzer (blink / non-rigid motion) fed by the camera tap.
+    /// Gates the enrolled-match path in the recognizer; diagnostics read its counters.
+    private let liveness = LivenessAnalyzer()
     /// Last identity status pushed to the menu + notifier (never `.unknown`).
     private var lastPushedIdentity: IdentityStatus = .unknown
     /// Last value the RECOGNIZER published that the loop has already acted on. The loop
@@ -223,6 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // user counts (EC-03). The store + embedder are shared with enrollment below.
         let camera = CameraController()
         self.camera = camera
+        // ND-116: ~7 fps frame tap → liveness analyzer (own queue, drops while busy).
+        camera.setLiveFrameSink(liveness)
 
         // ND-076: the old GLOBAL `matchThreshold` override was model-agnostic (a value
         // tuned for one model carried over to another). Drop it once, before the Settings
@@ -267,7 +272,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let recognizer = IdentityRecognizer(
             embedder: embedder,
             store: enrollmentStore,
-            marker: enrollmentMarker
+            marker: enrollmentMarker,
+            liveness: liveness          // ND-116: enrolled match needs live evidence (60 s)
         )
         self.recognizer = recognizer
         let engine = PresenceEngine(
@@ -369,6 +375,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if enabled {
             if !loopRunning {
+                // ND-116: enforcement (re)starts (launch, unlock/wake, end of pause /
+                // trusted Wi-Fi / enrollment) → a 60 s liveness bootstrap window, so the
+                // user isn't locked before their first blink is seen.
+                liveness.beginWindow()
                 camera.resume()
                 startLoop()
                 // Defer priming to the first active transition when launched while
@@ -1022,6 +1032,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 notificationStatusDescription: notificationStatus,
                 lockCapability: self.locker.selfTest(),   // resolve-only; reports the REAL result
                 cameraUnavailableReason: self.camera?.lastUnavailableReason,
+                livenessLines: self.liveness.diagnostics().lines,
                 crashSummaryLines: crashLines
             )
         }

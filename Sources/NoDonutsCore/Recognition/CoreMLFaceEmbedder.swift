@@ -313,7 +313,8 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         } else {
             textureScore = .infinity
         }
-        return .embedding(normalized, textureScore: textureScore)
+        // ND-116: the matched face's box binds liveness evidence to this face's track.
+        return .embedding(normalized, textureScore: textureScore, faceBox: largest.boundingBox)
     }
 
     /// Render `image` (already placed at the origin and scaled to `side`×`side` by

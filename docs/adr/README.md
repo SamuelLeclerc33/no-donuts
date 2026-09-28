@@ -27,6 +27,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0019](0019-validated-tunables.md) — All presence tunables pass through one validated Config (Config.Bounds) — **Accepted**
 - [ADR-0020](0020-docs-site.md) — Documentation website: MkDocs + Material, offline, committed — **Accepted** (renumbered from a duplicate 0005, ND-019)
 - [ADR-0021](0021-updates-no-in-app-updater.md) — Updates for internal distribution: no in-app updater; new versions ship as a notarized DMG or via company MDM — **Accepted**
+- [ADR-0022](0022-liveness-blink-or-motion.md) — Liveness: blink or non-rigid facial motion within 60 s gates an identity match — **Accepted**
 
 ## Template
 

@@ -34,8 +34,12 @@ public enum FaceEmbeddingOutcome: Sendable {
 /// on `.embedding([Float])`) stays source-compatible. The App keeps calling
 /// `embedding(for:)`; only the recognizer opts into `embeddingWithLiveness(for:)`.
 public enum FaceEmbeddingResult: Sendable {
-    /// A face was found + embedded, with its crop's texture score for liveness.
-    case embedding([Float], textureScore: Double)
+    /// A face was found + embedded, with its crop's texture score for liveness and
+    /// (ND-116) its Vision-normalized bounding box in the ORIENTED space
+    /// (`resolvedVisionOrientation`, bottom-left origin) — the recognizer binds liveness
+    /// evidence to the face track at this box. `nil` (fakes / unknown) → no binding
+    /// possible → not live outside the startup window (fail-safe).
+    case embedding([Float], textureScore: Double, faceBox: CGRect? = nil)
     /// Vision ran and found no face in the frame. → absence.
     case noFace
     /// Detection / crop / feature-print / pixel-buffer error (EC-10 conservative hold).
@@ -45,7 +49,7 @@ public enum FaceEmbeddingResult: Sendable {
     /// method and App call sites keep working unchanged.
     public var outcome: FaceEmbeddingOutcome {
         switch self {
-        case let .embedding(vector, _): return .embedding(vector)
+        case let .embedding(vector, _, _): return .embedding(vector)
         case .noFace: return .noFace
         case .failure: return .failure
         }
@@ -386,6 +390,7 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
             guard let base = raw.bindMemory(to: Float.self).baseAddress else { return }
             for i in 0..<count { vector[i] = base[i] }
         }
-        return .embedding(vector, textureScore: textureScore)
+        // ND-116: the matched face's box binds liveness evidence to this face's track.
+        return .embedding(vector, textureScore: textureScore, faceBox: largest.boundingBox)
     }
 }
