@@ -213,14 +213,9 @@ public final class ScreenLocker: ScreenLocking, @unchecked Sendable {
     /// reports NOT locked, and an absent key does not wrongly report locked.
     private func isScreenLockedNow() -> Bool {
         if let probe = isLockedProbe { return probe() }
-        guard let d = CGSessionCopyCurrentDictionary() as? [String: Any] else {
-            return false
-        }
-        if flag(d, "CGSSessionScreenIsLocked") {
-            return true
-        }
-        // Only trust the on-console signal when the key is actually present:
-        // absent key → treat as on-console (NOT locked).
+        // ND-064: shared defensive CGSession reader (Bool/NSNumber bridging, on-console
+        // only trusted when present + readable). Unreadable dictionary → NOT locked
+        // (honest lockFailed, never a claimed lock we can't confirm).
         //
         // FUS caveat: `kCGSSessionOnConsoleKey == false` is ambiguous — it can
         // also mean this session was FAST-USER-SWITCHED away (another account
@@ -230,18 +225,7 @@ public final class ScreenLocker: ScreenLocking, @unchecked Sendable {
         // off-console (ND-013, EC-14). So at the moment we read this, off-console
         // reliably means our own `SACSwitchToLoginWindow` fallback succeeded
         // (login window), not a stray FUS state. See ADR-0010 (consequences), EC-19.
-        if d["kCGSSessionOnConsoleKey"] != nil, !flag(d, "kCGSSessionOnConsoleKey") {
-            return true
-        }
-        return false
-    }
-
-    /// Reads a boolean flag from a CGSession dictionary defensively: the values
-    /// are `CFBoolean` and may bridge as `Bool` or `NSNumber`.
-    private func flag(_ dict: [String: Any], _ key: String) -> Bool {
-        if let b = dict[key] as? Bool { return b }
-        if let n = dict[key] as? NSNumber { return n.boolValue }
-        return false
+        return CGSessionState.current()?.isLockedOrOffConsole ?? false
     }
 
     /// Polls `isScreenLockedNow()` until it reports locked or the shared `deadline`

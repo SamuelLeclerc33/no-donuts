@@ -250,7 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.sessionMonitor = monitor
         monitor.onChange = { [weak self] active in
             // ND-080 / EC-15: an INDEFINITE pause ends when the session suspends
-            // (lock / display sleep / switched away) so the user comes back protected.
+            // (lock / system sleep / switched away; NOT display sleep, ND-090) so the user comes back protected.
             // Timed pauses keep their own expiry (PausePolicy). Resuming fires the
             // pause onChange → applyEnforcement(); the call below is idempotent.
             if !active { self?.pauseController?.sessionDidSuspend() }
@@ -449,8 +449,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar.refreshPauseItem(isPaused: pauseController.isPaused,
                                  remaining: pauseController.remainingDescription())
         let ssid = wifiMonitor.currentSSID()
+        // ND-081: trust = SSID + a FRESH router MAC. routerCheck never blocks (reads run
+        // off main; only SSIDs with a trusted entry are read), and "verified" only comes
+        // from a fresh read, so the label's "trusted" matches what the gate sees.
+        let router = wifiMonitor.routerCheck(for: ssid)
+        var verifiedMAC: String?
+        if case .verified(let mac) = router { verifiedMAC = mac }
         menuBar.refreshTrustItem(ssid: ssid,
-                                 isTrusted: trustedNetworks.isTrusted(ssid),
+                                 status: trustedNetworks.status(ssid: ssid, gatewayMAC: verifiedMAC),
+                                 router: router,
                                  locationGranted: wifiMonitor.isLocationGranted,
                                  locationNotDetermined: wifiMonitor.authorizationStatus() == .notDetermined)
         refreshProtectionAudit()
@@ -772,9 +779,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func openSettings() {
         guard let settingsStore else { return }
         let actions = SettingsActions(
-            removeTrustedNetwork: { [weak self] ssid in
+            removeTrustedNetwork: { [weak self] network in
                 guard let self else { return [] }
-                self.trustedNetworks.remove(ssid)
+                self.trustedNetworks.remove(network)
                 // A removed trusted network may re-enable enforcement right now.
                 self.applyEnforcement()
                 return self.trustedNetworks.all()
@@ -827,7 +834,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     activeVersion: self.embedder.descriptor.version,
                     markerVersion: self.enrollmentMarker.markerVersion),
                 locationStatus: wifiMonitor.authorizationStatus(),
-                trustedNetworkCount: self.trustedNetworks.all().count,
+                trustedNetworkCount: self.trustedNetworks.count,
+                trustedNetworksNeedingReTrust: self.trustedNetworks.needsReTrustCount,
+                currentRouterReadable: {
+                    switch wifiMonitor.routerCheck(for: wifiMonitor.currentSSID()) {
+                    case .verified: return true
+                    case .unreadable: return false
+                    case .checking, .notChecked: return nil
+                    }
+                }(),
                 notificationStatusDescription: notificationStatus,
                 lockCapability: self.locker.selfTest(),   // resolve-only; reports the REAL result
                 cameraUnavailableReason: self.camera?.lastUnavailableReason

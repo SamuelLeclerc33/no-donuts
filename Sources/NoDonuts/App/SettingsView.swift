@@ -7,18 +7,19 @@ import NoDonutsCore
 // (login item, trusted-network removal, diagnostics). No policy lives here: the view
 // reflects/writes the store and forwards intent, exactly like the menu bar does.
 //
-// Privacy: no network, no external assets. Trusted networks are shown by name only in
-// the local UI (they already live in the user's UserDefaults); diagnostics is the
-// privacy-safe reporter (never SSIDs).
+// Privacy: no network, no external assets. Trusted networks are shown by name (plus the
+// router MAC's last two octets) only in the local UI (they already live in the user's
+// UserDefaults); diagnostics is the privacy-safe reporter (counts only, never SSIDs/MACs).
 
 /// Dependencies the Settings view needs that don't belong to the SettingsStore.
 /// All are injected by the AppDelegate so the view reaches into no singletons.
 @MainActor
 struct SettingsActions {
-    /// Remove a trusted SSID, then re-apply enforcement. Returns the new list. The view
-    /// reflects the trusted list from `SettingsStore.trustedNetworks` (refreshed on show,
-    /// code-review #2); this action mutates it and hands back the updated list.
-    var removeTrustedNetwork: (String) -> [String]
+    /// Remove one trusted entry (SSID + router, ND-081), then re-apply enforcement.
+    /// Returns the new list. The view reflects the trusted list from
+    /// `SettingsStore.trustedNetworks` (refreshed on show, code-review #2); this action
+    /// mutates it and hands back the updated list.
+    var removeTrustedNetwork: (TrustedNetwork) -> [TrustedNetwork]
     /// Copy the privacy-safe diagnostics summary to the pasteboard.
     var copyDiagnostics: () -> Void
     /// ND-082: whether this process is the launchd-managed agent copy. Turning "Start
@@ -199,19 +200,36 @@ struct SettingsView: View {
                 Text("No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (\u{201C}Trust this Wi-Fi network\u{201D}).")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                ForEach(store.trustedNetworks, id: \.self) { ssid in
+                ForEach(store.trustedNetworks) { network in
                     HStack {
                         Image(systemName: "wifi").foregroundStyle(.secondary)
-                        Text(ssid)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(network.ssid)
+                            Text(Self.routerLabel(for: network))
+                                .font(.caption)
+                                .foregroundStyle(network.needsReTrust ? .orange : .secondary)
+                        }
                         Spacer()
                         Button("Remove") {
-                            store.trustedNetworks = actions.removeTrustedNetwork(ssid)
+                            store.trustedNetworks = actions.removeTrustedNetwork(network)
                         }
                         .buttonStyle(.borderless)
                     }
                 }
+                Text("A network is trusted only on the router it was trusted on (Wi-Fi name + router address), so a hotspot using the same name isn\u{2019}t trusted.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Second line of a trusted-network row (ND-081). Shows only the router MAC's last
+    /// two octets: enough to tell several routers of one SSID apart.
+    static func routerLabel(for network: TrustedNetwork) -> String {
+        guard let mac = network.gatewayMAC else {
+            return "Needs re-confirming: join it and choose \u{201C}Trust this Wi-Fi network\u{201D} again (not trusted until then)"
+        }
+        let tail = mac.split(separator: ":").suffix(2).joined(separator: ":")
+        return "Router \u{2026}\(tail) (trusted only on this router)"
     }
 
     // MARK: - Diagnostics

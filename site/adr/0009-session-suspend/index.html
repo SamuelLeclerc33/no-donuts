@@ -773,6 +773,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-28-display-sleep-is-not-a-suspend-nd-090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-28): display sleep is not a suspend (ND-090)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1165,6 +1176,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-28-display-sleep-is-not-a-suspend-nd-090" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-28): display sleep is not a suspend (ND-090)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1254,6 +1276,8 @@ unlock/wake.</p>
   camera light, and risks acting on stale frames from the login window.
   Rejected.</li>
 </ul>
+<h2 id="amendment-2026-09-28-display-sleep-is-not-a-suspend-nd-090">Amendment (2026-09-28): display sleep is not a suspend (ND-090)<a class="headerlink" href="#amendment-2026-09-28-display-sleep-is-not-a-suspend-nd-090" title="Permanent link">&para;</a></h2>
+<p>Suspending on "main display asleep" left a window where the screen was dark but <strong>not locked</strong> (display sleep before lock, or a "require password after N minutes" delay). The loop and camera were stopped and absence was reset, so walking away never locked, and a stranger who woke the display got a fresh consensus plus grace. <strong>The loop is now suspended only when the screen is locked, the session is off-console, or the machine is going to sleep</strong> (NSWorkspace <code>willSleep</code>/<code>didWake</code>, with a 30 s awake-uptime guard against a missed wake). Display sleep alone keeps the loop running, since the built-in camera works with the display off. A single shared AppKit-free <code>CGSessionState</code> reader (Bool/NSNumber, missing = unknown) now serves both <code>SessionStateMonitor</code> and <code>ScreenLocker</code> (ND-064).</p>
 
 
 

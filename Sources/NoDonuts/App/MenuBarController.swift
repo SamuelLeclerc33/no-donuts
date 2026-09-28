@@ -25,8 +25,8 @@ public final class MenuBarController: NSObject {
     /// forwards intent. `onPause(nil)` = pause indefinitely; a value = pause for N s.
     private let onPause: @MainActor (TimeInterval?) -> Void
     private let onResume: @MainActor () -> Void
-    /// Injected trust-toggle action (ND-036): trust/untrust the *current* SSID.
-    /// The UI never owns the store or the SSID read — it forwards intent.
+    /// Injected trust-toggle action (ND-036/ND-081): trust/untrust the *current*
+    /// SSID + router. The UI never owns the store or the SSID/router read.
     private let onToggleTrustCurrentNetwork: @MainActor () -> Void
     /// Injected enrollment actions (ND-022). The UI never owns the store or the
     /// enrollment coordinator — it just forwards intent. `onEnroll` starts an
@@ -268,25 +268,52 @@ public final class MenuBarController: NSObject {
 
     /// Refresh the "Trust this Wi-Fi network" item after the enforcement gate
     /// re-evaluates. When the SSID is known, show it in the title and reflect
-    /// whether it's already trusted with a checkmark. When unknown (Location not
-    /// granted or no Wi-Fi), disable the item with an explanatory title so the
-    /// status stays honest — we never imply we can trust a network we can't name.
+    /// whether it's trusted with a checkmark. When unknown (Location not granted or
+    /// no Wi-Fi), disable the item with an explanatory title so the status stays
+    /// honest — we never imply we can trust a network we can't name.
+    ///
+    /// ND-081: trust is SSID + router (default gateway MAC). `status` comes from
+    /// `TrustedNetworksStore.status` fed only a FRESH verified MAC, so its `.trusted`
+    /// is the same answer the gate gets. The checkmark is ON only for `.trusted`; every
+    /// other case means enforcement is ON, and the suffix says why:
+    ///   - `.trusted`          → "— router verified" (checked; click = untrust)
+    ///   - router `.checking`  → disabled, "— checking router…" (read in flight)
+    ///   - router `.unreadable`→ disabled, "— router can't be verified"
+    ///   - `.needsReTrust`     → "— re-confirm" (pre-ND-081 SSID-only entry)
+    ///   - `.otherRouter`      → "— different router" (trusted elsewhere, not on this one)
     ///
     /// `locationNotDetermined`: Location has never been asked. Reading the SSID needs
     /// Location, and the ONLY path that requests it is clicking this item
     /// (`requestTrustCurrentNetwork` defers the trust until auth is granted) — so it
     /// must stay clickable then, or the user can never get to a trusted network
     /// (regression from ND-057 turning off autoenablesItems).
-    public func refreshTrustItem(ssid: String?, isTrusted: Bool, locationGranted: Bool,
-                                 locationNotDetermined: Bool = false) {
+    public func refreshTrustItem(ssid: String?, status: TrustedNetworkStatus, router: RouterCheck,
+                                 locationGranted: Bool, locationNotDetermined: Bool = false) {
         if let ssid, !ssid.isEmpty {
-            trustItem.isEnabled = true
-            trustItem.title = "Trust this Wi-Fi network (\"\(ssid)\")"
-            trustItem.state = isTrusted ? .on : .off
+            let base = "Trust this Wi-Fi network (\"\(ssid)\")"
+            trustItem.state = status == .trusted ? .on : .off
+            if status == .trusted {
+                trustItem.isEnabled = true
+                trustItem.title = "\(base) \u{2014} router verified"
+            } else if router == .checking {
+                trustItem.isEnabled = false
+                trustItem.title = "\(base) \u{2014} checking router\u{2026}"
+            } else if router == .unreadable {
+                // Can't capture the router, so a click couldn't trust anything.
+                trustItem.isEnabled = false
+                trustItem.title = "\(base) \u{2014} router can\u{2019}t be verified"
+            } else {
+                trustItem.isEnabled = true
+                switch status {
+                case .needsReTrust: trustItem.title = "\(base) \u{2014} re-confirm"
+                case .otherRouter:  trustItem.title = "\(base) \u{2014} different router"
+                case .notTrusted, .trusted: trustItem.title = base
+                }
+            }
         } else if locationNotDetermined {
             trustItem.isEnabled = true
             trustItem.state = .off
-            trustItem.title = "Trust this Wi-Fi network… (asks for Location)"
+            trustItem.title = "Trust this Wi-Fi network\u{2026} (asks for Location)"
         } else {
             trustItem.isEnabled = false
             trustItem.state = .off

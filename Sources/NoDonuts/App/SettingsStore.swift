@@ -72,10 +72,11 @@ final class SettingsStore: ObservableObject {
     /// this fires, so a plain refresh is enough for them.
     var onChange: (() -> Void)?
 
-    /// Reads the current trusted-SSID list. Injected by the AppDelegate (backed by the
-    /// shared `TrustedNetworksStore`) so this type stays free of the concrete store.
-    /// Used by `refresh()` to re-pull the list when the Settings window is (re-)shown.
-    var trustedNetworksProvider: (() -> [String])?
+    /// Reads the current trusted-network list ({SSID, router MAC} entries, ND-081).
+    /// Injected by the AppDelegate (backed by the shared `TrustedNetworksStore`) so this
+    /// type stays free of the concrete store. Used by `refresh()` to re-pull the list
+    /// when the Settings window is (re-)shown.
+    var trustedNetworksProvider: (() -> [TrustedNetwork])?
 
     /// Guards against `onChange`/writes firing while we seed the initial values.
     private var isLoading = false
@@ -131,8 +132,8 @@ final class SettingsStore: ObservableObject {
     /// Whether the app is registered to start at login (mirror of `LoginItem.isEnabled()`).
     @Published var startAtLogin: Bool = false
 
-    /// The current trusted Wi-Fi SSIDs (mirror of the shared TrustedNetworksStore).
-    @Published var trustedNetworks: [String] = []
+    /// The current trusted Wi-Fi entries (mirror of the shared TrustedNetworksStore).
+    @Published var trustedNetworks: [TrustedNetwork] = []
 
     // MARK: - Init
 

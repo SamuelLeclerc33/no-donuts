@@ -1,34 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Owner: gordon. App bundle Info.plist. Wire into the Xcode app target (ADR-0001). -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>No Donuts</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.nodonuts.app</string>
-    <!-- Name of the binary inside Contents/MacOS (see scripts/make-app.sh). -->
-    <key>CFBundleExecutable</key>
-    <string>NoDonuts</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.0.1</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <!-- Menu-bar only: no Dock icon. -->
-    <key>LSUIElement</key>
-    <true/>
-    <!-- Shown in the camera permission prompt. Keep honest + specific. -->
-    <key>NSCameraUsageDescription</key>
-    <string>No Donuts checks the camera on-device to confirm you're at your Mac and locks it when you step away. Images never leave your device.</string>
-    <!-- Location is used only to read the current Wi-Fi network name (SSID) so
-         "trusted" networks can skip locking. Stays on-device. -->
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>No Donuts checks your current Wi-Fi network name to skip locking on networks you've marked as trusted (like home). This never leaves your device.</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>15.0</string>
+	<key>CFBundleExecutable</key>
+	<string>NoDonuts</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.nodonuts.app</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>No Donuts</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>No Donuts checks the camera on-device to confirm you're at your Mac and locks it when you step away. Images never leave your device.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>No Donuts reads your Wi-Fi router’s hardware address to confirm a trusted network is really yours (not a look-alike hotspot). Nothing is sent over the network.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>No Donuts checks your current Wi-Fi network name to skip locking on networks you've marked as trusted (like home). This never leaves your device.</string>
 </dict>
 </plist>

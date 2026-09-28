@@ -1,13 +1,31 @@
-import Foundation
+import AppKit
 import CoreWLAN
 import CoreLocation
 import NoDonutsCore
+import os.log
 
-// Owner: krusty — Wi-Fi trust monitoring (ND-036).
-// Reads the current Wi-Fi SSID and asks the injected TrustedNetworksStore whether
-// it's trusted. On a trusted network the App layer pauses enforcement (the single
-// enforcement gate in main.swift). FAIL-SAFE: an unknown SSID (Location denied,
-// no Wi-Fi, hardware) → isTrusted(nil)==false → NOT trusted → enforcement stays ON.
+// Owner: krusty — Wi-Fi trust monitoring (ND-036, ND-081).
+// Reads the current Wi-Fi SSID AND the MAC of the Wi-Fi interface's default gateway
+// (GatewayResolver: route + ARP tables), and asks the injected TrustedNetworksStore
+// whether that {SSID, router} pair is trusted. On a trusted network the App layer
+// pauses enforcement (the single enforcement gate in main.swift). FAIL-SAFE: an
+// unknown SSID (Location denied, no Wi-Fi) or an unreadable router MAC → NOT trusted
+// → enforcement stays ON. A hotspot that copies a trusted SSID has a different router
+// MAC, so it isn't trusted (EC-20).
+//
+// Router reads (ND-081 review):
+//   - They run OFF the main actor (detached task). The gate and the menu read the last
+//     landed result and re-evaluate (onChange) when a new one lands. While a read is
+//     pending, the answer is "not trusted".
+//   - TRUST NEEDS A FRESH READ: a result counts toward "trusted" only if it was
+//     started after the last invalidation (`generation`) and is under
+//     `freshnessLimit` old. Invalidation happens on every 15 s poll, on wake
+//     (NSWorkspace.didWake), on every CoreWLAN SSID/BSSID/link event, and on the
+//     user's Trust click. The key {interface, SSID, BSSID} can be cloned by an evil
+//     twin, so a key match alone never reuses an old MAC.
+//   - Failed reads are negative-cached for `negativeCacheLifetime` per key (so a menu
+//     open can't spawn arp(8) over and over); Wi-Fi events and wake clear that cache.
+//   - Reads happen only for an SSID that has a trusted entry, or on a Trust click.
 //
 // Location: modern macOS returns nil from ssid() unless Location auth is granted.
 // We request it LAZILY — only when the user first invokes "Trust this Wi-Fi
@@ -16,25 +34,60 @@ import NoDonutsCore
 //
 // Lives in the App target (CoreWLAN/CoreLocation); NoDonutsCore stays framework-
 // light (ADR-0007). The store is the only Core dependency and it's injected.
+
+/// Router check for the current network (ND-081), for the gate, menu and diagnostics.
+public enum RouterCheck: Equatable {
+    /// A fresh read returned this MAC (canonical form).
+    case verified(String)
+    /// A read is in flight (or about to start) → not trusted until it lands.
+    case checking
+    /// The last read for this network failed (negative-cached) → not trusted.
+    case unreadable
+    /// Not read: this SSID has no trusted entry, so the router doesn't matter.
+    case notChecked
+}
+
 @MainActor
 public final class WiFiMonitor: NSObject {
     private let store: TrustedNetworksStore
     private let locationManager = CLLocationManager()
 
-    /// Fired when the SSID or Location auth changes (menu/enforcement refresh).
+    /// Fired when the SSID, the router check, or Location auth changes
+    /// (menu/enforcement refresh).
     public var onChange: (() -> Void)?
 
     /// Fallback poll: CWEventDelegate events can be flaky depending on entitlements,
-    /// so we also poll on a modest cadence to catch network changes we missed.
+    /// so we also poll on a modest cadence to catch network changes we missed. Each
+    /// poll also invalidates the router read (fresh read required for trust).
     /// Only runs while the trusted set is non-empty (poll is pointless otherwise;
     /// the ssidDidChange event still catches joins). Saves battery when unused.
     private var pollTimer: Timer?
     private let pollInterval: TimeInterval = 15
-    /// Last SSID we observed, used to suppress no-op onChange from the poll.
+    /// Fresh-read + negative-cache rules (Core, EngineCheck-covered): a verified read
+    /// counts for 25 s at most and only within its generation; failures are cached 30 s.
+    private var cache = RouterReadCache(freshnessLimit: 25, negativeLifetime: 30)
+
+    /// Last SSID we observed, used to fire onChange on a change.
     private var lastSSID: String?
+    /// Last answer handed to the gate, so a landing read that changes it re-fires onChange.
+    private var lastGateAnswer = false
+    /// Last router check the menu saw (labels), same purpose.
+    private var lastNotifiedCheck: RouterCheck = .notChecked
+
+    /// The read in flight, if any.
+    private var inFlight: (key: String, generation: Int)?
+    /// A Trust click (or deferred Location-granted trust) waiting for its fresh read.
+    private var pendingCapture: (ssid: String, key: String)?
+
+    /// Re-check shortly after a Wi-Fi event: DHCP/ARP usually aren't populated yet
+    /// the instant the SSID changes, so the first read often fails (fail-safe).
+    private var followUpWork: [DispatchWorkItem] = []
+    private var wakeObserver: NSObjectProtocol?
     /// Set when the user asked to trust the current network but the SSID was
     /// unreadable (Location not yet authorized). Consumed once auth is granted.
     private var pendingTrust = false
+
+    private static let log = OSLog(subsystem: "com.nodonuts.app", category: "wifi")
 
     public init(store: TrustedNetworksStore) {
         self.store = store
@@ -42,22 +95,35 @@ public final class WiFiMonitor: NSObject {
         locationManager.delegate = self
     }
 
-    /// Begin monitoring SSID changes. Prefers CoreWLAN's ssidDidChange event;
-    /// the 15s poll is a robustness fallback that only runs while at least one
-    /// network is trusted (both paths funnel through refreshIfChanged()).
+    /// Begin monitoring. Prefers CoreWLAN events; the 15s poll is a robustness
+    /// fallback that only runs while at least one network is trusted.
     public func start() {
         lastSSID = currentSSID()
         let client = CWWiFiClient.shared()
         client.delegate = self
         try? client.startMonitoringEvent(with: .ssidDidChange)
+        // ND-081: a router change can happen without an SSID change (roam, swap).
+        try? client.startMonitoringEvent(with: .bssidDidChange)
+        try? client.startMonitoringEvent(with: .linkDidChange)
+        // ND-081: sleep at home, wake on a clone: coalesced/missed Wi-Fi events must not
+        // leave a pre-sleep read standing.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleWiFiEvent() }
+        }
         updatePollTimer()
+        _ = routerCheck(for: lastSSID)   // kick the first read if relevant
     }
 
-    /// Stop all monitoring. Invalidates the poll timer and stops CoreWLAN event
-    /// monitoring. Symmetric counterpart to start(); safe to call more than once.
+    /// Stop all monitoring. Symmetric counterpart to start(); safe to call more than once.
     public func stop() {
         pollTimer?.invalidate()
         pollTimer = nil
+        followUpWork.forEach { $0.cancel() }
+        followUpWork.removeAll()
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        wakeObserver = nil
         try? CWWiFiClient.shared().stopMonitoringAllEvents()
     }
 
@@ -68,7 +134,7 @@ public final class WiFiMonitor: NSObject {
         if shouldPoll {
             guard pollTimer == nil else { return }
             let t = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.refreshIfChanged() }
+                Task { @MainActor in self?.poll() }
             }
             RunLoop.main.add(t, forMode: .common)
             pollTimer = t
@@ -83,10 +149,112 @@ public final class WiFiMonitor: NSObject {
         CWWiFiClient.shared().interface()?.ssid()
     }
 
-    /// Whether the current network is user-trusted. Fail-safe: unknown SSID →
-    /// isTrusted(nil)==false → NOT trusted → enforcement stays ON.
+    // MARK: - Router check (ND-081)
+
+    /// {interface, SSID, BSSID} + the interface name, or nil without a Wi-Fi interface.
+    private func currentKey() -> (key: String, interface: String)? {
+        guard let iface = CWWiFiClient.shared().interface(), let name = iface.interfaceName else { return nil }
+        return ("\(name)|\(iface.ssid() ?? "")|\(iface.bssid() ?? "")", name)
+    }
+
+    private func isRelevant(_ ssid: String?) -> Bool {
+        guard let ssid, !ssid.isEmpty else { return false }
+        return store.all().contains { $0.ssid == ssid }
+    }
+
+
+    /// Router check for `ssid` (normally `currentSSID()`). Never blocks: when a read is
+    /// needed it starts one in the background and answers `.checking`. Only SSIDs with a
+    /// trusted entry are read (a pending Trust click also shows `.checking`).
+    public func routerCheck(for ssid: String?) -> RouterCheck {
+        guard let (key, interface) = currentKey() else { return isRelevant(ssid) ? .unreadable : .notChecked }
+        switch cache.lookup(key: key, now: Date()) {
+        case .fresh(let mac): return .verified(mac)
+        case .recentlyFailed: return .unreadable
+        case .none: break
+        }
+        if pendingCapture?.key == key { return .checking }
+        guard isRelevant(ssid) else { return .notChecked }
+        startRead(key: key, interface: interface)
+        return .checking
+    }
+
+    /// Start a background read unless one is already running for this key + generation.
+    private func startRead(key: String, interface: String) {
+        if let f = inFlight, f.key == key, f.generation == cache.generation { return }
+        let gen = cache.generation
+        inFlight = (key, gen)
+        Task.detached(priority: .utility) { [weak self] in
+            let result = GatewayResolver.resolve(interfaceName: interface)
+            await self?.readLanded(key: key, generation: gen, result: result)
+        }
+    }
+
+    private func readLanded(key: String, generation gen: Int, result: GatewayReadResult) {
+        if let f = inFlight, f.key == key, f.generation == gen { inFlight = nil }
+        // Started before an invalidation (poll / wake / Wi-Fi event / Trust click) or
+        // for a network we've left: discard, and re-read for the current state.
+        guard currentKey()?.key == key,
+              cache.record(key: key, generation: gen, mac: result.mac, now: Date()) else {
+            if let pc = pendingCapture, let now = currentKey(), pc.key == now.key {
+                startRead(key: now.key, interface: now.interface)
+            } else {
+                pendingCapture = nil
+                _ = routerCheck(for: currentSSID())
+            }
+            notifyIfChanged()
+            return
+        }
+        if let pc = pendingCapture, pc.key == key {
+            pendingCapture = nil
+            if store.trust(ssid: pc.ssid, gatewayMAC: result.mac) {
+                updatePollTimer()
+            } else {
+                os_log("trust refused: router MAC unreadable", log: Self.log, type: .default)
+            }
+            onChange?()
+            recordNotified()
+            return
+        }
+        notifyIfChanged()
+    }
+
+    /// New generation: no earlier read can count toward trust any more.
+    /// `clearFailures` (Wi-Fi events, wake, Trust click) also drops the negative cache.
+    private func invalidate(clearFailures: Bool) {
+        cache.invalidate(clearFailures: clearFailures)
+    }
+
+    /// Fire onChange when the gate's answer or the menu's router label would change.
+    private func notifyIfChanged() {
+        let ssid = currentSSID()
+        let check = routerCheck(for: ssid)
+        let trusted = isTrusted(ssid: ssid, check: check)
+        guard ssid != lastSSID || trusted != lastGateAnswer || check != lastNotifiedCheck else { return }
+        lastSSID = ssid
+        onChange?()
+        recordNotified()
+    }
+
+    private func recordNotified() {
+        let ssid = currentSSID()
+        lastSSID = ssid
+        lastNotifiedCheck = routerCheck(for: ssid)
+    }
+
+    private func isTrusted(ssid: String?, check: RouterCheck) -> Bool {
+        guard case .verified(let mac) = check else { return false }
+        return store.isTrusted(ssid: ssid, gatewayMAC: mac)
+    }
+
+    /// Whether the current network is user-trusted: SSID AND a FRESH router MAC must
+    /// match one entry (ND-081). Fail-safe: unknown SSID, unreadable router, or a read
+    /// still pending → NOT trusted → enforcement stays ON.
     public var isOnTrustedNetwork: Bool {
-        store.isTrusted(currentSSID())
+        let ssid = currentSSID()
+        let answer = isTrusted(ssid: ssid, check: routerCheck(for: ssid))
+        lastGateAnswer = answer
+        return answer
     }
 
     /// Current Location authorization (drives the menu's "grant Location" hint).
@@ -116,12 +284,16 @@ public final class WiFiMonitor: NSObject {
     /// Toggle trust for the CURRENT Wi-Fi network, handling the first-run case
     /// where the SSID isn't yet readable because Location is not-determined.
     ///
-    /// - If the SSID is readable: toggle it (untrust if already trusted, else
-    ///   trust). Untrust always works synchronously (the SSID is known if it was
-    ///   trusted). This is the steady-state path.
+    /// - If the SSID is readable and this SSID + (fresh) router is trusted: untrust
+    ///   it now.
+    /// - If the SSID is readable otherwise: capture the router with a FRESH
+    ///   background read, and trust {SSID, MAC} when it lands. No readable MAC → no
+    ///   trust (the menu then shows "router can't be verified") and enforcement stays
+    ///   ON. Trusting a legacy SSID-only entry is the re-confirm: it binds the entry to
+    ///   this router.
     /// - If the SSID is unreadable AND Location is not-determined: record a
     ///   pending trust and prompt for Location. When auth is granted, the
-    ///   delegate reads the now-available SSID and completes the add. This fixes
+    ///   delegate reads the now-available SSID and captures the router. This fixes
     ///   the "first click is a no-op / must click twice" bug.
     /// - If unreadable for any other reason (Location denied, no Wi-Fi): nothing
     ///   to do; fail-safe keeps enforcement ON.
@@ -129,14 +301,16 @@ public final class WiFiMonitor: NSObject {
     /// Fires onChange for every effective change so the gate + menu stay honest.
     public func requestTrustCurrentNetwork(using store: TrustedNetworksStore) {
         if let ssid = currentSSID(), !ssid.isEmpty {
-            if store.isTrusted(ssid) {
-                store.remove(ssid)
-            } else {
-                store.add(ssid)
-            }
             pendingTrust = false
-            updatePollTimer()
-            onChange?()
+            if case .verified(let mac) = routerCheck(for: ssid),
+               store.isTrusted(ssid: ssid, gatewayMAC: mac) {
+                store.untrust(ssid: ssid, gatewayMAC: mac)
+                updatePollTimer()
+                onChange?()
+                recordNotified()
+                return
+            }
+            beginCapture(ssid: ssid)
             return
         }
         // SSID unreadable — if we've never asked for Location, ask now and defer
@@ -147,42 +321,88 @@ public final class WiFiMonitor: NSObject {
         }
     }
 
-    /// Re-read the SSID and fire onChange only if it actually changed (poll path).
-    private func refreshIfChanged() {
-        let now = currentSSID()
-        guard now != lastSSID else { return }
-        lastSSID = now
-        onChange?()
+    /// Trust click: fresh read (new generation, failures cleared), trust on landing.
+    private func beginCapture(ssid: String) {
+        guard let (key, interface) = currentKey() else {
+            os_log("trust refused: no Wi-Fi interface", log: Self.log, type: .default)
+            return
+        }
+        invalidate(clearFailures: true)
+        pendingCapture = (ssid, key)
+        startRead(key: key, interface: interface)
+        onChange?()          // menu shows "checking router…"
+        recordNotified()
+    }
+
+    /// 15 s poll: new generation (a fresh read is required for trust), then re-read if
+    /// relevant. Failures stay negative-cached so a failing router isn't re-spawned
+    /// more than every `negativeCacheLifetime`.
+    private func poll() {
+        invalidate(clearFailures: false)
+        _ = routerCheck(for: currentSSID())
+        notifyIfChanged()
+    }
+
+    /// A Wi-Fi event or wake: new generation, failures cleared, re-read now, and again
+    /// at +3 s and +10 s to catch the router once DHCP/ARP settle.
+    fileprivate func handleWiFiEvent() {
+        invalidate(clearFailures: true)
+        _ = routerCheck(for: currentSSID())
+        notifyIfChanged()
+        followUpWork.forEach { $0.cancel() }
+        followUpWork = [3.0, 10.0].map { delay in
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated { self?.followUp() }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return work
+        }
+    }
+
+    /// Follow-up after an event: retry only if we don't already have a good read.
+    private func followUp() {
+        if let key = currentKey()?.key, case .recentlyFailed = cache.lookup(key: key, now: Date()) {
+            cache.clearFailure(for: key)
+        }
+        _ = routerCheck(for: currentSSID())
+        notifyIfChanged()
     }
 }
 
-// CoreWLAN event callback: SSID changed (join/leave/roam). Delivered off the main
-// thread → hop to main and re-evaluate through the same change path as the poll.
+// CoreWLAN event callbacks: SSID / BSSID / link changed (join, leave, roam). Delivered
+// off the main thread → hop to main and re-evaluate (fresh router read).
 extension WiFiMonitor: CWEventDelegate {
     public nonisolated func ssidDidChangeForWiFiInterface(withName interfaceName: String) {
-        Task { @MainActor in self.refreshIfChanged() }
+        Task { @MainActor in self.handleWiFiEvent() }
+    }
+    public nonisolated func bssidDidChangeForWiFiInterface(withName interfaceName: String) {
+        Task { @MainActor in self.handleWiFiEvent() }
+    }
+    public nonisolated func linkDidChangeForWiFiInterface(withName interfaceName: String) {
+        Task { @MainActor in self.handleWiFiEvent() }
     }
 }
 
 // Location auth change: once granted, ssid() starts returning a value, so refresh
-// the SSID cache and notify (the menu/enforcement re-evaluate).
+// and notify (the menu/enforcement re-evaluate).
 extension WiFiMonitor: CLLocationManagerDelegate {
     public nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor in
-            self.lastSSID = self.currentSSID()
             // Complete a first-run trust that was deferred until the SSID became
-            // readable (the "must click twice" fix). Only trusts if we now have
-            // a real SSID; otherwise the pending intent is dropped (fail-safe).
+            // readable (the "must click twice" fix). Only trusts if we now have a
+            // real SSID AND the fresh router read succeeds (ND-081); otherwise the
+            // pending intent is dropped (fail-safe).
             if self.pendingTrust, let ssid = self.currentSSID(), !ssid.isEmpty {
-                self.store.add(ssid)
                 self.pendingTrust = false
-                self.updatePollTimer()
+                self.beginCapture(ssid: ssid)
             } else if self.isLocationGranted {
                 // Auth resolved without a readable SSID (e.g. Wi-Fi off) — drop
                 // the pending intent so a later join doesn't silently auto-trust.
                 self.pendingTrust = false
             }
+            self.lastSSID = self.currentSSID()
             self.onChange?()
+            self.recordNotified()
         }
     }
 }

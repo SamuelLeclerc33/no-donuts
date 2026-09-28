@@ -73,3 +73,7 @@ unlock/wake.
 - **Keep running but skip locking while suspended.** Still burns power and the
   camera light, and risks acting on stale frames from the login window.
   Rejected.
+
+## Amendment (2026-09-28): display sleep is not a suspend (ND-090)
+
+Suspending on "main display asleep" left a window where the screen was dark but **not locked** (display sleep before lock, or a "require password after N minutes" delay). The loop and camera were stopped and absence was reset, so walking away never locked, and a stranger who woke the display got a fresh consensus plus grace. **The loop is now suspended only when the screen is locked, the session is off-console, or the machine is going to sleep** (NSWorkspace `willSleep`/`didWake`, with a 30 s awake-uptime guard against a missed wake). Display sleep alone keeps the loop running, since the built-in camera works with the display off. A single shared AppKit-free `CGSessionState` reader (Bool/NSNumber, missing = unknown) now serves both `SessionStateMonitor` and `ScreenLocker` (ND-064).

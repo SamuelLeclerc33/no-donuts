@@ -11,7 +11,8 @@ import NoDonutsCore
 // sent anywhere.
 //
 // PRIVACY (hard requirement): the output NEVER contains face embeddings, image
-// data, or Wi-Fi SSID strings. Trusted networks appear as a COUNT only.
+// data, Wi-Fi SSID strings, or router MAC addresses. Trusted networks appear as
+// COUNTS only (ND-081), plus a yes/no for whether the current router is readable.
 // Permissions appear as coarse status labels only. The log tail is filtered to
 // our own subsystem and is limited to recent, current-process entries.
 
@@ -33,7 +34,13 @@ struct DiagnosticsReporter {
     ///     reported — never the embeddings.
     ///   - identity: identity-recognition status (ND-073) — model version strings only.
     ///   - locationStatus: the current `CLAuthorizationStatus` (status label only).
-    ///   - trustedNetworkCount: number of trusted Wi-Fi SSIDs — a COUNT, never names.
+    ///   - trustedNetworkCount: number of trusted Wi-Fi entries — a COUNT, never names.
+    ///   - trustedNetworksNeedingReTrust: legacy SSID-only entries awaiting re-confirm
+    ///     (ND-081) — a COUNT.
+    ///   - currentRouterReadable: whether the current Wi-Fi router's MAC could be read
+    ///     (nil = not checked: no trusted entry for this SSID, Wi-Fi unknown, or a read
+    ///     pending). Yes/no only, never the MAC. Failure reasons are in the log tail
+    ///     ("gateway read failed: …", labels only).
     ///   - notificationStatusDescription: optional pre-fetched notification
     ///     authorization label (that API is async; the caller fetches it and
     ///     passes it in). `nil` → omitted.
@@ -49,6 +56,8 @@ struct DiagnosticsReporter {
         identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
+        trustedNetworksNeedingReTrust: Int = 0,
+        currentRouterReadable: Bool? = nil,
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
         cameraUnavailableReason: String? = nil,
@@ -134,9 +143,17 @@ struct DiagnosticsReporter {
         lines.append("  protection reduced: \(reduced.isEmpty ? "no" : reduced.joined(separator: "; "))")
         lines.append("")
 
-        // --- Trusted networks: COUNT only, never SSID strings ---
+        // --- Trusted networks: COUNTS only, never SSID strings or router MACs ---
         lines.append("[Trusted networks]")
         lines.append("  Count: \(trustedNetworkCount)")
+        lines.append("  Needing re-confirm (pre-router-check entries, not trusted): \(trustedNetworksNeedingReTrust)")
+        let routerLabel: String
+        switch currentRouterReadable {
+        case true?: routerLabel = "yes"
+        case false?: routerLabel = "no (current network can't be trusted)"
+        case nil: routerLabel = "not checked (network not trusted, Wi-Fi unknown, or check pending)"
+        }
+        lines.append("  Current router readable: \(routerLabel)")
         lines.append("")
 
         // --- Recent app log tail (our subsystem only) ---
@@ -172,6 +189,8 @@ struct DiagnosticsReporter {
         identity: IdentityStatus,
         locationStatus: CLAuthorizationStatus,
         trustedNetworkCount: Int,
+        trustedNetworksNeedingReTrust: Int = 0,
+        currentRouterReadable: Bool? = nil,
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
         cameraUnavailableReason: String? = nil,
@@ -185,6 +204,8 @@ struct DiagnosticsReporter {
             identity: identity,
             locationStatus: locationStatus,
             trustedNetworkCount: trustedNetworkCount,
+            trustedNetworksNeedingReTrust: trustedNetworksNeedingReTrust,
+            currentRouterReadable: currentRouterReadable,
             notificationStatusDescription: notificationStatusDescription,
             lockCapability: lockCapability,
             cameraUnavailableReason: cameraUnavailableReason,
