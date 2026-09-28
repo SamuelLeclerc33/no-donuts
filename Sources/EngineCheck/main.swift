@@ -3235,6 +3235,31 @@ func runAll() async -> Bool {
                  "ND-082: not-running fires <= 10 min after death; after a menu Quit, +30 min")
     }
 
+    print("\nND-112 / ND-113 — didn't-start reminder + notifications-off warning")
+    do {
+        typealias D = DidNotStartPolicy
+        c.expect(D.shouldSchedule(loginItemEnabled: false),
+                 "ND-112: Start at login off → schedule nd.didNotStart at power-off")
+        c.expect(!D.shouldSchedule(loginItemEnabled: true),
+                 "ND-112: Start at login on → no reminder (avoids an overdue false alarm at login)")
+        c.expect(D.fireDelay == 5 * 60, "ND-112: reminder fires ~5 min after logout")
+        c.expect(D.fireDelay > DeadManPolicy.heartbeatInterval * 3,
+                 "ND-112: a live heartbeat pushes it back with >= 3 beats of slack")
+        c.expect(D.heartbeatAction(secondsSincePowerOff: 0) == .pushBack
+                 && D.heartbeatAction(secondsSincePowerOff: 60) == .pushBack,
+                 "ND-112: alive shortly after power-off (logout in progress) → push back")
+        c.expect(D.heartbeatAction(secondsSincePowerOff: D.cancelledLogoutWindow) == .remove
+                 && D.heartbeatAction(secondsSincePowerOff: 3600) == .remove,
+                 "ND-112: still alive past the window → logout was cancelled → remove")
+        c.expect(D.heartbeatAction(secondsSincePowerOff: -30) == .pushBack,
+                 "ND-112: a clock step backwards counts as 'just powered off'")
+        c.expect(NotificationAuthorization.denied.showsNotificationsOffWarning,
+                 "ND-113: denied → persistent 'Notifications off' menu warning")
+        let quiet: [NotificationAuthorization] = [.notDetermined, .authorized, .provisional, .ephemeral]
+        c.expect(quiet.allSatisfy { !$0.showsNotificationsOffWarning },
+                 "ND-113: not determined (onboarding asks) / authorized / provisional / ephemeral → no warning")
+    }
+
     print("\nND-082 — launcher handover (ADR-0018)")
     do {
         typealias H = LauncherHandoverPolicy

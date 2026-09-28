@@ -1519,16 +1519,16 @@
 <tr>
 <td><strong>Launcher removal</strong></td>
 <td>Removes the login item / <code>launchctl bootout</code>, then kills the app</td>
-<td>Dead-man notification still fires after the kill (ADR-0018)</td>
+<td>Dead-man notification still fires after the kill (ADR-0018); ND-112: a +5 min "didn't start after login" alert is scheduled at logout/shutdown when Start at login is off, and cleared by the next launch (an agent booted out while still enabled remains a gap)</td>
 <td>No relaunch. Logout cancels the dead-man, so after logout or a reboot the app is silently absent until the user notices the missing menu icon</td>
-<td>Residual</td>
+<td>Partial (ND-112, delivery across logout unverified)</td>
 </tr>
 <tr>
 <td><strong>Notification permission denied</strong></td>
 <td>User or attacker turns off notifications for No Donuts</td>
-<td>Menu glyph and header still show state; diagnostics report the missing permission (ADR-0018)</td>
+<td>Menu glyph and header still show state; diagnostics report the missing permission (ADR-0018); ND-113: persistent menu warning + "Open Notification Settings…"</td>
 <td>Dead-man, lock-failed and not-protecting alerts can't fire. After a kill, nothing tells the user</td>
-<td>Residual</td>
+<td>Partial (ND-113)</td>
 </tr>
 <tr>
 <td><strong>Local admin / root</strong></td>

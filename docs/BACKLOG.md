@@ -53,8 +53,8 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 31. ND-066 — on-device multi-client validation + configured-device busy probe — blart
 
 **Tier 2b — residuals from the threat model (ND-109):**
-- ND-112 — silent loss after the launcher is removed + logout — gordon + krusty
-- ND-113 — notification permission denied disables every alarm — krusty
+- ✅ ND-112 — silent loss after the launcher is removed + logout — gordon + krusty
+- ✅ ND-113 — notification permission denied disables every alarm — krusty
 
 **Tier 3 — pre-distribution gates (must precede M5; target = internal company distribution, ND-111):**
 32. ND-111 — internal-distribution ADR: channel, signing identity, IT/privacy sign-off — gordon + wiggum
@@ -80,7 +80,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 50. ND-069 — `throttleOnBattery` implement-or-delete — homer + blart
 
 **Tier 5 — hygiene & tooling (batchable, anytime):**
-ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetectionRecognizer` · ND-110 EngineCheck coverage gaps · ND-097 `-fobjc-arc-exceptions` · ND-106 docs deps lock · ND-107 update-mechanism ADR · ND-108 local crash summary · ND-047 XCTest target · small follow-ups listed under M3/M6.
+ND-114 split EngineCheck (9-min builds) · ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetectionRecognizer` · ND-110 EngineCheck coverage gaps · ND-097 `-fobjc-arc-exceptions` · ND-106 docs deps lock · ND-107 update-mechanism ADR · ND-108 local crash summary · ND-047 XCTest target · small follow-ups listed under M3/M6.
 
 ---
 
@@ -266,8 +266,9 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead `FaceDetect
 - [ ] ND-108 Local crash summary — no crash capture; add a local-only MetricKit summary to diagnostics (ND-044), never uploaded. — gordon
 - [x] ND-109 Threat-model table — record the tamper paths from this audit (ND-073/075/077/080/081/082) in `docs/SECURITY_PRIVACY.md`. **DONE 2026-09-28:** SECURITY_PRIVACY threat model with 19 security and 4 privacy rows, plus assumptions and out-of-scope; it surfaced ND-112/ND-113 — wiggum
 - [ ] ND-110 EngineCheck coverage gaps — `decodeEnrollment` (legacy/empty/corrupt), `l2Normalized`, `firstMultiArrayOutput`, `updateConfig` mid-episode, manual-lock-in-flight → auto path (ND-079), cancelled tick (ND-091), time-to-lock bound for EC-10 (ND-060). — homer + cooper
-- [ ] ND-112 Silent loss after the launcher is removed + logout — if Start at login is turned off (or the agent is booted out) and the user logs out or reboots, logout cancels the dead-man alert and nothing starts the app after login. Protection is silently gone until someone notices the missing menu icon (ND-109 threat model, Residual). Options: a login-time helper, or a scheduled dead-man that survives logout (a notification scheduled for after the next login). — gordon + krusty
-- [ ] ND-113 Notification permission denied disables every alarm — the dead-man, lock-failed, not-protecting and identity-off notifications can't fire, and after a kill nothing tells the user (ND-109, Residual). Options: a persistent menu warning while notifications are denied, onboarding emphasis, and a diagnostics flag (already there). — krusty
+- [ ] ND-114 Split `Sources/EngineCheck/main.swift` (~3.3k lines) into per-domain files: a full rebuild now takes ~9 min because of type-checking one huge file. Keep the framework-free harness (ADR-0007). — gordon
+- [x] ND-112 Silent loss after the launcher is removed + logout — if Start at login is turned off (or the agent is booted out) and the user logs out or reboots, logout cancels the dead-man alert and nothing starts the app after login. Protection is silently gone until someone notices the missing menu icon (ND-109 threat model, Residual). Options: a login-time helper, or a scheduled dead-man that survives logout (a notification scheduled for after the next login). **DONE 2026-09-28 (needs on-device verification):** at logout/shutdown, when Start at login is OFF, the app schedules `nd.didNotStart` for +5 min ("No Donuts didn't start after you logged in…"); every launch removes it. Scheduling it unconditionally was reverted in review: an overdue alert could reach the user at login before the agent started the app. Accepted gap: an agent booted out while still reporting enabled; a cancelled logout pushes it back or removes it. Unconfirmed: whether macOS delivers a time-triggered notification that fell due while logged out or powered off — gordon + krusty
+- [x] ND-113 Notification permission denied disables every alarm — the dead-man, lock-failed, not-protecting and identity-off notifications can't fire, and after a kill nothing tells the user (ND-109, Residual). Options: a persistent menu warning while notifications are denied, onboarding emphasis, and a diagnostics flag (already there). **DONE 2026-09-28:** while notification permission is denied, the menu shows "⚠️ Notifications off — No Donuts can't alert you…" plus "Open Notification Settings…"; refreshed at launch, on menu open and on activation — krusty
 
 ## Tooling & tests
 

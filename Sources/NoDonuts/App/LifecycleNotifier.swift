@@ -23,6 +23,12 @@ import NoDonutsCore
 // it once (not a user "stop protecting" action; the login item relaunches us) but keep
 // the heartbeat, so a CANCELLED logout re-arms within a minute.
 //
+//   - `nd.didNotStart` (ND-112): on logout / shutdown, if "Start at login" is NOT
+//     enabled, nothing will bring us back after the next login — schedule a one-shot
+//     "didn't start after you logged in" `DidNotStartPolicy.fireDelay` ahead. Every
+//     launch removes it (pending + delivered). A cancelled logout keeps us alive: the
+//     heartbeat pushes it back, then removes it after `cancelledLogoutWindow`.
+//
 // If notifications aren't authorized, `add` just fails — nothing else can surface a
 // dead process, so this is reported in diagnostics (see `authorizationDescription`).
 // Local notifications only: static copy, no PII, nothing leaves the device.
@@ -30,6 +36,7 @@ import NoDonutsCore
 final class LifecycleNotifier {
     nonisolated static let notRunningID = "nd.notRunning"
     nonisolated static let pausedReminderID = "nd.pausedReminder"
+    nonisolated static let didNotStartID = "nd.didNotStart"
 
     private var heartbeatTimer: Timer?
     private var pausedReminderTimer: Timer?
@@ -37,13 +44,18 @@ final class LifecycleNotifier {
     /// reminder. (Power-off does NOT clear it: a cancelled logout must re-arm.)
     private var heartbeatEnabled = false
     private var observers: [NSObjectProtocol] = []
+    /// ND-112: when `nd.didNotStart` was scheduled at power-off; nil when none is
+    /// pending. Drives the cancelled-logout push-back / removal on each heartbeat.
+    private var didNotStartScheduledAt: Date?
 
     /// Launch: clear any stale delivered alerts from a previous run, arm the dead-man,
     /// and start the heartbeat. Call once from applicationDidFinishLaunching.
     func start() {
         let center = UNUserNotificationCenter.current()
-        center.removeDeliveredNotifications(withIdentifiers: [Self.notRunningID, Self.pausedReminderID])
-        center.removePendingNotificationRequests(withIdentifiers: [Self.pausedReminderID])
+        center.removeDeliveredNotifications(withIdentifiers: [Self.notRunningID, Self.pausedReminderID, Self.didNotStartID])
+        // ND-112: we DID start — drop any "didn't start after you logged in" from the
+        // previous session's logout, whether still pending or already shown.
+        center.removePendingNotificationRequests(withIdentifiers: [Self.pausedReminderID, Self.didNotStartID])
 
         heartbeatEnabled = true
         scheduleDeadMan()
@@ -71,6 +83,7 @@ final class LifecycleNotifier {
         heartbeatEnabled = false
         stopHeartbeat()
         updatePause(indefinitelyPaused: false)
+        clearDidNotStart()   // the "was quit" reminder below covers this case
 
         var done = false
         let finish: @MainActor () -> Void = {
@@ -112,7 +125,10 @@ final class LifecycleNotifier {
     private func startHeartbeat() {
         stopHeartbeat()
         let timer = Timer(timeInterval: DeadManPolicy.heartbeatInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scheduleDeadMan() }
+            MainActor.assumeIsolated {
+                self?.scheduleDeadMan()
+                self?.heartbeatDidNotStart()
+            }
         }
         timer.tolerance = 10
         RunLoop.main.add(timer, forMode: .common)
@@ -127,6 +143,9 @@ final class LifecycleNotifier {
     private func systemWillSleep() {
         stopHeartbeat()
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.notRunningID])
+        // ND-112: sleeping means the power-off didn't happen (cancelled logout); with
+        // the heartbeat stopped a pending "didn't start" would fire during sleep.
+        clearDidNotStart()
     }
 
     private func systemDidWake() {
@@ -140,8 +159,56 @@ final class LifecycleNotifier {
     /// logout is cancelled (an app refused to quit, or the user cancelled), the next
     /// beat (<= 60 s) re-arms it. If the logout completes, the process dies before
     /// that — or at worst re-arms a notification the next launch replaces.
+    ///
+    /// ND-112: if no launcher will start us after the next login ("Start at login"
+    /// not `.enabled`), schedule `nd.didNotStart` instead of going silent.
     private func systemWillPowerOff() {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.notRunningID])
+        guard DidNotStartPolicy.shouldSchedule(loginItemEnabled: LoginItem.isEnabled()) else {
+            clearDidNotStart()
+            return
+        }
+        didNotStartScheduledAt = Date()
+        // The process may be torn down right after this callback; wait briefly (on
+        // main, bounded) for the add to reach the notification daemon. The completion
+        // handler runs on a background queue, so this can't deadlock — and the timeout
+        // caps the delay if it doesn't.
+        let registered = DispatchSemaphore(value: 0)
+        scheduleDidNotStart { registered.signal() }
+        _ = registered.wait(timeout: .now() + 1.0)
+    }
+
+    // MARK: - Didn't start after login (ND-112)
+
+    private func scheduleDidNotStart(completion: (@Sendable () -> Void)? = nil) {
+        let content = UNMutableNotificationContent()
+        content.title = "No Donuts didn\u{2019}t start"
+        content.body = "No Donuts didn\u{2019}t start after you logged in \u{2014} your Mac isn\u{2019}t protected. Open No Donuts, or turn on Start at login in Settings."
+        content.sound = .default
+        // Same id → replaces any pending one (pushes the fire date back).
+        let request = UNNotificationRequest(
+            identifier: Self.didNotStartID,
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: DidNotStartPolicy.fireDelay, repeats: false)
+        )
+        UNUserNotificationCenter.current().add(request) { _ in completion?() }
+    }
+
+    /// Heartbeat while a power-off-scheduled `nd.didNotStart` is pending: we're still
+    /// alive, so either the logout is still in progress (push it back so it can't fire
+    /// over a live app) or it was cancelled (remove it).
+    private func heartbeatDidNotStart() {
+        guard let scheduledAt = didNotStartScheduledAt else { return }
+        switch DidNotStartPolicy.heartbeatAction(secondsSincePowerOff: Date().timeIntervalSince(scheduledAt)) {
+        case .pushBack: scheduleDidNotStart()
+        case .remove: clearDidNotStart()
+        }
+    }
+
+    private func clearDidNotStart() {
+        guard didNotStartScheduledAt != nil else { return }
+        didNotStartScheduledAt = nil
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.didNotStartID])
     }
 
     /// Undo `prepareForUserQuit` when the quit didn't happen (e.g. turning off
@@ -174,7 +241,7 @@ final class LifecycleNotifier {
         _ = group.wait(timeout: .now() + timeout)
         let (pendingIDs, deliveredIDs) = found.snapshot()
         // Also name the known ids explicitly, in case a query timed out.
-        let known = [notRunningID, pausedReminderID]
+        let known = [notRunningID, pausedReminderID, didNotStartID]
         center.removePendingNotificationRequests(withIdentifiers: Array(Set(pendingIDs + known)))
         center.removeDeliveredNotifications(withIdentifiers: Array(Set(deliveredIDs + known)))
         // The removes are fire-and-forget; a follow-up query on the same center gives
@@ -217,6 +284,21 @@ final class LifecycleNotifier {
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         )
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    // MARK: - Notification permission (ND-113)
+
+    /// Current notification authorization, mapped to Core's enum (menu warning).
+    static func authorization() async -> NotificationAuthorization {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized: return .authorized
+        case .provisional: return .provisional
+        case .ephemeral: return .ephemeral
+        case .denied: return .denied
+        case .notDetermined: return .notDetermined
+        @unknown default: return .notDetermined
+        }
     }
 
     // MARK: - Diagnostics

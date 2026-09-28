@@ -1406,8 +1406,8 @@
 30. ✅ ND-093 — <code>enroll()</code> input validation + Keychain doc/attr fixes — cooper
 31. ND-066 — on-device multi-client validation + configured-device busy probe — blart</p>
 <p><strong>Tier 2b — residuals from the threat model (ND-109):</strong>
-- ND-112 — silent loss after the launcher is removed + logout — gordon + krusty
-- ND-113 — notification permission denied disables every alarm — krusty</p>
+- ✅ ND-112 — silent loss after the launcher is removed + logout — gordon + krusty
+- ✅ ND-113 — notification permission denied disables every alarm — krusty</p>
 <p><strong>Tier 3 — pre-distribution gates (must precede M5; target = internal company distribution, ND-111):</strong>
 32. ND-111 — internal-distribution ADR: channel, signing identity, IT/privacy sign-off — gordon + wiggum
 33. ✅ ND-089 — model license: VGGFace2 weights are non-commercial; internal company use still likely counts as commercial → verify terms or swap model (ADR) — cooper
@@ -1430,7 +1430,7 @@
 49. ND-101 — localization (string catalog, pluralization) — krusty
 50. ND-069 — <code>throttleOnBattery</code> implement-or-delete — homer + blart</p>
 <p><strong>Tier 5 — hygiene &amp; tooling (batchable, anytime):</strong>
-ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceDetectionRecognizer</code> · ND-110 EngineCheck coverage gaps · ND-097 <code>-fobjc-arc-exceptions</code> · ND-106 docs deps lock · ND-107 update-mechanism ADR · ND-108 local crash summary · ND-047 XCTest target · small follow-ups listed under M3/M6.</p>
+ND-114 split EngineCheck (9-min builds) · ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceDetectionRecognizer</code> · ND-110 EngineCheck coverage gaps · ND-097 <code>-fobjc-arc-exceptions</code> · ND-106 docs deps lock · ND-107 update-mechanism ADR · ND-108 local crash summary · ND-047 XCTest target · small follow-ups listed under M3/M6.</p>
 <hr />
 <h2 id="m0-scaffolding-current">M0 — Scaffolding ✅ (current)<a class="headerlink" href="#m0-scaffolding-current" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1613,8 +1613,9 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <li>[ ] ND-108 Local crash summary — no crash capture; add a local-only MetricKit summary to diagnostics (ND-044), never uploaded. — gordon</li>
 <li>[x] ND-109 Threat-model table — record the tamper paths from this audit (ND-073/075/077/080/081/082) in <code>docs/SECURITY_PRIVACY.md</code>. <strong>DONE 2026-09-28:</strong> SECURITY_PRIVACY threat model with 19 security and 4 privacy rows, plus assumptions and out-of-scope; it surfaced ND-112/ND-113 — wiggum</li>
 <li>[ ] ND-110 EngineCheck coverage gaps — <code>decodeEnrollment</code> (legacy/empty/corrupt), <code>l2Normalized</code>, <code>firstMultiArrayOutput</code>, <code>updateConfig</code> mid-episode, manual-lock-in-flight → auto path (ND-079), cancelled tick (ND-091), time-to-lock bound for EC-10 (ND-060). — homer + cooper</li>
-<li>[ ] ND-112 Silent loss after the launcher is removed + logout — if Start at login is turned off (or the agent is booted out) and the user logs out or reboots, logout cancels the dead-man alert and nothing starts the app after login. Protection is silently gone until someone notices the missing menu icon (ND-109 threat model, Residual). Options: a login-time helper, or a scheduled dead-man that survives logout (a notification scheduled for after the next login). — gordon + krusty</li>
-<li>[ ] ND-113 Notification permission denied disables every alarm — the dead-man, lock-failed, not-protecting and identity-off notifications can't fire, and after a kill nothing tells the user (ND-109, Residual). Options: a persistent menu warning while notifications are denied, onboarding emphasis, and a diagnostics flag (already there). — krusty</li>
+<li>[ ] ND-114 Split <code>Sources/EngineCheck/main.swift</code> (~3.3k lines) into per-domain files: a full rebuild now takes ~9 min because of type-checking one huge file. Keep the framework-free harness (ADR-0007). — gordon</li>
+<li>[x] ND-112 Silent loss after the launcher is removed + logout — if Start at login is turned off (or the agent is booted out) and the user logs out or reboots, logout cancels the dead-man alert and nothing starts the app after login. Protection is silently gone until someone notices the missing menu icon (ND-109 threat model, Residual). Options: a login-time helper, or a scheduled dead-man that survives logout (a notification scheduled for after the next login). <strong>DONE 2026-09-28 (needs on-device verification):</strong> at logout/shutdown, when Start at login is OFF, the app schedules <code>nd.didNotStart</code> for +5 min ("No Donuts didn't start after you logged in…"); every launch removes it. Scheduling it unconditionally was reverted in review: an overdue alert could reach the user at login before the agent started the app. Accepted gap: an agent booted out while still reporting enabled; a cancelled logout pushes it back or removes it. Unconfirmed: whether macOS delivers a time-triggered notification that fell due while logged out or powered off — gordon + krusty</li>
+<li>[x] ND-113 Notification permission denied disables every alarm — the dead-man, lock-failed, not-protecting and identity-off notifications can't fire, and after a kill nothing tells the user (ND-109, Residual). Options: a persistent menu warning while notifications are denied, onboarding emphasis, and a diagnostics flag (already there). <strong>DONE 2026-09-28:</strong> while notification permission is denied, the menu shows "⚠️ Notifications off — No Donuts can't alert you…" plus "Open Notification Settings…"; refreshed at launch, on menu open and on activation — krusty</li>
 </ul>
 <h2 id="tooling-tests">Tooling &amp; tests<a class="headerlink" href="#tooling-tests" title="Permanent link">&para;</a></h2>
 <ul>

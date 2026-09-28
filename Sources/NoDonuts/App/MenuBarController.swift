@@ -13,6 +13,15 @@ public final class MenuBarController: NSObject {
     /// ND-077: disabled line under the header, shown only when a security tunable is
     /// weaker than its default ("⚠️ Protection reduced: …"). Hidden when protection is full.
     private let protectionReducedItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    /// ND-113: disabled warning + clickable fix, shown only while notification
+    /// authorization is DENIED — every alarm (dead-man, lock-failed, not-protecting,
+    /// identity-off, didn't-start) is silently dropped then, so the menu must say so.
+    private let notificationsOffItem = NSMenuItem(
+        title: "⚠️ Notifications off \u{2014} No Donuts can\u{2019}t alert you if it stops protecting",
+        action: nil, keyEquivalent: "")
+    private let openNotificationSettingsItem = NSMenuItem(
+        title: "Open Notification Settings\u{2026}",
+        action: #selector(openNotificationSettingsClicked), keyEquivalent: "")
     /// ND-057: called from `menuWillOpen` so the AppDelegate can push fresh dynamic state
     /// (pause remaining time, trust item, protection audit) right before the menu shows.
     public var onMenuWillOpen: (@MainActor () -> Void)?
@@ -112,6 +121,13 @@ public final class MenuBarController: NSObject {
         protectionReducedItem.isEnabled = false
         protectionReducedItem.isHidden = true
         menu.addItem(protectionReducedItem)
+        notificationsOffItem.isEnabled = false
+        notificationsOffItem.isHidden = true
+        menu.addItem(notificationsOffItem)
+        openNotificationSettingsItem.target = self
+        openNotificationSettingsItem.isEnabled = true
+        openNotificationSettingsItem.isHidden = true
+        menu.addItem(openNotificationSettingsItem)
         menu.addItem(.separator())
 
         // Pause (ND-035). All four items live in the menu; visibility is toggled in
@@ -172,6 +188,28 @@ public final class MenuBarController: NSObject {
     @objc private func enrollClicked() { onEnroll() }
     @objc private func resetEnrollmentClicked() { onResetEnrollment() }
     @objc private func settingsClicked() { onOpenSettings() }
+
+    /// ND-113: System Settings › Notifications, on our app's row where supported.
+    /// macOS 13+ uses the `Notifications-Settings.extension` pane (`?id=` selects the
+    /// app); the legacy `preference.notifications` pane is the last fallback.
+    @objc private func openNotificationSettingsClicked() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(AppIdentity.bundleID)",
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.notifications",
+        ]
+        for string in candidates {
+            if let url = URL(string: string), NSWorkspace.shared.open(url) { return }
+        }
+    }
+
+    /// ND-113: show/hide the "Notifications off" warning + "Open Notification
+    /// Settings…" item. Only `.denied` shows it (`.notDetermined` → onboarding asks).
+    public func setNotificationAuthorization(_ authorization: NotificationAuthorization) {
+        let show = authorization.showsNotificationsOffWarning
+        notificationsOffItem.isHidden = !show
+        openNotificationSettingsItem.isHidden = !show
+    }
 
     /// ND-077: show/hide the "Protection reduced" line. `reasons` comes from Core's
     /// `reducedProtectionReasons(descriptor:defaults:)`; empty → hidden.

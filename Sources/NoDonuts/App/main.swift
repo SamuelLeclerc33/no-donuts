@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ND-082 dead-man "isn't running" heartbeat + ND-080 indefinite-pause reminder.
     /// Independent of the enforcement loop (it's about the PROCESS being alive).
     private let lifecycleNotifier = LifecycleNotifier()
+    /// ND-113: app-activation observer that refreshes the "Notifications off" warning.
+    private var didBecomeActiveObserver: NSObjectProtocol?
     /// ND-082: set once the user confirmed Quit, so a double click can't re-enter.
     private var isQuitting = false
     // All held in stored properties so they aren't deallocated while observing.
@@ -168,7 +170,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ND-082: menu Quit asks first (non-blocking window, loop keeps running).
         menuBar.onQuitRequested = { [weak self] in self?.confirmQuit() }
         // ND-082: arm the dead-man notification + heartbeat as early as possible.
+        // ND-112: also clears any "didn't start after you logged in" from the last logout.
         lifecycleNotifier.start()
+        // ND-113: warn in the menu while notifications are denied. Refreshed now, on
+        // every menu open (refreshMenuItems) and whenever the app is activated (e.g.
+        // back from System Settings via one of our windows).
+        refreshNotificationWarning()
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshNotificationWarning() }
+        }
+        // Review fix: an .accessory app rarely becomes active and the menu-open refresh is
+        // async (the menu can show before it lands), so also poll every 60s — the menu
+        // then shows a state at most a minute old. Cheap (one async settings read).
+        let notificationPoll = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshNotificationWarning() }
+        }
+        RunLoop.main.add(notificationPoll, forMode: .common)
 
         // Wiring: real camera (ND-012) + identity recognizer (M2/ND-021, ADR-0012).
         // The IdentityRecognizer falls back to presence-only while the store is empty,
@@ -461,6 +479,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                  locationGranted: wifiMonitor.isLocationGranted,
                                  locationNotDetermined: wifiMonitor.authorizationStatus() == .notDetermined)
         refreshProtectionAudit()
+        refreshNotificationWarning()
+    }
+
+    /// ND-113: read notification authorization (async) and show/hide the menu's
+    /// "Notifications off" warning. Cheap; safe to call often.
+    private func refreshNotificationWarning() {
+        Task { @MainActor [weak self] in
+            let authorization = await LifecycleNotifier.authorization()
+            self?.menuBar?.setNotificationAuthorization(authorization)
+        }
     }
 
     /// ND-077: surface any security tunable weaker than its default in the menu. Reads
