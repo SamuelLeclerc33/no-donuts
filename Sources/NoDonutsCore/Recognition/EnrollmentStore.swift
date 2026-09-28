@@ -116,7 +116,7 @@ private struct StoredEnrollment: Codable {
     var embeddings: [[Float]]
 }
 
-private let recognitionLog = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+private let recognitionLog = Logger(subsystem: Log.subsystem, category: "recognition")
 
 /// Keychain-backed enrollment store — encrypted at rest (ND-023, ADR-0012).
 ///
@@ -127,7 +127,7 @@ private let recognitionLog = Logger(subsystem: "com.nodonuts.app", category: "re
 /// transmits it.
 ///
 /// **What is NOT enforced today (ND-093, honest statement):** we set
-/// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` on add AND update, but without
+/// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` on add (not update — ND-093 review: an ACL change on an item owned by another build can fail), but without
 /// `kSecUseDataProtectionKeychain` the item lives in the legacy file-based login keychain,
 /// where that accessibility class is not meaningfully enforced: it does not bind the item
 /// to this device's Secure Enclave/data-protection keys, and a copied login keychain
@@ -140,7 +140,7 @@ private let recognitionLog = Logger(subsystem: "com.nodonuts.app", category: "re
 public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     private let service: String
     private let account: String
-    private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+    private let log = Logger(subsystem: Log.subsystem, category: "recognition")
 
     /// Human-friendly item name/description. macOS shows the item's LABEL in the
     /// Keychain-access prompt (there's no custom-text hook), so a clear label makes the
@@ -162,10 +162,11 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     private var cached: EnrollmentState?
 
     /// - Parameters:
-    ///   - service: Keychain `kSecAttrService` (default `com.nodonuts.app`).
+    ///   - service: Keychain `kSecAttrService` (default `AppIdentity.keychainService`,
+    ///     fixed at `com.nodonuts.app` regardless of the bundle id — ND-065).
     ///   - account: Keychain `kSecAttrAccount` (default `enrollment`).
     ///     Overridable so tests can use a throwaway item.
-    public init(service: String = "com.nodonuts.app", account: String = "enrollment") {
+    public init(service: String = AppIdentity.keychainService, account: String = "enrollment") {
         self.service = service
         self.account = account
     }

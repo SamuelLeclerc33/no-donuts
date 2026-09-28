@@ -1,0 +1,20 @@
+# Pinned Python deps for convert_facenet.py (ND-087). Use Python 3.12.
+#   python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# How these versions were verified (2026-09-28, offline):
+#   - torch 2.2.2 and coremltools 9.0 are recorded in the committed model's own metadata
+#     (com.github.apple.coremltools.source = torch==2.2.2, coremltools-version = 9.0 in
+#     FaceNetVGGFace2.mlmodelc/model.mil).
+#   - Every version below matches a wheel in the local pip cache downloaded on
+#     2026-07-06, the day the model was converted.
+#   - facenet-pytorch 2.6.0's own metadata requires torch <2.3, torchvision <0.18,
+#     numpy <2.0 and Pillow <10.3, which these pins satisfy.
+# Pure-Python transitive deps (requests, tqdm, sympy, networkx, jinja2, protobuf, ...)
+# are not pinned here; they are not expected to change the converted model, and the
+# recorded SHA-256 (FaceNetVGGFace2.sha256) catches it if they do.
+torch==2.2.2
+torchvision==0.17.2
+facenet-pytorch==2.6.0
+coremltools==9.0
+numpy==1.26.4
+pillow==10.2.0

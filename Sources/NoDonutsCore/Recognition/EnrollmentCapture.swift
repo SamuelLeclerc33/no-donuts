@@ -165,7 +165,7 @@ public func evaluateEnrollmentConsistency(
                                        isConsistent: consistent)
 }
 
-private let enrollmentLog = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+private let enrollmentLog = Logger(subsystem: Log.subsystem, category: "recognition")
 
 /// Run one enrollment capture (ND-022 + ND-063): sample the camera, embed each DISTINCT
 /// frame's face, stop once enough consistent vectors are in hand (or at the timeout),

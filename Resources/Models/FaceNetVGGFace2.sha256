@@ -1,0 +1,12 @@
+# SHA-256 of the compiled model directory Resources/Models/FaceNetVGGFace2.mlmodelc (ND-087).
+# Computed by scripts/model-hash.sh (sorted per-file hashes, hashed). make-app.sh checks it
+# before bundling: a mismatch warns in dev and fails the build with --release.
+# Model: FaceNet InceptionResnetV1 (VGGFace2), descriptor facenet-vggface2-v2, 512-d output.
+# Built with torch 2.2.2 + coremltools 9.0 (read from the model's own metadata); compiled by
+# coremlc 3520.5.1. Recorded 2026-09-28.
+# Per-file SHA-256, for diagnosing a mismatch (informational; only the last line is checked):
+#   8832ea284ac7d7d72293440d82b4beaa27affa716a8462344f5d8a8c144d8ee9  ./analytics/coremldata.bin
+#   d5fb354f4a803e8f508ab9229def0cffa4f94a21b34f026d9df9176dd3de668b  ./coremldata.bin
+#   39333df4731da6011846d739ad6fd72858c5b14d942fde50d7c4e32a048ed741  ./model.mil
+#   25ce6138e3ab1c02c2026f60f34740f9693f765f455d5c22a1f21e2a5674be47  ./weights/weight.bin
+ca7038a7bd072ebf56d1bb9d11e6a5a086953fedf7eb48db46a9dac4e4710d5d

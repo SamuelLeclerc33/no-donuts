@@ -32,7 +32,7 @@ public final class SessionStateMonitor {
     /// `isActive` value. Set this before `start()`.
     public var onChange: ((Bool) -> Void)?
 
-    private let log = Logger(subsystem: "com.nodonuts.app", category: "session")
+    private let log = Logger(subsystem: Log.subsystem, category: "session")
     /// Safety-net poll (see `start()`): re-reads authoritative session state so a
     /// MISSED lock/unlock notification can't wedge the monitor. Held so it can be
     /// invalidated on deinit.

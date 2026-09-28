@@ -39,7 +39,7 @@ struct GatewayReadResult: Sendable, Equatable {
 // Nonisolated and blocking: call it OFF the main actor (WiFiMonitor runs it in a
 // detached task). The arp(8)/route(8) fallback can take up to its 2 s timeout.
 enum GatewayResolver {
-    private static let log = OSLog(subsystem: "com.nodonuts.app", category: "wifi")
+    private static let log = OSLog(subsystem: Log.subsystem, category: "wifi")
     private static let toolTimeout: TimeInterval = 2
 
     /// Read the default gateway's MAC on `interfaceName` (e.g. "en0"). Logs a notice

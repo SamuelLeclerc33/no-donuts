@@ -6,7 +6,7 @@ import ObjCExceptionCatcher
 
 /// Camera-layer logger. os_log is safe on the session queue and never touches
 /// the network / disk beyond the unified log.
-private let cameraLog = Logger(subsystem: "com.nodonuts.app", category: "camera")
+private let cameraLog = Logger(subsystem: Log.subsystem, category: "camera")
 
 /// "Now" on the host clock, in seconds. The single time base for frame
 /// freshness (ND-055): monotonic mach time, immune to wall-clock changes, and

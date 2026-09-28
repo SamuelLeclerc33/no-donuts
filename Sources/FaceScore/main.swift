@@ -313,7 +313,7 @@ guard let embedder = CoreMLFaceEmbedder(compiledModelURL: modelURL) else {
 
 // Read tunables from the APP's defaults domain (ND-094): FaceScore's own domain is not
 // what the running app sees, so measuring with it would measure a different pipeline.
-let appDefaultsDomain = "com.nodonuts.app"
+let appDefaultsDomain = AppIdentity.defaultsDomain
 guard let appDefaults = UserDefaults(suiteName: appDefaultsDomain) else {
     print("error: cannot open the \(appDefaultsDomain) defaults domain")
     exit(1)

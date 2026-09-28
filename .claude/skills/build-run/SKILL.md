@@ -26,7 +26,8 @@ SPM is fine for compiling/logic, but the camera permission prompt and `LSUIEleme
 ## Build a runnable `.app` (local, CLT-friendly)
 
 ```bash
-scripts/make-app.sh            # release; --debug for a faster compile
+scripts/make-app.sh            # dev mode, optimized build; --debug for a faster compile
+scripts/make-app.sh --release  # release mode: fails unless the model is present and hash-verified (ND-104)
 open build/NoDonuts.app        # launch it
 ```
 `scripts/make-app.sh` is the **canonical local build path** (ADR-0008): it runs `swift build`, assembles `build/NoDonuts.app`, and signs it (with the stable "No Donuts Dev" identity if present, else **ad-hoc** `codesign --sign -`) with the camera entitlement so the TCC prompt fires. No Xcode, no `.xcodeproj`.
@@ -34,7 +35,7 @@ open build/NoDonuts.app        # launch it
 ## App bundle, signing, entitlements
 
 - `Resources/Info.plist` must include `NSCameraUsageDescription` and `LSUIElement = true` (plus `CFBundleExecutable = NoDonuts`).
-- `Resources/NoDonuts.entitlements` carries the camera entitlement; `make-app.sh` embeds it at sign time.
+- `Resources/NoDonuts.entitlements` carries the camera and location entitlements (location is needed for SSID reads once the hardened runtime is on, ND-088); `make-app.sh` embeds it at sign time.
 - Ad-hoc signing (`--sign -`) works for local runs, but see **Stable dev signing** below to stop re-prompts. **Distribution** needs Developer-ID signing + notarization (ND-050) — ad-hoc bundles aren't Gatekeeper-distributable and TCC grants don't transfer to other machines.
 
 ## Stable dev signing (stops Keychain / camera re-prompts)
@@ -53,7 +54,7 @@ codesign -d -r- build/NoDonuts.app # DR is now certificate-based, not cdhash
 
 ## Core ML face model (ND-021 / ADR-0014)
 
-- `make-app.sh` bundles the FaceNet **face-identity** model into `Contents/Resources/` so the app uses `CoreMLFaceEmbedder` at launch. Precedence: (a) a **pre-compiled** `Resources/Models/FaceNetVGGFace2.mlmodelc` → `cp -R` (the normal, **Xcode-free** path); (b) else a `FaceNetVGGFace2.mlpackage` + full-Xcode `xcrun coremlcompiler` → compile on the fly; (c) else warn and continue — the app falls back to `VisionFeaturePrintEmbedder`. Check the launch log (`log stream --predicate 'subsystem == "com.nodonuts.app"'`) for the `active face embedder = …` line.
+- `make-app.sh` bundles the FaceNet **face-identity** model into `Contents/Resources/` so the app uses `CoreMLFaceEmbedder` at launch. Precedence: (a) a **pre-compiled** `Resources/Models/FaceNetVGGFace2.mlmodelc` → `cp -R` (the normal, **Xcode-free** path); (b) else a `FaceNetVGGFace2.mlpackage` + full-Xcode `xcrun coremlcompiler` → compile on the fly; (c) else warn and continue — the app falls back to `VisionFeaturePrintEmbedder`. Path (a) is first checked against the recorded SHA-256 in `Resources/Models/FaceNetVGGFace2.sha256` (`scripts/model-hash.sh`, ND-087): a mismatch warns loudly in dev mode. With `--release`, a missing model, missing hash, mismatch or `.mlpackage`-only checkout fails the build (ND-104). `CoreMLFaceEmbedder` also refuses a model whose output isn't 512-d. Check the launch log (`log stream --predicate 'subsystem == "com.nodonuts.app"'`) for the `active face embedder = …` line.
 - **No full Xcode needed to bundle the model:** compile the `.mlpackage` to `.mlmodelc` with **coremltools** (`compile_model(...)`, pure Python) and drop it in `Resources/Models/` — see `Resources/Models/README.md`. Full Xcode's `coremlcompiler` is only the fallback (path b). This resolves the earlier "needs full Xcode" wrinkle and keeps model bundling on the CLT-only ADR-0008 path.
 - The model blobs (`.mlpackage`, `.mlmodelc`) are **git-ignored**. Reproduce with `Resources/Models/convert_facenet.py` + the coremltools compile step — see `Resources/Models/README.md`.
 

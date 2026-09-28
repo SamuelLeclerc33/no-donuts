@@ -11,18 +11,14 @@ import Foundation
 /// This also lets the diagnostics reporter (`DiagnosticsReporter`) filter the
 /// unified log to exactly our subsystem when it tails recent app logs.
 ///
-/// NOTE: existing code that hardcodes `"com.nodonuts.app"` (notably
-/// `CameraController.swift`, `EnrollmentStore.swift`, and the matchThreshold
-/// logger in `main.swift`) is a tracked follow-up and is intentionally NOT
-/// rewritten here — the subsystem value is identical, so old and new loggers
-/// still land under the same subsystem and are picked up by diagnostics.
+/// Every logger in the code base uses `Log.subsystem` (ND-065); the value itself
+/// comes from `AppIdentity.logSubsystem`, so there is no second copy of the string.
 ///
 /// Privacy: these are static identifiers only — no user data, ever.
 public enum Log {
-    /// The unified-logging subsystem for every No Donuts logger. Must match the
-    /// hardcoded string used by the existing loggers so diagnostics captures all
-    /// of them.
-    public static let subsystem = "com.nodonuts.app"
+    /// The unified-logging subsystem for every No Donuts logger (= the bundle id,
+    /// `AppIdentity.logSubsystem`). Diagnostics filters the unified log on it.
+    public static let subsystem = AppIdentity.logSubsystem
 
     /// Per-module log categories. Keep these aligned with the module owners so a
     /// `log stream --predicate 'subsystem == "com.nodonuts.app"'` reads cleanly.

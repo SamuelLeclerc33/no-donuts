@@ -87,7 +87,7 @@ public final class WiFiMonitor: NSObject {
     /// unreadable (Location not yet authorized). Consumed once auth is granted.
     private var pendingTrust = false
 
-    private static let log = OSLog(subsystem: "com.nodonuts.app", category: "wifi")
+    private static let log = OSLog(subsystem: Log.subsystem, category: "wifi")
 
     public init(store: TrustedNetworksStore) {
         self.store = store

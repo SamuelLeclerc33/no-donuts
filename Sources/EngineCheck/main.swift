@@ -3587,6 +3587,33 @@ func runAll() async -> Bool {
                  "ND-092: post-auto-lock error ticks → no re-lock, state stays .suspended")
     }
 
+    // ND-087: the Core ML output-dimension check refuses a model whose declared
+    // output isn't exactly one multi-array of `expected` elements.
+    do {
+        c.expect(coreMLOutputDimensionMatches(multiArrayOutputShapes: [[1, 512]], expected: 512),
+                 "ND-087: output [1, 512] matches a 512-d descriptor")
+        c.expect(coreMLOutputDimensionMatches(multiArrayOutputShapes: [[512]], expected: 512),
+                 "ND-087: output [512] matches a 512-d descriptor")
+        c.expect(!coreMLOutputDimensionMatches(multiArrayOutputShapes: [[1, 128]], expected: 512),
+                 "ND-087: a 128-d model under a 512-d descriptor is refused")
+        c.expect(!coreMLOutputDimensionMatches(multiArrayOutputShapes: [], expected: 512),
+                 "ND-087: no multi-array output is refused")
+        c.expect(!coreMLOutputDimensionMatches(multiArrayOutputShapes: [[]], expected: 512),
+                 "ND-087: an undeclared (flexible) output shape is refused")
+        c.expect(!coreMLOutputDimensionMatches(multiArrayOutputShapes: [[1, 512], [1, 512]], expected: 512),
+                 "ND-087: two multi-array outputs (ambiguous) are refused")
+        c.expect(!coreMLOutputDimensionMatches(multiArrayOutputShapes: [[1, -1]], expected: 512),
+                 "ND-087: a non-positive dimension is refused")
+        c.expect(coreMLOutputDimensionMatches(multiArrayOutputShapes: [[1, 128]], expected: 0),
+                 "ND-087: expected 0 (no fixed size) always passes")
+    }
+
+    // ND-065: the Keychain service is fixed and independent of the bundle id.
+    c.expect(AppIdentity.keychainService == "com.nodonuts.app",
+             "ND-065: Keychain service stays com.nodonuts.app (never tracks the bundle id)")
+    c.expect(Log.subsystem == AppIdentity.bundleID && AppIdentity.defaultsDomain == AppIdentity.bundleID,
+             "ND-065: log subsystem and defaults domain follow the bundle id")
+
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0
 }

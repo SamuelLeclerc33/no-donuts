@@ -78,7 +78,7 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
 
     /// Match-score logging for threshold tuning (ND-024). Logs ONLY the numeric cosine
     /// score, the threshold, and the decision — never an embedding or image (privacy).
-    private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+    private let log = Logger(subsystem: Log.subsystem, category: "recognition")
 
     /// - Parameters:
     ///   - embedder: the active `FaceEmbedding`; its `descriptor` is the SOLE source of the

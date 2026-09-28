@@ -1,10 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Owner: gordon. Least-privilege entitlements. Validate against the screen-lock
-     mechanism chosen in ND-014 (some lock paths conflict with strict sandboxing). -->
+     mechanism chosen in ND-014 (some lock paths conflict with strict sandboxing).
+
+     camera:   the presence check (NSCameraUsageDescription in Info.plist).
+     location: trusted-Wi-Fi reads the SSID, which macOS gates behind Location
+               (NSLocationWhenInUseUsageDescription). Harmless without the hardened
+               runtime (today's dev builds); REQUIRED once ND-050 turns it on, or the
+               SSID reads silently return nil (ND-088).
+     The router MAC lookup uses the local network (NSLocalNetworkUsageDescription in
+     Info.plist); that is a TCC prompt driven by the Info.plist string, with no
+     entitlement needed. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.personal-information.location</key>
     <true/>
 </dict>
 </plist>

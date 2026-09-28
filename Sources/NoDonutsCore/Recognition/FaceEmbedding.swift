@@ -171,7 +171,7 @@ public func dropLegacyMatchThresholdKey(defaults: UserDefaults = .standard) -> D
 
 /// Log-once bookkeeping for rejected threshold overrides — the resolver runs every tick,
 /// so without this a bad `defaults write` would spam the log at 1 Hz.
-private let rejectedThresholdLog = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+private let rejectedThresholdLog = Logger(subsystem: Log.subsystem, category: "recognition")
 private let rejectedThresholdSeen = OSAllocatedUnfairLock<Set<String>>(initialState: [])
 
 private func noteRejectedThreshold(key: String, description: String, fallback: Double) {
@@ -211,7 +211,7 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
     /// embedding sees a little context (hair/jaw) rather than a tight face-only crop.
     private let paddingFraction: CGFloat
 
-    private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+    private let log = Logger(subsystem: Log.subsystem, category: "recognition")
 
     /// ADR-0014: this embedder implements the Vision feature-print model. Its descriptor
     /// carries the unchanged lenient `0.6` threshold and the `"vision-featureprint-v1"`

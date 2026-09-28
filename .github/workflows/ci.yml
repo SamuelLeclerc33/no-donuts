@@ -1,0 +1,53 @@
+# No Donuts — CI (ND-103). Owner: gordon.
+#
+# Builds the package and runs the framework-free engine checks on a macOS runner.
+# No secrets, no signing, no Core ML model: EngineCheck doesn't need the model, and the
+# app is never launched here. The only network use is the runner fetching this repo and
+# GitHub's own cache service; the build itself has no dependencies to download.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-check:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          swift --version
+          xcode-select -p
+
+      - name: Lint scripts and plists
+        run: |
+          for f in scripts/*.sh; do bash -n "$f"; done
+          plutil -lint Resources/Info.plist Resources/NoDonuts.entitlements Resources/LaunchAgents/*.plist
+
+      - name: Cache .build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift', 'Package.resolved', 'Sources/**') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: swift build
+        run: swift build
+
+      - name: swift run EngineCheck
+        run: swift run EngineCheck

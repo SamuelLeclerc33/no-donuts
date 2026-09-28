@@ -55,7 +55,7 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.nodonuts.coreml-face-embedding")
     private let ciContext = CIContext(options: nil)
     private let paddingFraction: CGFloat
-    private let log = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+    private let log = Logger(subsystem: Log.subsystem, category: "recognition")
 
     /// Load a compiled Core ML model bundled as a resource.
     ///
@@ -83,7 +83,7 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         guard let url = bundle.url(forResource: resourceName, withExtension: "mlmodelc") else {
             // Expected in the current repo: the model isn't bundled. Log and fail so the
             // app falls back to the Vision embedder — never crash, never no-op silently.
-            Logger(subsystem: "com.nodonuts.app", category: "recognition")
+            Logger(subsystem: Log.subsystem, category: "recognition")
                 .notice("Core ML face model '\(resourceName, privacy: .public).mlmodelc' not bundled — falling back to the Vision embedder (ND-021 Phase 1)")
             return nil
         }
@@ -117,13 +117,29 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
             guard let imageInput = loaded.modelDescription.inputDescriptionsByName.first(where: {
                 $0.value.type == .image
             }) else {
-                Logger(subsystem: "com.nodonuts.app", category: "recognition")
+                Logger(subsystem: Log.subsystem, category: "recognition")
                     .error("Core ML face model has no image input feature — cannot use it")
                 return nil
             }
             self.inputFeatureName = imageInput.key
+
+            // ND-087: the model must produce the embedding size the descriptor claims
+            // (512 for FaceNet). A different model shipped under the same descriptor
+            // would store and compare vectors from another embedding space, so a
+            // mismatch refuses the model here. The caller then falls back, and the
+            // ND-073 identity-off state makes that visible.
+            let multiArrayShapes = loaded.modelDescription.outputDescriptionsByName.values
+                .filter { $0.type == .multiArray }
+                .map { ($0.multiArrayConstraint?.shape ?? []).map { $0.intValue } }
+            guard coreMLOutputDimensionMatches(multiArrayOutputShapes: multiArrayShapes,
+                                               expected: descriptor.outputDimension) else {
+                let found = multiArrayShapes.map { "\($0)" }.joined(separator: ", ")
+                Logger(subsystem: Log.subsystem, category: Log.Category.recognition)
+                    .error("Core ML face model output shape [\(found, privacy: .public)] does not match the expected \(descriptor.outputDimension, privacy: .public)-d embedding for \(descriptor.version, privacy: .public) — refusing the model (ND-087)")
+                return nil
+            }
         } catch {
-            Logger(subsystem: "com.nodonuts.app", category: "recognition")
+            Logger(subsystem: Log.subsystem, category: "recognition")
                 .error("failed to load Core ML face model: \(error.localizedDescription, privacy: .public)")
             return nil
         }
@@ -272,4 +288,23 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         let inv = 1.0 / sum.squareRoot()
         return v.map { Float(Double($0) * inv) }
     }
+}
+
+/// ND-087: does a Core ML model's declared output match the embedding size the
+/// descriptor expects? Pure, so EngineCheck covers it without a model file.
+///
+/// - `multiArrayOutputShapes`: the declared shape of each multi-array output (e.g.
+///   `[[1, 512]]`). An empty shape means the model declares none (flexible).
+/// - `expected`: `descriptor.outputDimension`. `0` means "no fixed size" and always
+///   passes.
+///
+/// Passes only when there is exactly one multi-array output (the embedder reads the
+/// first one it finds, so two would make the choice arbitrary) and the product of its
+/// declared dimensions equals `expected`. An undeclared or non-positive shape fails:
+/// the size can't be checked, so the model is not trusted.
+public func coreMLOutputDimensionMatches(multiArrayOutputShapes: [[Int]], expected: Int) -> Bool {
+    guard expected > 0 else { return true }
+    guard multiArrayOutputShapes.count == 1, let shape = multiArrayOutputShapes.first,
+          !shape.isEmpty, shape.allSatisfy({ $0 > 0 }) else { return false }
+    return shape.reduce(1, *) == expected
 }

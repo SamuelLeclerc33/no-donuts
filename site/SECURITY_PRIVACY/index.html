@@ -399,6 +399,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Threat model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assumptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assumptions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security-threats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security threats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#privacy-threats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy threats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1211,6 +1261,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Threat model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assumptions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assumptions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security-threats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security threats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#privacy-threats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy threats
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#out-of-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Out of scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1288,48 +1388,203 @@
 <li><strong>Visible, honest camera use.</strong> Monitoring uses a <strong>persistent low-FPS capture session</strong>, so the macOS <strong>camera indicator light stays on the whole time</strong> No Donuts is watching — there is no hidden or intermittent recording. Captured frames live <strong>in memory only</strong> and are never written to disk.</li>
 </ol>
 <h2 id="threat-model">Threat model<a class="headerlink" href="#threat-model" title="Permanent link">&para;</a></h2>
+<p>Scope and status as of 2026-09-28 (ND-109). Each row says what an attacker can do, what stops them, and what still gets through. <strong>Status:</strong> <code>Mitigated</code> (closed for this threat level) · <code>Partial</code> (reduced, known gap) · <code>Accepted</code> (gap kept on purpose, bounded or visible) · <code>Residual</code> (gap with no mitigation yet) · <code>In progress</code> · <code>Deferred</code> · <code>Out of scope</code>.</p>
+<p>Timings assume shipped defaults: 1 s tick, 5-tick absence consensus, 5 s grace.</p>
+<h3 id="assumptions">Assumptions<a class="headerlink" href="#assumptions" title="Permanent link">&para;</a></h3>
+<p>The attacker is an <strong>opportunist with physical access</strong> to an unlocked Mac for seconds to minutes (a colleague, a passer-by). They do <strong>not</strong> know the user's password, so they can't use <code>sudo</code>, unlock the screen, or approve admin prompts. While at the unlocked session they can do anything the logged-in user can without a password: use the menu, run <code>defaults write</code>, <code>kill</code>, <code>launchctl</code>, <code>tccutil reset Camera</code>, change System Settings panes that don't ask for a password. macOS login, Touch ID, TCC, launchd and local notification delivery work as documented. The built-in camera is trustworthy hardware. The fleet is one laptop model (ND-111). The user glances at the menu bar now and then, so a <strong>visible</strong> degraded state counts as a mitigation, but a <strong>silent</strong> one does not.</p>
+<h3 id="security-threats">Security threats<a class="headerlink" href="#security-threats" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th>Asset</th>
-<th>Threat</th>
+<th>Threat / attacker capability</th>
+<th>Attack</th>
 <th>Mitigation</th>
+<th>Residual risk</th>
+<th>Status</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Unattended unlocked session</td>
-<td>User walks away; opportunistic snooping / "donuting"</td>
-<td>Core function: detect absence → lock within grace period</td>
+<td><strong>Walk-away</strong> (baseline): passer-by at an unattended Mac</td>
+<td>Uses the unlocked session after the user leaves</td>
+<td>Absence consensus + grace, then a CGSession-verified lock (ADR-0010, EC-11)</td>
+<td>~10 s window at defaults. The user can stretch it within bounds (tick ≤ 10 s, grace ≤ 60 s, ADR-0019), up to ~110 s</td>
+<td>Mitigated</td>
 </tr>
 <tr>
-<td>Enrolled face data</td>
-<td>Exfiltration of biometric data</td>
-<td>Local-only, encrypted at rest, embeddings (not images), no network</td>
+<td><strong>Stranger at keyboard</strong></td>
+<td>Sits down after the user leaves</td>
+<td>A non-matching face counts as absence (EC-03). 3 stranger ticks lock with no grace (ADR-0017, ND-061)</td>
+<td>~3 s of access. Before enrollment any face counts as present</td>
+<td>Mitigated (once enrolled)</td>
 </tr>
 <tr>
-<td>Spoofing presence</td>
-<td>Photo/phone held to camera to keep it unlocked</td>
-<td>Basic anti-spoofing (M4): reject obvious flat/static photo, liveness signals. <strong>v1 not hardened against determined attackers.</strong></td>
+<td><strong>Look-alike</strong> colleague</td>
+<td>Their face is close enough to match</td>
+<td>FaceNet identity embedding (ADR-0014), per-model threshold (ND-076), face quality gate (ND-085)</td>
+<td>Threshold is <strong>untuned</strong>: false-accept rate never measured (ND-056). A look-alike may pass</td>
+<td>Partial</td>
 </tr>
 <tr>
-<td>Fail-open</td>
-<td>Bug/permission issue makes it silently never lock</td>
-<td>Explicit fail policy + visible status; uncertain states lean conservative. <code>lock()</code> is <strong>CGSession-verified</strong> — it returns <code>true</code> only once the session actually reports locked, else it surfaces honest <code>.lockFailed</code> (no silent fail-open, EC-19, <a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>).</td>
+<td><strong>Photo / screen spoof</strong> at the lens</td>
+<td>Holds a print or phone showing the user</td>
+<td>Texture liveness floor on both embedder paths (ND-041, ND-072, EC-12). Spoof → stranger → fast lock</td>
+<td>Sharp print or high-DPI screen may pass; no blink/motion check; spoof scores unmeasured. <strong>v1 is not hardened</strong></td>
+<td>Partial</td>
 </tr>
 <tr>
-<td>Stranger present</td>
-<td>Someone else sits down while user is gone</td>
-<td>Non-matching face never counts as PRESENT (EC-03)</td>
+<td><strong>Virtual camera replay</strong></td>
+<td>Installs OBS or a CMIO extension and loops a video of the user</td>
+<td>Built-in camera only: built-in device type <strong>and</strong> built-in transport (ADR-0015, ND-075)</td>
+<td>Forces a physical spoof at the real lens (row above)</td>
+<td>Mitigated</td>
 </tr>
 <tr>
-<td>Enforcement disabled without user intent</td>
-<td>A bug in pause / trusted-Wi-Fi gating silently stops protecting</td>
-<td>Gating <strong>fails toward enforcing</strong>: an unknown/unreadable SSID is never "trusted" (ND-036, EC-20); disabled states are shown honestly in the menu bar and turn the camera light off, so "not watching" is always visible.</td>
+<td><strong>Camera unplug / wedge / revoke</strong></td>
+<td><code>tccutil reset Camera</code> (no admin), wedges or unplugs the device</td>
+<td>Stale-frame guard (ND-055, ND-084). Lid open: 120 s unavailable → absence → lock (ADR-0016, ND-078). Not-protecting notification</td>
+<td>~2 min + consensus + grace unlocked. Lid closed: no lock (see clamshell row)</td>
+<td>Mitigated (lid open)</td>
+</tr>
+<tr>
+<td><strong>Camera busy / call abuse</strong></td>
+<td>Opens Photo Booth so our session gets no frames</td>
+<td>Busy counts as present only for 10 min; only a frame of the enrolled user resets the window (ND-098, ADR-0016, EC-01)</td>
+<td>Up to ~10 min + consensus + grace unlocked</td>
+<td>Accepted (bounded)</td>
+</tr>
+<tr>
+<td><strong>Lid closed / desktop Mac</strong></td>
+<td>Uses a clamshell setup or a desktop, where there's no built-in camera</td>
+<td>Honest "camera unavailable" state + notification (EC-07, ADR-0015/0016). An unreadable lid state counts as open</td>
+<td><strong>Unprotected</strong> the whole time the lid is closed; desktops are never protected</td>
+<td>Accepted gap</td>
+</tr>
+<tr>
+<td><strong>Kill / crash / quit</strong></td>
+<td><code>kill</code>, force-quit, crash, menu Quit</td>
+<td>KeepAlive agent relaunches (ADR-0018). Dead-man <code>nd.notRunning</code> notification ~10 min after death. Quit needs confirmation and gets a +30 min reminder (ND-082). Single instance (ND-083)</td>
+<td>Short gap before relaunch (10 s throttle). A confirmed Quit is allowed by design</td>
+<td>Mitigated</td>
+</tr>
+<tr>
+<td><strong>Pause abuse</strong></td>
+<td>Pauses protection from the menu</td>
+<td>Pause is visible (camera light off, paused glyph) and in-memory only. Indefinite pause ends on lock/sleep, with a 30-min reminder (ND-080, EC-15)</td>
+<td>Anyone at the unlocked Mac can pause. A timed pause (≤ 1 h) survives a lock by design</td>
+<td>Accepted (visible)</td>
+</tr>
+<tr>
+<td><strong>Trusted Wi-Fi spoof</strong></td>
+<td>Evil-twin AP broadcasting a trusted SSID</td>
+<td>Trust = SSID <strong>+</strong> gateway MAC, fresh read for each decision; unreadable = untrusted (ND-081, ND-036, EC-20)</td>
+<td>An attacker who clones the SSID <strong>and</strong> answers ARP with the router's MAC. <code>defaults write</code> can add an entry, but the trusted-Wi-Fi state shows</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td><strong><code>defaults write</code> tampering</strong></td>
+<td>Weakens threshold, anti-spoof, grace, tick</td>
+<td>All tunables validated; out-of-range values rejected (ADR-0019, ND-062, ND-076). Weaker security tunables show "Protection reduced" in the menu (ND-077)</td>
+<td>Grace/tick changes within bounds aren't flagged (they show in Settings). The user has to notice the banner</td>
+<td>Mitigated (visible)</td>
+</tr>
+<tr>
+<td><strong>Model file removal / swap</strong></td>
+<td>Deletes or replaces the <code>.mlmodelc</code> in the ad-hoc bundle</td>
+<td>Missing or mismatched model version → loud "identity off" (ND-073). SHA-256 + output-dim check at build (ND-087)</td>
+<td>A post-build swap that keeps the version tag isn't caught at runtime; the ad-hoc signature doesn't seal the bundle (Developer-ID, ND-050)</td>
+<td>In progress</td>
+</tr>
+<tr>
+<td><strong>Keychain item deletion</strong></td>
+<td>Deletes the enrollment item</td>
+<td>Non-secret marker → loud "identity off: re-enroll" at next launch; the running app keeps its cached vectors (ND-073)</td>
+<td>Deleting the marker too makes it look like "never enrolled" (presence-only), which shows as not enrolled</td>
+<td>Mitigated (visible)</td>
+</tr>
+<tr>
+<td><strong>Private lock API breakage</strong></td>
+<td>A macOS update removes or changes the <code>login.framework</code> symbols</td>
+<td>Self-test at launch and wake → persistent "can't lock" + notification (ND-058, ND-074). Each lock logs its mechanism</td>
+<td>Both mechanisms are in one private framework, with no independent fallback</td>
+<td>Accepted (loud)</td>
+</tr>
+<tr>
+<td><strong>Lock failure</strong></td>
+<td>The lock call runs but the screen doesn't lock</td>
+<td>CGSession-verified <code>lock()</code>. On failure: <code>.lockFailed</code>, retries with backoff 10 → 60 s, notification with sound (ND-054, ND-079, EC-19)</td>
+<td>Stays unlocked until a retry succeeds</td>
+<td>Mitigated</td>
+</tr>
+<tr>
+<td><strong>Launcher removal</strong></td>
+<td>Removes the login item / <code>launchctl bootout</code>, then kills the app</td>
+<td>Dead-man notification still fires after the kill (ADR-0018)</td>
+<td>No relaunch. Logout cancels the dead-man, so after logout or a reboot the app is silently absent until the user notices the missing menu icon</td>
+<td>Residual</td>
+</tr>
+<tr>
+<td><strong>Notification permission denied</strong></td>
+<td>User or attacker turns off notifications for No Donuts</td>
+<td>Menu glyph and header still show state; diagnostics report the missing permission (ADR-0018)</td>
+<td>Dead-man, lock-failed and not-protecting alerts can't fire. After a kill, nothing tells the user</td>
+<td>Residual</td>
+</tr>
+<tr>
+<td><strong>Local admin / root</strong></td>
+<td>Knows the password or has root</td>
+<td>None</td>
+<td>Can disable anything</td>
+<td>Out of scope</td>
 </tr>
 </tbody>
 </table>
+<h3 id="privacy-threats">Privacy threats<a class="headerlink" href="#privacy-threats" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Threat / attacker capability</th>
+<th>Attack</th>
+<th>Mitigation</th>
+<th>Residual risk</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Frames / embeddings exfiltrated</strong></td>
+<td>Network leak, telemetry, disk dump</td>
+<td>No network code paths; frames stay in memory for one tick; only embeddings are stored, in the Keychain; no telemetry (principles above)</td>
+<td>Malware running as the user can read memory or the Keychain item</td>
+<td>Mitigated</td>
+</tr>
+<tr>
+<td><strong>Logs leak personal data</strong></td>
+<td>Reads <code>os_log</code> / diagnostics</td>
+<td>Logs hold numeric scores, lock-mechanism and camera-device names only. No image, embedding, SSID or MAC; diagnostics show counts (ND-024, ND-081)</td>
+<td>Scores are readable by anyone who can read the user's logs</td>
+<td>Mitigated</td>
+</tr>
+<tr>
+<td><strong>Keychain at rest</strong></td>
+<td>Enrollment copied off the device via backup or migration</td>
+<td>Generic-password item requesting <code>…ThisDeviceOnly</code>; input validated before write (ND-093)</td>
+<td>The legacy login keychain <strong>ignores</strong> <code>ThisDeviceOnly</code>, so the item can migrate. The fix is the data-protection keychain, with ND-050/ND-065</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td><strong>Colleagues' biometric data</strong></td>
+<td>Deploying a face-watching app to colleagues</td>
+<td>Only the enrolled user's embeddings are stored. Other faces are processed in memory as "stranger" and dropped. FaceScore photo folders are git-ignored (ND-105)</td>
+<td>Privacy notice, consent screen, privacy-officer check and Québec Law 25 / CAI biometric declaration not done (ND-111)</td>
+<td>Deferred</td>
+</tr>
+</tbody>
+</table>
+<h3 id="out-of-scope">Out of scope<a class="headerlink" href="#out-of-scope" title="Permanent link">&para;</a></h3>
+<p>v1 does not defend against: a <strong>local admin or root</strong> user, or anyone who knows the password. <strong>Malware already running as the user</strong> (it can do everything the walk-up attacker can, and more). A <strong>determined, prepared spoofer</strong>: high-quality masks, a high-DPI replay held at the real lens, or anyone who can tune an attack against the threshold. <strong>Shoulder-surfing</strong> while the user is present (EC-06). <strong>Fast user switching</strong> and multi-account setups (EC-14). <strong>Network attackers</strong> beyond the trusted-Wi-Fi check. <strong>Replacing macOS authentication</strong>: we only lock, and unlocking stays with macOS. Against these, No Donuts is a convenience lock, not a security boundary.</p>
 <h2 id="explicit-non-goals-v1">Explicit non-goals (v1)<a class="headerlink" href="#explicit-non-goals-v1" title="Permanent link">&para;</a></h2>
+<p>See also <em>Out of scope</em> in the threat model above.</p>
 <ul>
 <li>Defeating a determined, prepared spoofing attacker (high-quality 3D mask, etc.).</li>
 <li>Replacing macOS authentication. We <strong>lock only</strong>; unlock remains macOS/Touch ID/password. We never authenticate the user <em>into</em> the machine via face.</li>
@@ -1354,7 +1609,7 @@
 <h2 id="open-items">Open items<a class="headerlink" href="#open-items" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Confirm storage mechanism + key management for embeddings (cooper).</li>
-<li>Decide anti-spoofing scope and which liveness signals are realistic on-device (wiggum/cooper).</li>
+<li>Anti-spoofing: v1 scope is the texture floor only (see the threat model). Still open: a spoof-only measurement to tune the floor, and whether motion/blink liveness is realistic on-device (wiggum/cooper).</li>
 <li>Document enterprise/MDM permission pre-grant story (gordon).</li>
 </ul>
 

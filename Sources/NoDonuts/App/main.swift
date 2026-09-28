@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// otherwise the Vision feature-print fallback. Logs which one is active (honest —
     /// mirrors the existing launch logging), so `log stream` shows the real engine.
     private static func makeEmbedder() -> FaceEmbedding {
-        let log = OSLog(subsystem: "com.nodonuts.app", category: "recognition")
+        let log = OSLog(subsystem: Log.subsystem, category: "recognition")
         if let coreML = CoreMLFaceEmbedder(resourceName: "FaceNetVGGFace2") {
             os_log("active face embedder = CoreMLFaceEmbedder (%{public}@, %d-d, tuned=%{public}@)",
                    log: log, type: .default,
@@ -183,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // store / recognizer / threshold log read anything. Overrides are now per-model.
         if let dropped = dropLegacyMatchThresholdKey() {
             os_log("dropped legacy global matchThreshold %{public}@ (ND-076: overrides are now per-model)",
-                   log: OSLog(subsystem: "com.nodonuts.app", category: "recognition"),
+                   log: OSLog(subsystem: Log.subsystem, category: "recognition"),
                    type: .default, String(dropped))
         }
 
@@ -769,7 +769,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// logging for tuning via `log stream`). Reads through the shared Core resolver so the
     /// logged value matches what the recognizer will actually use.
     private func logEffectiveMatchThreshold() {
-        let log = OSLog(subsystem: "com.nodonuts.app", category: "recognition")
+        let log = OSLog(subsystem: Log.subsystem, category: "recognition")
         let resolved = resolvedMatchThreshold(for: embedder.descriptor)
         os_log("identity matchThreshold = %.2f", log: log, type: .default, resolved)
     }

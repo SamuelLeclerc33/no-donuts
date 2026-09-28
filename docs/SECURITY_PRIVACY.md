@@ -17,16 +17,55 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 
 ## Threat model
 
-| Asset | Threat | Mitigation |
-|---|---|---|
-| Unattended unlocked session | User walks away; opportunistic snooping / "donuting" | Core function: detect absence → lock within grace period |
-| Enrolled face data | Exfiltration of biometric data | Local-only, encrypted at rest, embeddings (not images), no network |
-| Spoofing presence | Photo/phone held to camera to keep it unlocked | Basic anti-spoofing (M4): reject obvious flat/static photo, liveness signals. **v1 not hardened against determined attackers.** |
-| Fail-open | Bug/permission issue makes it silently never lock | Explicit fail policy + visible status; uncertain states lean conservative. `lock()` is **CGSession-verified** — it returns `true` only once the session actually reports locked, else it surfaces honest `.lockFailed` (no silent fail-open, EC-19, [ADR-0010](adr/0010-screen-lock-no-accessibility.md)). |
-| Stranger present | Someone else sits down while user is gone | Non-matching face never counts as PRESENT (EC-03) |
-| Enforcement disabled without user intent | A bug in pause / trusted-Wi-Fi gating silently stops protecting | Gating **fails toward enforcing**: an unknown/unreadable SSID is never "trusted" (ND-036, EC-20); disabled states are shown honestly in the menu bar and turn the camera light off, so "not watching" is always visible. |
+Scope and status as of 2026-09-28 (ND-109). Each row says what an attacker can do, what stops them, and what still gets through. **Status:** `Mitigated` (closed for this threat level) · `Partial` (reduced, known gap) · `Accepted` (gap kept on purpose, bounded or visible) · `Residual` (gap with no mitigation yet) · `In progress` · `Deferred` · `Out of scope`.
+
+Timings assume shipped defaults: 1 s tick, 5-tick absence consensus, 5 s grace.
+
+### Assumptions
+
+The attacker is an **opportunist with physical access** to an unlocked Mac for seconds to minutes (a colleague, a passer-by). They do **not** know the user's password, so they can't use `sudo`, unlock the screen, or approve admin prompts. While at the unlocked session they can do anything the logged-in user can without a password: use the menu, run `defaults write`, `kill`, `launchctl`, `tccutil reset Camera`, change System Settings panes that don't ask for a password. macOS login, Touch ID, TCC, launchd and local notification delivery work as documented. The built-in camera is trustworthy hardware. The fleet is one laptop model (ND-111). The user glances at the menu bar now and then, so a **visible** degraded state counts as a mitigation, but a **silent** one does not.
+
+### Security threats
+
+| Threat / attacker capability | Attack | Mitigation | Residual risk | Status |
+|---|---|---|---|---|
+| **Walk-away** (baseline): passer-by at an unattended Mac | Uses the unlocked session after the user leaves | Absence consensus + grace, then a CGSession-verified lock (ADR-0010, EC-11) | ~10 s window at defaults. The user can stretch it within bounds (tick ≤ 10 s, grace ≤ 60 s, ADR-0019), up to ~110 s | Mitigated |
+| **Stranger at keyboard** | Sits down after the user leaves | A non-matching face counts as absence (EC-03). 3 stranger ticks lock with no grace (ADR-0017, ND-061) | ~3 s of access. Before enrollment any face counts as present | Mitigated (once enrolled) |
+| **Look-alike** colleague | Their face is close enough to match | FaceNet identity embedding (ADR-0014), per-model threshold (ND-076), face quality gate (ND-085) | Threshold is **untuned**: false-accept rate never measured (ND-056). A look-alike may pass | Partial |
+| **Photo / screen spoof** at the lens | Holds a print or phone showing the user | Texture liveness floor on both embedder paths (ND-041, ND-072, EC-12). Spoof → stranger → fast lock | Sharp print or high-DPI screen may pass; no blink/motion check; spoof scores unmeasured. **v1 is not hardened** | Partial |
+| **Virtual camera replay** | Installs OBS or a CMIO extension and loops a video of the user | Built-in camera only: built-in device type **and** built-in transport (ADR-0015, ND-075) | Forces a physical spoof at the real lens (row above) | Mitigated |
+| **Camera unplug / wedge / revoke** | `tccutil reset Camera` (no admin), wedges or unplugs the device | Stale-frame guard (ND-055, ND-084). Lid open: 120 s unavailable → absence → lock (ADR-0016, ND-078). Not-protecting notification | ~2 min + consensus + grace unlocked. Lid closed: no lock (see clamshell row) | Mitigated (lid open) |
+| **Camera busy / call abuse** | Opens Photo Booth so our session gets no frames | Busy counts as present only for 10 min; only a frame of the enrolled user resets the window (ND-098, ADR-0016, EC-01) | Up to ~10 min + consensus + grace unlocked | Accepted (bounded) |
+| **Lid closed / desktop Mac** | Uses a clamshell setup or a desktop, where there's no built-in camera | Honest "camera unavailable" state + notification (EC-07, ADR-0015/0016). An unreadable lid state counts as open | **Unprotected** the whole time the lid is closed; desktops are never protected | Accepted gap |
+| **Kill / crash / quit** | `kill`, force-quit, crash, menu Quit | KeepAlive agent relaunches (ADR-0018). Dead-man `nd.notRunning` notification ~10 min after death. Quit needs confirmation and gets a +30 min reminder (ND-082). Single instance (ND-083) | Short gap before relaunch (10 s throttle). A confirmed Quit is allowed by design | Mitigated |
+| **Pause abuse** | Pauses protection from the menu | Pause is visible (camera light off, paused glyph) and in-memory only. Indefinite pause ends on lock/sleep, with a 30-min reminder (ND-080, EC-15) | Anyone at the unlocked Mac can pause. A timed pause (≤ 1 h) survives a lock by design | Accepted (visible) |
+| **Trusted Wi-Fi spoof** | Evil-twin AP broadcasting a trusted SSID | Trust = SSID **+** gateway MAC, fresh read for each decision; unreadable = untrusted (ND-081, ND-036, EC-20) | An attacker who clones the SSID **and** answers ARP with the router's MAC. `defaults write` can add an entry, but the trusted-Wi-Fi state shows | Partial |
+| **`defaults write` tampering** | Weakens threshold, anti-spoof, grace, tick | All tunables validated; out-of-range values rejected (ADR-0019, ND-062, ND-076). Weaker security tunables show "Protection reduced" in the menu (ND-077) | Grace/tick changes within bounds aren't flagged (they show in Settings). The user has to notice the banner | Mitigated (visible) |
+| **Model file removal / swap** | Deletes or replaces the `.mlmodelc` in the ad-hoc bundle | Missing or mismatched model version → loud "identity off" (ND-073). SHA-256 + output-dim check at build (ND-087) | A post-build swap that keeps the version tag isn't caught at runtime; the ad-hoc signature doesn't seal the bundle (Developer-ID, ND-050) | In progress |
+| **Keychain item deletion** | Deletes the enrollment item | Non-secret marker → loud "identity off: re-enroll" at next launch; the running app keeps its cached vectors (ND-073) | Deleting the marker too makes it look like "never enrolled" (presence-only), which shows as not enrolled | Mitigated (visible) |
+| **Private lock API breakage** | A macOS update removes or changes the `login.framework` symbols | Self-test at launch and wake → persistent "can't lock" + notification (ND-058, ND-074). Each lock logs its mechanism | Both mechanisms are in one private framework, with no independent fallback | Accepted (loud) |
+| **Lock failure** | The lock call runs but the screen doesn't lock | CGSession-verified `lock()`. On failure: `.lockFailed`, retries with backoff 10 → 60 s, notification with sound (ND-054, ND-079, EC-19) | Stays unlocked until a retry succeeds | Mitigated |
+| **Launcher removal** | Removes the login item / `launchctl bootout`, then kills the app | Dead-man notification still fires after the kill (ADR-0018) | No relaunch. Logout cancels the dead-man, so after logout or a reboot the app is silently absent until the user notices the missing menu icon | Residual |
+| **Notification permission denied** | User or attacker turns off notifications for No Donuts | Menu glyph and header still show state; diagnostics report the missing permission (ADR-0018) | Dead-man, lock-failed and not-protecting alerts can't fire. After a kill, nothing tells the user | Residual |
+| **Local admin / root** | Knows the password or has root | None | Can disable anything | Out of scope |
+
+### Privacy threats
+
+| Threat / attacker capability | Attack | Mitigation | Residual risk | Status |
+|---|---|---|---|---|
+| **Frames / embeddings exfiltrated** | Network leak, telemetry, disk dump | No network code paths; frames stay in memory for one tick; only embeddings are stored, in the Keychain; no telemetry (principles above) | Malware running as the user can read memory or the Keychain item | Mitigated |
+| **Logs leak personal data** | Reads `os_log` / diagnostics | Logs hold numeric scores, lock-mechanism and camera-device names only. No image, embedding, SSID or MAC; diagnostics show counts (ND-024, ND-081) | Scores are readable by anyone who can read the user's logs | Mitigated |
+| **Keychain at rest** | Enrollment copied off the device via backup or migration | Generic-password item requesting `…ThisDeviceOnly`; input validated before write (ND-093) | The legacy login keychain **ignores** `ThisDeviceOnly`, so the item can migrate. The fix is the data-protection keychain, with ND-050/ND-065 | Partial |
+| **Colleagues' biometric data** | Deploying a face-watching app to colleagues | Only the enrolled user's embeddings are stored. Other faces are processed in memory as "stranger" and dropped. FaceScore photo folders are git-ignored (ND-105) | Privacy notice, consent screen, privacy-officer check and Québec Law 25 / CAI biometric declaration not done (ND-111) | Deferred |
+
+### Out of scope
+
+v1 does not defend against: a **local admin or root** user, or anyone who knows the password. **Malware already running as the user** (it can do everything the walk-up attacker can, and more). A **determined, prepared spoofer**: high-quality masks, a high-DPI replay held at the real lens, or anyone who can tune an attack against the threshold. **Shoulder-surfing** while the user is present (EC-06). **Fast user switching** and multi-account setups (EC-14). **Network attackers** beyond the trusted-Wi-Fi check. **Replacing macOS authentication**: we only lock, and unlocking stays with macOS. Against these, No Donuts is a convenience lock, not a security boundary.
 
 ## Explicit non-goals (v1)
+
+See also *Out of scope* in the threat model above.
+
 
 - Defeating a determined, prepared spoofing attacker (high-quality 3D mask, etc.).
 - Replacing macOS authentication. We **lock only**; unlock remains macOS/Touch ID/password. We never authenticate the user *into* the machine via face.
@@ -51,5 +90,5 @@ Privacy is a hard product requirement, not a feature. The whole point of local r
 ## Open items
 
 - Confirm storage mechanism + key management for embeddings (cooper).
-- Decide anti-spoofing scope and which liveness signals are realistic on-device (wiggum/cooper).
+- Anti-spoofing: v1 scope is the texture floor only (see the threat model). Still open: a spoof-only measurement to tune the floor, and whether motion/blink liveness is realistic on-device (wiggum/cooper).
 - Document enterprise/MDM permission pre-grant story (gordon).
