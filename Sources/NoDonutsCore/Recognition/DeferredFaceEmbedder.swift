@@ -38,8 +38,8 @@ private let deferredLog = Logger(subsystem: Log.subsystem, category: Log.Categor
 /// stored-vs-active version after embedding.
 ///
 /// Note: unlike the other embedders, `descriptor` can change ONCE (presumed → resolved).
-/// Code that snapshots it at launch (e.g. the Settings store's per-model threshold key)
-/// keeps the presumed model if a late load failure switches to the fallback.
+/// Code that snapshots it at launch must re-read it once `resolvedEmbedder()` returns —
+/// the App does this for the Settings store and the protection audit (ND-115).
 public final class DeferredFaceEmbedder: FaceEmbedding, @unchecked Sendable {
     private enum State {
         case loading

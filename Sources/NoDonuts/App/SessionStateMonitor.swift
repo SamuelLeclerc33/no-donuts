@@ -91,8 +91,8 @@ public final class SessionStateMonitor {
                               name: NSWorkspace.didWakeNotification, object: nil)
 
         // Safety-net poll. The notifications above are the fast path, but our screen
-        // lock is a non-standard mechanism (SACLockScreenImmediate / CGSession
-        // -suspend, ADR-0010) whose RETURN does not reliably post
+        // lock is a non-standard mechanism (SACLockScreenImmediate /
+        // SACSwitchToLoginWindow, ADR-0010) whose RETURN does not reliably post
         // `com.apple.screenIsUnlocked` / a workspace active event. Without a fallback
         // a missed unlock event wedges `isActive == false` forever → the presence
         // loop never resumes and the app is stuck "locked" after you unlock. This

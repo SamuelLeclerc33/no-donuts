@@ -191,3 +191,20 @@
 "It can’t access the camera, so it can’t tell if you’re here. Check camera permission or that no other app is using the camera." = "Il ne peut pas accéder à la caméra, donc il ne peut pas savoir si vous êtes là. Vérifiez l’autorisation d’accès à la caméra ou qu’aucune autre app ne l’utilise.";
 "The lid is closed, so the built-in camera can’t see you and your Mac won’t be locked automatically." = "L’écran est rabattu : la caméra intégrée ne peut pas vous voir et votre Mac ne sera pas verrouillé automatiquement.";
 "This Mac has no built-in camera, so it won’t be locked automatically." = "Ce Mac n’a pas de caméra intégrée : il ne sera pas verrouillé automatiquement.";
+
+/* Final polish: Core reason strings (ND-101 follow-up), version display (ADR-0021). */
+"photo rejection (anti-spoofing) off" = "rejet des photos (anti-usurpation) désactivé";
+"lock sensitivity lowered (%@, default %@)" = "sensibilité de verrouillage abaissée (%1$@, par défaut %2$@)";
+"photo-rejection floor lowered (%@, default %@)" = "seuil de rejet des photos abaissé (%1$@, par défaut %2$@)";
+"no trusted built-in camera (external and virtual cameras aren’t trusted)" = "aucune caméra intégrée de confiance (les caméras externes et virtuelles ne sont pas fiables)";
+"camera permission not granted yet" = "autorisation d’accès à la caméra pas encore accordée";
+"camera access denied or restricted" = "accès à la caméra refusé ou restreint";
+"camera access state unknown" = "état de l’accès à la caméra inconnu";
+"no new image from the camera" = "aucune nouvelle image de la caméra";
+"can’t open the camera" = "impossible d’ouvrir la caméra";
+"can’t read images from the camera" = "impossible de lire les images de la caméra";
+"can’t start the camera" = "impossible de démarrer la caméra";
+"No Donuts (development build)" = "No Donuts (version de développement)";
+"No Donuts %@ (%@)" = "No Donuts %1$@ (%2$@)";
+"development build" = "version de développement";
+"Version" = "Version";

@@ -6,7 +6,7 @@ import os.log
 // Backlog: ND-010, ND-015, ND-035 (pause), ND-036 (trusted Wi-Fi). Runs as an
 // accessory (menu-bar only, no Dock icon).
 // NOTE: For the real camera prompt + LSUIElement behavior, this must run as a
-// signed .app bundle built with Xcode (see ADR-0001, build-run skill).
+// signed .app bundle — `scripts/make-app.sh`, CLT only (ADR-0008, build-run skill).
 
 // ND-052 / ADR-0018: `NoDonuts --unregister` (used by scripts/uninstall-launchagent.sh).
 // Handled BEFORE the single-instance guard so it works while (or after) the app runs.
@@ -48,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ND-082 dead-man "isn't running" heartbeat + ND-080 indefinite-pause reminder.
     /// Independent of the enforcement loop (it's about the PROCESS being alive).
     private let lifecycleNotifier = LifecycleNotifier()
+    /// ND-108: local-only MetricKit crash summaries (held: MetricKit's subscriber list
+    /// isn't a reliable owner). Shown only in Copy diagnostics; never uploaded.
+    private let crashCollector = CrashSummaryCollector()
     /// ND-113: app-activation observer that refreshes the "Notifications off" warning.
     private var didBecomeActiveObserver: NSObjectProtocol?
     /// ND-082: set once the user confirmed Quit, so a double click can't re-enter.
@@ -195,6 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ND-082: arm the dead-man notification + heartbeat as early as possible.
         // ND-112: also clears any "didn't start after you logged in" from the last logout.
         lifecycleNotifier.start()
+        // ND-108: subscribe to MetricKit crash diagnostics (local summary only).
+        crashCollector.start()
         // ND-113: warn in the menu while notifications are denied. Refreshed now, on
         // every menu open (refreshMenuItems) and whenever the app is activated (e.g.
         // back from System Settings via one of our windows).
@@ -249,6 +254,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Log the effective matchThreshold once at launch (pairs with cooper's per-tick
         // score logging for tuning via `log stream`).
         logEffectiveMatchThreshold()
+        // ND-115: the store above was built from the PRESUMED descriptor while the model
+        // loads (ND-095). When the load resolves — especially to the Vision fallback —
+        // re-point Settings and the protection audit at the model actually in use, so
+        // the slider edits the threshold the recognizer reads.
+        if let deferred = embedder as? DeferredFaceEmbedder {
+            Task { @MainActor [weak self] in
+                let resolved = await deferred.resolvedEmbedder()
+                self?.embedderDidResolve(resolved.descriptor)
+            }
+        }
         let recognizer = IdentityRecognizer(
             embedder: embedder,
             store: enrollmentStore,
@@ -512,6 +527,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let authorization = await LifecycleNotifier.authorization()
             self?.menuBar?.setNotificationAuthorization(authorization)
         }
+    }
+
+    /// ND-115: the deferred embedder resolved. Re-seed Settings from the resolved model
+    /// (key / range / default) and refresh the audit; log the threshold now in effect.
+    /// A no-op for Settings when the load resolved to the presumed model.
+    private func embedderDidResolve(_ descriptor: FaceEmbeddingModelDescriptor) {
+        guard let settingsStore else { return }
+        if settingsStore.descriptor.version != descriptor.version {
+            Self.appLog.notice("settings re-pointed at the resolved face model \(descriptor.version, privacy: .public) (was \(settingsStore.descriptor.version, privacy: .public))")
+            settingsStore.adopt(descriptor: descriptor)
+            logEffectiveMatchThreshold()
+        }
+        refreshProtectionAudit()
     }
 
     /// ND-077: surface any security tunable weaker than its default in the menu. Reads
@@ -963,6 +991,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let enrollment = await Task.detached(priority: .userInitiated) {
                 store.enrollmentState()
             }.value
+            // ND-108: local crash summary; reads crash-report files, so off main.
+            let crashRecords = self?.crashCollector.records() ?? []
+            let crashLines = await Task.detached(priority: .userInitiated) {
+                CrashSummaryReport.lines(metricKit: crashRecords)
+            }.value
             // ND-082: when notifications are off, the dead-man / paused reminders can't
             // reach the user — surface that in diagnostics.
             let notificationStatus = await LifecycleNotifier.authorizationDescription()
@@ -988,7 +1021,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }(),
                 notificationStatusDescription: notificationStatus,
                 lockCapability: self.locker.selfTest(),   // resolve-only; reports the REAL result
-                cameraUnavailableReason: self.camera?.lastUnavailableReason
+                cameraUnavailableReason: self.camera?.lastUnavailableReason,
+                crashSummaryLines: crashLines
             )
         }
     }

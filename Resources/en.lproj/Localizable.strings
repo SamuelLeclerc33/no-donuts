@@ -206,3 +206,20 @@
 "It can’t access the camera, so it can’t tell if you’re here. Check camera permission or that no other app is using the camera." = "It can’t access the camera, so it can’t tell if you’re here. Check camera permission or that no other app is using the camera.";
 "The lid is closed, so the built-in camera can’t see you and your Mac won’t be locked automatically." = "The lid is closed, so the built-in camera can’t see you and your Mac won’t be locked automatically.";
 "This Mac has no built-in camera, so it won’t be locked automatically." = "This Mac has no built-in camera, so it won’t be locked automatically.";
+
+/* Final polish: Core reason strings (ND-101 follow-up), version display (ADR-0021). */
+"photo rejection (anti-spoofing) off" = "photo rejection (anti-spoofing) off";
+"lock sensitivity lowered (%@, default %@)" = "lock sensitivity lowered (%1$@, default %2$@)";
+"photo-rejection floor lowered (%@, default %@)" = "photo-rejection floor lowered (%1$@, default %2$@)";
+"no trusted built-in camera (external and virtual cameras aren’t trusted)" = "no trusted built-in camera (external and virtual cameras aren’t trusted)";
+"camera permission not granted yet" = "camera permission not granted yet";
+"camera access denied or restricted" = "camera access denied or restricted";
+"camera access state unknown" = "camera access state unknown";
+"no new image from the camera" = "no new image from the camera";
+"can’t open the camera" = "can’t open the camera";
+"can’t read images from the camera" = "can’t read images from the camera";
+"can’t start the camera" = "can’t start the camera";
+"No Donuts (development build)" = "No Donuts (development build)";
+"No Donuts %@ (%@)" = "No Donuts %1$@ (%2$@)";
+"development build" = "development build";
+"Version" = "Version";

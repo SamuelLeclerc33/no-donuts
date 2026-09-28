@@ -749,7 +749,7 @@ func runRecoveryManualLockAndPauseChecks(_ c: Checks) async {
 
     // Code review [1]: a FAILED manual lockNow() sets .lockFailed but records no
     // auto-lock episode state. A subsequent no-face tick must NOT clobber that warning with
-    // .absent (which would hide the "can't lock — grant Accessibility" status).
+    // .absent (which would hide the honest "can't lock" status, EC-19).
     do {
         let locker = SpyLocker(succeed: false)
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker)

@@ -296,8 +296,10 @@ struct SettingsView: View {
 
         var camera = info.cameraName ?? String(localized: "Built-in camera (not opened yet)")
         if let reason = info.cameraUnavailableReason {
-            // The reason itself comes from NoDonutsCore (CameraController) and stays English.
-            camera = String(localized: "\(camera), unavailable: \(reason)")
+            // The reason comes from NoDonutsCore (CameraController) in English; known
+            // values are localized here, an unknown one is shown as-is.
+            let localizedReason = CoreStrings.cameraUnavailableReason(reason)
+            camera = String(localized: "\(camera), unavailable: \(localizedReason)")
         }
         rows.append(RecognitionRow(label: String(localized: "Camera"), value: camera,
                                    warning: info.cameraUnavailableReason != nil))
@@ -404,6 +406,15 @@ struct SettingsView: View {
 
     private var diagnosticsSection: some View {
         Section("Diagnostics") {
+            // ADR-0021: which build is running (stamped by scripts/make-app.sh).
+            HStack(alignment: .firstTextBaseline) {
+                Text("Version")
+                Spacer(minLength: 12)
+                Text(verbatim: AppVersion.versionAndBuild)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
             HStack {
                 Button("Copy diagnostics") {
                     actions.copyDiagnostics()

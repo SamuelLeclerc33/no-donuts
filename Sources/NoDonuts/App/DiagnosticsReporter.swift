@@ -50,6 +50,8 @@ struct DiagnosticsReporter {
     ///     passes it in). `nil` → omitted.
     ///   - lockCapability: lock self-test result (ND-058) — mechanism names only.
     ///   - cameraUnavailableReason: last camera unavailable reason (ND-075), a fixed string.
+    ///   - crashSummaryLines: ND-108 local crash summary (`CrashSummaryReport.lines`),
+    ///     built off-main by the caller. Empty → section omitted.
     ///   - now: injectable clock for the timestamp (defaults to `Date()`).
     /// - Returns: a multi-line plaintext report with no PII.
     func diagnosticsSummary(
@@ -65,6 +67,7 @@ struct DiagnosticsReporter {
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
         cameraUnavailableReason: String? = nil,
+        crashSummaryLines: [String] = [],
         now: Date = Date()
     ) -> String {
         var lines: [String] = []
@@ -161,6 +164,12 @@ struct DiagnosticsReporter {
         lines.append("  Current router readable: \(routerLabel)")
         lines.append("")
 
+        // --- Local crash summary (ND-108): pre-built off-main by the caller ---
+        if !crashSummaryLines.isEmpty {
+            lines.append(contentsOf: crashSummaryLines)
+            lines.append("")
+        }
+
         // --- Recent app log tail (our subsystem only) ---
         lines.append("[Recent log — subsystem \(Log.subsystem)]")
         lines.append(recentLogTail())
@@ -199,6 +208,7 @@ struct DiagnosticsReporter {
         notificationStatusDescription: String? = nil,
         lockCapability: LockCapability,
         cameraUnavailableReason: String? = nil,
+        crashSummaryLines: [String] = [],
         now: Date = Date()
     ) -> String {
         let summary = diagnosticsSummary(
@@ -214,6 +224,7 @@ struct DiagnosticsReporter {
             notificationStatusDescription: notificationStatusDescription,
             lockCapability: lockCapability,
             cameraUnavailableReason: cameraUnavailableReason,
+            crashSummaryLines: crashSummaryLines,
             now: now
         )
         let pasteboard = NSPasteboard.general

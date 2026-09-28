@@ -169,6 +169,12 @@ public final class MenuBarController: NSObject {
         quitItem.target = self
         quitItem.isEnabled = true
         menu.addItem(quitItem)
+        // ADR-0021: which build is running, e.g. "No Donuts 0.4.0 (123)". Disabled
+        // (informational only); stamped into the bundle by scripts/make-app.sh.
+        menu.addItem(.separator())
+        let versionItem = NSMenuItem(title: AppVersion.displayString, action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
         statusItem.menu = menu
     }
 
@@ -212,12 +218,13 @@ public final class MenuBarController: NSObject {
     }
 
     /// ND-077: show/hide the "Protection reduced" line. `reasons` comes from Core's
-    /// `reducedProtectionReasons(descriptor:defaults:)`; empty → hidden.
+    /// `reducedProtectionReasons(descriptor:defaults:)` (English); each one is shown
+    /// localized via `CoreStrings.protectionReason`. Empty → hidden.
     public func setProtectionReducedReasons(_ reasons: [String]) {
         protectionReducedItem.isHidden = reasons.isEmpty
         protectionReducedItem.title = reasons.isEmpty
             ? ""
-            : String(localized: "⚠️ Protection reduced: \(reasons.joined(separator: "; "))")
+            : String(localized: "⚠️ Protection reduced: \(reasons.map(CoreStrings.protectionReason).joined(separator: "; "))")
     }
 
     /// Reflect the identity-recognition status (ND-073; replaces setEnrolled(_:)).

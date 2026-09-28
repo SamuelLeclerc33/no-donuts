@@ -13,7 +13,7 @@ public enum PresenceState: Equatable {
     case callAssumedPresent     // camera busy, no frames -> assume present (ADR-0003)
     case suspended              // screen locked / display asleep / session inactive
     case cameraUnavailable      // camera permission denied/restricted or no device — honest status, do not lock (EC-08)
-    case lockFailed             // lock was attempted but failed (e.g. Accessibility not granted) — honest status, EC-19
+    case lockFailed             // lock was attempted but not CGSession-confirmed (e.g. private SAC symbols missing, ADR-0010) — honest status, EC-19
 }
 
 /// Result of one recognition pass on a captured frame (owner: cooper).

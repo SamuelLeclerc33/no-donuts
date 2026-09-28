@@ -69,6 +69,40 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 cp "${BIN_PATH}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
 cp "${INFO_PLIST}" "${APP_DIR}/Contents/Info.plist"
 
+# --- version stamping (ND-067) ----------------------------------------------
+# Stamp the BUNDLE's Info.plist copy (never the source Resources/Info.plist, whose
+# values are placeholders) from git, BEFORE codesign so the signature seals it:
+#   CFBundleVersion            = `git rev-list --count HEAD` (monotonic on trunk; integer)
+#   CFBundleShortVersionString =
+#     - a tag is reachable: `git describe --tags` minus a leading "v"
+#         v1.1.0 on HEAD          -> 1.1.0
+#         3 commits past v1.1.0   -> 1.1.0-3-g<sha>
+#     - no tag yet: "0.<commit-count>-g<sha>" (e.g. 0.57-g44dbfbc)
+#     - either way "-dirty" is appended when TRACKED files differ from HEAD
+#       (untracked files don't count — same rule as `git describe --dirty`).
+# Not a git checkout (e.g. a source tarball) -> "0.0.0-nogit" / 0, with a warning.
+# NOTE for ND-050: App Store-style validators want a purely numeric X.Y.Z short
+# version; tag the release commit so a clean release build stamps exactly "X.Y.Z".
+INFO_PLIST_BUNDLE="${APP_DIR}/Contents/Info.plist"
+if git rev-parse --verify -q HEAD >/dev/null 2>&1; then
+    BUILD_NUMBER="$(git rev-list --count HEAD)"
+    DIRTY_SUFFIX=""
+    if ! git diff --quiet HEAD -- 2>/dev/null; then DIRTY_SUFFIX="-dirty"; fi
+    if TAG_DESCRIBE="$(git describe --tags 2>/dev/null)"; then
+        SHORT_VERSION="${TAG_DESCRIBE#v}${DIRTY_SUFFIX}"
+    else
+        SHORT_VERSION="0.${BUILD_NUMBER}-g$(git rev-parse --short HEAD)${DIRTY_SUFFIX}"
+    fi
+else
+    echo "warning: not a git checkout; stamping placeholder version" >&2
+    BUILD_NUMBER="0"
+    SHORT_VERSION="0.0.0-nogit"
+fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${SHORT_VERSION}" "${INFO_PLIST_BUNDLE}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER}" "${INFO_PLIST_BUNDLE}"
+plutil -lint -s "${INFO_PLIST_BUNDLE}"
+echo "==> stamped version ${SHORT_VERSION} (build ${BUILD_NUMBER})"
+
 # --- Core ML face model (ND-021 Phase 2 / ADR-0014, ND-087, ND-104) ----------
 # Drop the compiled FaceNet model (.mlmodelc) into Contents/Resources/ so Bundle.main
 # resolves it at runtime and CoreMLFaceEmbedder loads it. The blobs are git-ignored
@@ -227,6 +261,6 @@ codesign --force --sign "${SIGN_IDENTITY}" \
 
 # --- done -------------------------------------------------------------------
 echo ""
-echo "Built: ${APP_DIR}  (mode: ${MODE}, -c ${CONFIG})"
+echo "Built: ${APP_DIR}  (mode: ${MODE}, -c ${CONFIG}, version ${SHORT_VERSION}, build ${BUILD_NUMBER})"
 echo "  Run:           open ${APP_DIR}"
 echo "  Reset camera:  tccutil reset Camera com.nodonuts.app   # re-test the permission prompt"

@@ -35,6 +35,7 @@ open build/NoDonuts.app        # launch it
 ## App bundle, signing, entitlements
 
 - `Resources/Info.plist` must include `NSCameraUsageDescription` and `LSUIElement = true` (plus `CFBundleExecutable = NoDonuts`).
+- **Version stamping (ND-067):** the version keys in `Resources/Info.plist` are placeholders (`0.0.0-unstamped` / `0`). `make-app.sh` stamps the **bundle's copy** via PlistBuddy before codesign: `CFBundleVersion` = `git rev-list --count HEAD`; `CFBundleShortVersionString` = `git describe --tags` minus a leading `v` (e.g. `1.1.0`, or `1.1.0-3-g<sha>` past the tag), or `0.<commit-count>-g<sha>` when no tag exists yet; `-dirty` is appended when tracked files differ from HEAD. It prints `==> stamped version …`. Check: `plutil -p build/NoDonuts.app/Contents/Info.plist | grep -i version`. Tag the release commit so a clean release build stamps a plain `X.Y.Z`.
 - `Resources/NoDonuts.entitlements` carries the camera and location entitlements (location is needed for SSID reads once the hardened runtime is on, ND-088); `make-app.sh` embeds it at sign time.
 - Ad-hoc signing (`--sign -`) works for local runs, but see **Stable dev signing** below to stop re-prompts. **Distribution** needs Developer-ID signing + notarization (ND-050) — ad-hoc bundles aren't Gatekeeper-distributable and TCC grants don't transfer to other machines.
 

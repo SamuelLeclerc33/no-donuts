@@ -50,7 +50,10 @@ final class SettingsStore: ObservableObject {
     private let defaults: UserDefaults
 
     /// The ACTIVE embedder's descriptor (ND-076). Owns the threshold key, range and default.
-    private let descriptor: FaceEmbeddingModelDescriptor
+    /// ND-115: can change ONCE after launch, when a deferred model load resolves to a
+    /// different embedder (Core ML load failed → Vision fallback) — see `adopt(descriptor:)`.
+    /// Published so the slider bounds / default caption redraw with the new model.
+    @Published private(set) var descriptor: FaceEmbeddingModelDescriptor
 
     /// Per-model override key, e.g. `matchThreshold.facenet-vggface2-v2`.
     private var thresholdKey: String { descriptor.thresholdOverrideKey }
@@ -143,6 +146,17 @@ final class SettingsStore: ObservableObject {
         self.descriptor = descriptor
         self.defaults = defaults
         load()
+    }
+
+    /// ND-115: switch to the embedder the recognizer ACTUALLY uses once a deferred model
+    /// load resolves (success or fallback). Re-seeds the slider from the new model's key /
+    /// range / default without writing anything (the old model's override stays under its
+    /// own key). No-op when the version is unchanged. Doesn't fire `onChange` (no tunable
+    /// changed); the caller refreshes the protection audit itself.
+    func adopt(descriptor newDescriptor: FaceEmbeddingModelDescriptor) {
+        guard newDescriptor.version != descriptor.version else { return }
+        descriptor = newDescriptor
+        loadMatchThreshold()
     }
 
     /// "Reset to default" (ND-076): remove the per-model override so the recognizer falls

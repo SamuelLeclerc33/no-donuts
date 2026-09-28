@@ -19,10 +19,13 @@
 	<string>No Donuts</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- ND-067: placeholders only. scripts/make-app.sh stamps the BUNDLE's copy of this
+	     file from git (CFBundleShortVersionString = git describe, CFBundleVersion =
+	     commit count) before codesign. Don't hand-edit these for a release. -->
 	<key>CFBundleShortVersionString</key>
-	<string>0.0.1</string>
+	<string>0.0.0-unstamped</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>LSUIElement</key>
