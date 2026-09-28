@@ -47,5 +47,22 @@ func runAll() async -> Bool {
     return c.failed == 0
 }
 
+/// Remove the throwaway UserDefaults suites EngineCheck creates. `removePersistentDomain`
+/// empties a domain but cfprefsd leaves the .plist behind, and UUID-named suites would
+/// otherwise pile up in ~/Library/Preferences (found 843 of them). Only files with
+/// EngineCheck's OWN prefixes are touched — never the app's `com.nodonuts.app`.
+func cleanUpTestPreferenceFiles() {
+    let prefixes = ["com.nodonuts.enginecheck.", "nd062.check."]
+    let fm = FileManager.default
+    let dir = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Preferences", isDirectory: true)
+    guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
+    for name in names where name.hasSuffix(".plist") && prefixes.contains(where: { name.hasPrefix($0) }) {
+        let domain = String(name.dropLast(".plist".count))
+        UserDefaults.standard.removePersistentDomain(forName: domain)
+        try? fm.removeItem(at: dir.appendingPathComponent(name))
+    }
+}
+
 let ok = await runAll()
+cleanUpTestPreferenceFiles()
 exit(ok ? 0 : 1)

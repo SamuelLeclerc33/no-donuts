@@ -78,4 +78,4 @@ else
     echo "To start at login (with crash/kill relaunch): Settings › \"Start at login\"."
 fi
 echo "On first launch, grant Camera (and Location, if you use trusted Wi-Fi) when prompted."
-echo "To stop auto-starting: scripts/uninstall-launchagent.sh"
+echo "To stop auto-starting: scripts/uninstall.sh --keep-app  (full removal: scripts/uninstall.sh [--purge])"

@@ -8,7 +8,7 @@ import os.log
 // NOTE: For the real camera prompt + LSUIElement behavior, this must run as a
 // signed .app bundle — `scripts/make-app.sh`, CLT only (ADR-0008, build-run skill).
 
-// ND-052 / ADR-0018: `NoDonuts --unregister` (used by scripts/uninstall-launchagent.sh).
+// ND-052 / ADR-0018: `NoDonuts --unregister` (used by scripts/uninstall.sh).
 // Handled BEFORE the single-instance guard so it works while (or after) the app runs.
 // No UI, no camera: drop both launcher registrations (bundled agent + legacy mainApp)
 // and every pending/delivered nd.* notification, so no "isn't running" alert fires

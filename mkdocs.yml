@@ -32,6 +32,7 @@ nav:
   - Product Requirements: PRD.md
   - Architecture: ARCHITECTURE.md
   - Security & Privacy: SECURITY_PRIVACY.md
+  - Deployment (internal / MDM): DEPLOYMENT.md
   - Decisions (ADRs):
       - Overview: adr/README.md
       - "ADR-0001 — Form factor": adr/0001-form-factor.md

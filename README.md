@@ -47,6 +47,7 @@ Full design in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - [`docs/SECURITY_PRIVACY.md`](docs/SECURITY_PRIVACY.md) — threat model, data handling, anti-spoofing
 - [`docs/BACKLOG.md`](docs/BACKLOG.md) — the living backlog (we track work here)
 - [`docs/EDGE_CASES.md`](docs/EDGE_CASES.md) — running list of edge cases to validate together
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — internal / MDM deployment, permissions, updates, uninstall, privacy notes for IT
 - [`docs/adr/`](docs/adr/) — architecture decision records
 
 ## Build / run
@@ -63,10 +64,12 @@ open build/NoDonuts.app
 ```sh
 scripts/install-app.sh             # build + install to /Applications + open
 scripts/migrate-launcher.sh        # one-time: remove the old ~/Library/LaunchAgents/com.nodonuts.agent.plist
-scripts/uninstall-launchagent.sh   # stop the app + legacy agent (then turn off Settings › Start at login)
+scripts/uninstall.sh --keep-app    # stop + turn off start at login, keep the app and data
+scripts/uninstall.sh               # uninstall the app (enrollment + settings kept)
+scripts/uninstall.sh --purge       # uninstall + delete all local data (asks you to type "yes")
 ```
 
-Distribution (Developer-ID signing + notarization) needs more — see ND-050. Details in the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
+Distribution (Developer-ID signing + notarization) needs more — see ND-050. Deploying to colleagues' Macs (DMG or MDM, permission payloads, uninstall) is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Details in the `build-run` skill: [`.claude/skills/build-run/SKILL.md`](.claude/skills/build-run/SKILL.md).
 
 ### Tuning & diagnostics (on-device, no rebuild)
 

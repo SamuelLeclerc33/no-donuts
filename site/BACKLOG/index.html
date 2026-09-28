@@ -335,6 +335,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../DEPLOYMENT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment (internal / MDM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -349,10 +376,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -370,8 +397,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1446,7 +1473,7 @@
 38. ✅ ND-103 — CI (<code>swift build</code> + <code>swift run EngineCheck</code> on macOS runner) — gordon
 39. ✅ ND-104 — release mode fails when the model is absent — gordon
 40. ✅ ND-109 — threat-model table in <code>SECURITY_PRIVACY.md</code> — wiggum
-41. ND-050 → ND-051 → ND-052 → ND-053 — codesign/notarize, DMG, uninstall (<code>--purge</code> + SMAppService unregister), MDM notes — gordon</p>
+41. ND-050 → ND-051 → ✅ ND-052 → ✅ ND-053 — codesign/notarize, DMG, uninstall (<code>--purge</code> + SMAppService unregister), MDM notes — gordon</p>
 <p><strong>Tier 4 — performance, power, UX polish:</strong>
 42. ✅ ND-042 — loop timing + power (deadline tick, cancellation-aware capture, pre-warm, buffer copy) — blart + homer
 43. ✅ ND-096 — capture preset 640×480, lowest fps range, follow <code>systemPreferredCamera</code> — blart
@@ -1556,8 +1583,8 @@
 <ul>
 <li>[ ] ND-050 Codesign + notarization pipeline — gordon (needs a decision ADR first: signing account (personal/Chrono — <strong>not</strong> the Serko account), final bundle id, hardened-runtime entitlement audit, <code>notarytool</code> flow. <strong>Blocked on ND-065</strong> — renaming the bundle id without the Keychain-service migration plan silently orphans enrollments)</li>
 <li>[ ] ND-051 Signed <code>.app</code> + DMG/installer — gordon</li>
-<li>[ ] ND-052 Uninstall path (remove LaunchAgent + data) <strong>Progress 2026-09-28:</strong> <code>NoDonuts --unregister</code> exists and <code>uninstall-launchagent.sh</code> calls it (agent + legacy login item unregistered, pending notifications cleared); <code>--purge</code> of the Keychain, defaults and TCC is still to do — gordon (scope from review: <code>uninstall.sh --purge</code> = agent + <code>/Applications</code> app + Keychain enrollment item + <code>defaults delete com.nodonuts.app</code> + <code>tccutil reset Camera</code> + unregister the <code>SMAppService</code> login item (today the app returns at next login after "uninstall") — a trust/privacy story this app markets on)</li>
-<li>[ ] ND-053 MDM/enterprise deployment notes — gordon. <strong>Now in scope (internal distribution, ND-111):</strong> if colleagues' Macs are company-managed, deploy via MDM. Note that a PPPC profile can pre-DENY but cannot pre-GRANT camera access, so each user still clicks Allow once. Document the LaunchAgent vs login-item choice for managed installs (ND-083).</li>
+<li>[x] ND-052 Uninstall path (remove LaunchAgent + data) <strong>Progress 2026-09-28:</strong> <code>NoDonuts --unregister</code> exists and <code>uninstall-launchagent.sh</code> calls it (agent + legacy login item unregistered, pending notifications cleared); <code>--purge</code> of the Keychain, defaults and TCC is still to do <strong>DONE 2026-09-28:</strong> <code>scripts/uninstall.sh</code>: default removes the app and launchers; <code>--purge</code> also deletes the Keychain enrollment, <code>defaults</code> domain, <code>tccutil reset All com.nodonuts.app</code>, and Application Support/Caches/HTTPStorages/Saved State (fixed paths only). <code>--purge</code> needs a typed "yes" or <code>--yes</code> and is refused without a TTY; <code>--dry-run</code>; refuses to run as root; checks the bundle ID and symlinks before executing or deleting the app; HOME guard. <code>uninstall-launchagent.sh</code> = <code>--keep-app</code> alias. Reviewed for safety; only <code>--dry-run</code> has been exercised — gordon (scope from review: <code>uninstall.sh --purge</code> = agent + <code>/Applications</code> app + Keychain enrollment item + <code>defaults delete com.nodonuts.app</code> + <code>tccutil reset Camera</code> + unregister the <code>SMAppService</code> login item (today the app returns at next login after "uninstall") — a trust/privacy story this app markets on)</li>
+<li>[x] ND-053 MDM/enterprise deployment notes <strong>DONE 2026-09-28:</strong> <code>docs/DEPLOYMENT.md</code> covers DMG/MDM install, managed login-item and notification payload templates, why PPPC can't pre-grant Camera, Location/Local Network, Keychain prompts vs Team ID, updates, uninstall, and a Law 25 note. Status: not deployable until ND-111/050/051. Payloads are templates, not yet tested on a managed Mac — gordon. <strong>Now in scope (internal distribution, ND-111):</strong> if colleagues' Macs are company-managed, deploy via MDM. Note that a PPPC profile can pre-DENY but cannot pre-GRANT camera access, so each user still clicks Allow once. Document the LaunchAgent vs login-item choice for managed installs (ND-083).</li>
 </ul>
 <h2 id="m6-v12-hardening-from-the-2026-07-02-full-review">M6 — v1.2 Hardening (from the 2026-07-02 full review)<a class="headerlink" href="#m6-v12-hardening-from-the-2026-07-02-full-review" title="Permanent link">&para;</a></h2>
 <p><em>Each done item in M0–M3 was re-verified against the code by its owning agent. All claims held (no functional regressions; <code>EngineCheck</code> 47/47). These are the gaps and promotions the review produced. Several existing follow-up bullets above are absorbed by these items — the item text says which.</em></p>

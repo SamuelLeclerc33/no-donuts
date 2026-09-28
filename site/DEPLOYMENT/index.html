@@ -1,0 +1,1855 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="On-device, privacy-first macOS menu-bar app that locks your Mac when you walk away. Don't get donut'd.">
+      
+      
+      
+      
+        <link rel="prev" href="../SECURITY_PRIVACY/">
+      
+      
+        <link rel="next" href="../adr/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Deployment (internal / MDM) - No Donuts</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deployment-internal-mdm" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="No Donuts" class="md-header__button md-logo" aria-label="No Donuts" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            No Donuts
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deployment (internal / MDM)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="No Donuts" class="md-nav__button md-logo" aria-label="No Donuts" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 2.05v3.03c3.39.49 6 3.39 6 6.92 0 .9-.18 1.75-.5 2.54l2.62 1.53c.56-1.24.88-2.62.88-4.07 0-5.18-3.95-9.45-9-9.95M12 19a7 7 0 0 1-7-7c0-3.53 2.61-6.43 6-6.92V2.05c-5.06.5-9 4.76-9 9.95a10 10 0 0 0 10 10c3.3 0 6.23-1.61 8.05-4.09l-2.6-1.53A6.89 6.89 0 0 1 12 19"/></svg>
+
+    </a>
+    No Donuts
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PRD/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Product Requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SECURITY_PRIVACY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment (internal / MDM)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment (internal / MDM)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-installed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets installed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-hardware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported hardware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-signed-notarized-dmg-small-groups-unmanaged-macs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A: signed, notarized DMG (small groups, unmanaged Macs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-mdm-package-managed-macs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B: MDM package (managed Macs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#permissions-and-payloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permissions and payloads
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Permissions and payloads">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#managed-login-item-service-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managed login item (Service Management)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#camera-pppc-cant-pre-grant-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camera: PPPC can't pre-grant it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#location-and-local-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Location and Local Network
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keychain-prompts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keychain prompts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-notes-for-colleagues-and-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy notes for colleagues and IT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decisions (ADRs)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Decisions (ADRs)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0001-form-factor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0001 — Form factor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0002-face-recognition-engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0002 — Face recognition engine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0003-camera-in-use-policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0003 — Camera-in-use policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0004-app-identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0004 — App identity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0005-presence-loop-concurrency/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0005 — Presence loop concurrency
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0006-screen-lock-mechanism/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0006 — Screen-lock mechanism
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0007-package-layout-testable-core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0007 — Package layout (testable core)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0008-app-packaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0008 — App packaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0009-session-suspend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0009 — Session suspend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0010-screen-lock-no-accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0010 — Screen lock (no Accessibility)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0011-enforcement-gating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0011 — Enforcement gating
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0012-local-identity-featureprint/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0012 — Local identity (feature print)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0013-settings-ui-and-login-item/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0013 — Settings UI + login item
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0014-coreml-face-embedding-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0014 — Core ML face-embedding model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0015-camera-trust-built-in-only/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0015 — Camera trust: built-in only
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0016-bounded-camera-unavailable/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0016 — Bounded camera-unavailable window
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0017-stranger-fast-lock/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0017 — Stranger fast lock
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0018-bundled-keepalive-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0018 — Bundled KeepAlive agent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0019-validated-tunables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0019 — Validated tunables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0020-docs-site/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0020 — Docs site
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0021-updates-no-in-app-updater/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0021 — Updates (no in-app updater)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BACKLOG/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backlog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../EDGE_CASES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Edge Cases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-gets-installed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What gets installed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-hardware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported hardware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Install">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-signed-notarized-dmg-small-groups-unmanaged-macs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A: signed, notarized DMG (small groups, unmanaged Macs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-mdm-package-managed-macs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B: MDM package (managed Macs)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#permissions-and-payloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Permissions and payloads
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Permissions and payloads">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#managed-login-item-service-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Managed login item (Service Management)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#camera-pppc-cant-pre-grant-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camera: PPPC can't pre-grant it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#location-and-local-network" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Location and Local Network
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keychain-prompts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keychain prompts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uninstall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uninstall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-notes-for-colleagues-and-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Privacy notes for colleagues and IT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="deployment-internal-mdm">Deployment — internal / MDM<a class="headerlink" href="#deployment-internal-mdm" title="Permanent link">&para;</a></h1>
+<p>Practical notes for putting No Donuts on colleagues' Macs, by hand or through the company's MDM (ND-053). Audience: whoever does the rollout, and the IT/security people who have to approve it.</p>
+<div class="admonition warning">
+<p class="admonition-title">Status (2026-09-28): not deployable to colleagues yet</p>
+<p>Today's builds are <strong>ad-hoc</strong> or <strong>self-signed "No Donuts Dev"</strong> (<code>scripts/make-app.sh</code>, <a href="../adr/0008-app-packaging/">ADR-0008</a>). They have <strong>no Team ID</strong> and are <strong>not notarized</strong>. Gatekeeper blocks them on any other Mac, MDM can't install them as a signed package, and the rules below that key on a Team ID can't be written yet.</p>
+<p>Blocking items: <strong>ND-111</strong> (distribution decision: channel, signing identity, IT and privacy sign-off; deferred), <strong>ND-050</strong> (Developer ID signing + notarization), <strong>ND-051</strong> (DMG). This page describes the target setup so IT can review it ahead of time.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Templates</p>
+<p>Every payload on this page is a <strong>template to verify with IT</strong> against your MDM vendor's schema and Apple's current <a href="https://developer.apple.com/documentation/devicemanagement">device-management reference</a>. Replace <code>TEAMID1234</code> with the real Team ID from ND-050, and generate fresh <code>PayloadUUID</code>s (<code>uuidgen</code>). None of these payloads have been tested on a managed Mac yet.</p>
+</div>
+<h2 id="what-gets-installed">What gets installed<a class="headerlink" href="#what-gets-installed" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Where</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The app</td>
+<td><code>/Applications/NoDonuts.app</code></td>
+<td>Menu-bar only (<code>LSUIElement</code>), no Dock icon. macOS 15+.</td>
+</tr>
+<tr>
+<td>Launcher</td>
+<td>Inside the app: <code>Contents/Library/LaunchAgents/com.nodonuts.app.agent.plist</code></td>
+<td>Registered with <code>SMAppService</code> when the user turns on <strong>Settings › Start at login</strong> (<a href="../adr/0018-bundled-keepalive-agent/">ADR-0018</a>). Nothing is written to <code>~/Library/LaunchAgents</code>. KeepAlive: a crash or kill relaunches it; a confirmed Quit stays quit.</td>
+</tr>
+<tr>
+<td>Enrollment</td>
+<td>Login Keychain, generic password, service <code>com.nodonuts.app</code>, account <code>enrollment</code></td>
+<td>Face <strong>embeddings</strong> only, never images (<a href="../SECURITY_PRIVACY/">SECURITY_PRIVACY</a>).</td>
+</tr>
+<tr>
+<td>Settings</td>
+<td><code>defaults</code> domain <code>com.nodonuts.app</code></td>
+<td>Thresholds, trusted Wi-Fi, etc.</td>
+</tr>
+<tr>
+<td>Lock file</td>
+<td><code>~/Library/Application Support/NoDonuts/instance.lock</code></td>
+<td>Single-instance guard (ND-083).</td>
+</tr>
+</tbody>
+</table>
+<p>Everything is per user. The app never needs admin rights to run, uses no kernel or system extension, and needs no Accessibility permission (<a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>).</p>
+<h2 id="supported-hardware">Supported hardware<a class="headerlink" href="#supported-hardware" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>MacBooks with a built-in camera</strong> (the company fleet profile, ND-111(e)), macOS 15 or later.</li>
+<li><strong>Desktops (Mac mini, Mac Studio, Mac Pro) and clamshell use with an external webcam are unsupported.</strong> The app trusts only the built-in camera (<a href="../adr/0015-camera-trust-built-in-only/">ADR-0015</a>). External USB webcams, iPhone Continuity Camera and virtual cameras are ignored on purpose (anti-spoofing). With no built-in camera the app reports "camera unavailable" and <strong>does not lock</strong> (EC-07). Don't deploy it where it can't protect anything.</li>
+<li>An iMac has a built-in camera but isn't part of the validated fleet profile.</li>
+</ul>
+<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
+<h3 id="option-a-signed-notarized-dmg-small-groups-unmanaged-macs">Option A: signed, notarized DMG (small groups, unmanaged Macs)<a class="headerlink" href="#option-a-signed-notarized-dmg-small-groups-unmanaged-macs" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Share the notarized <code>NoDonuts.dmg</code> (ND-051) through the usual internal channel.</li>
+<li>The user drags <code>NoDonuts.app</code> to <code>/Applications</code> and opens it.</li>
+<li>On first run: allow <strong>Camera</strong>, enroll, then turn on <strong>Settings › Start at login</strong>. If macOS asks, approve No Donuts in System Settings › General › Login Items.</li>
+<li>Allow <strong>Notifications</strong> when asked. This matters (see <a href="#notifications">Notifications</a>).</li>
+</ol>
+<h3 id="option-b-mdm-package-managed-macs">Option B: MDM package (managed Macs)<a class="headerlink" href="#option-b-mdm-package-managed-macs" title="Permanent link">&para;</a></h3>
+<p>Build a signed flat package that installs the app to <code>/Applications</code>, notarize it, and hand it to the MDM:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Template: identities and profile names come from ND-050.</span>
+productbuild<span class="w"> </span>--component<span class="w"> </span>build/NoDonuts.app<span class="w"> </span>/Applications<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--sign<span class="w"> </span><span class="s2">&quot;Developer ID Installer: &lt;Company&gt; (TEAMID1234)&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>NoDonuts-&lt;version&gt;.pkg
+xcrun<span class="w"> </span>notarytool<span class="w"> </span>submit<span class="w"> </span>NoDonuts-&lt;version&gt;.pkg<span class="w"> </span>--keychain-profile<span class="w"> </span><span class="s2">&quot;&lt;profile&gt;&quot;</span><span class="w"> </span>--wait
+xcrun<span class="w"> </span>stapler<span class="w"> </span>staple<span class="w"> </span>NoDonuts-&lt;version&gt;.pkg
+</code></pre></div>
+<p>Then push these profiles <strong>before</strong> or <strong>with</strong> the package, so nothing prompts that doesn't have to:</p>
+<ol>
+<li><a href="#managed-login-item-service-management">Managed login item</a> (no "Background item added" approval).</li>
+<li><a href="#notifications">Notification settings</a> (alerts on, so the safety alarms can reach the user).</li>
+<li>No PPPC profile is needed. See <a href="#camera-pppc-cant-pre-grant-it">Camera</a>.</li>
+</ol>
+<p>Even with MDM, each user still has to <strong>allow the camera once</strong> and <strong>enroll</strong>. Nobody else can enroll for them, and that's by design.</p>
+<div class="admonition info">
+<p class="admonition-title">Start at login is still a user action</p>
+<p>The managed login item payload approves the agent and stops the user from disabling it in System Settings. It does <strong>not</strong> register it. Registration happens when the user turns on <strong>Settings › Start at login</strong> (ADR-0018). Having the app turn it on by itself on managed Macs would be a new decision (ADR) and isn't built.</p>
+</div>
+<h2 id="permissions-and-payloads">Permissions and payloads<a class="headerlink" href="#permissions-and-payloads" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Asked when</th>
+<th>Can MDM pre-grant it?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Camera</td>
+<td>First launch</td>
+<td><strong>No.</strong> PPPC can only <strong>deny</strong> Camera. The user clicks Allow once.</td>
+</tr>
+<tr>
+<td>Login item / background item</td>
+<td>Start at login is turned on</td>
+<td><strong>Yes</strong>, with a managed login items payload.</td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td>First launch</td>
+<td><strong>Yes</strong>, with a notification settings payload.</td>
+</tr>
+<tr>
+<td>Location</td>
+<td>Only if the user trusts a Wi-Fi network</td>
+<td>No.</td>
+</tr>
+<tr>
+<td>Local Network</td>
+<td>Only for the trusted-Wi-Fi router check</td>
+<td>No.</td>
+</tr>
+<tr>
+<td>Keychain access</td>
+<td>Reading the enrollment</td>
+<td>Not a TCC permission. It goes away with a stable Team-ID signature (ND-050).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="managed-login-item-service-management">Managed login item (Service Management)<a class="headerlink" href="#managed-login-item-service-management" title="Permanent link">&para;</a></h3>
+<p>Payload type <code>com.apple.servicemanagement</code> (macOS 13+). It pre-approves the bundled agent, so users don't get the "Background Items Added" approval and can't switch it off in System Settings. They can still use the app's own Quit, which is confirmed and triggers the "was quit" reminder (<a href="../adr/0018-bundled-keepalive-agent/">ADR-0018</a>).</p>
+<p>Prefer the <strong>Team ID + label</strong> rule: it only matches code signed by your team. A bundle-id-only rule matches any binary that claims that id.</p>
+<div class="highlight"><pre><span></span><code><span class="cm">&lt;!-- TEMPLATE: verify with IT. Needs the ND-050 Team ID. --&gt;</span>
+<span class="nt">&lt;dict&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadType<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;string&gt;</span>com.apple.servicemanagement<span class="nt">&lt;/string&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadIdentifier<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;string&gt;</span>com.nodonuts.app.managed-login-item<span class="nt">&lt;/string&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadUUID<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;string&gt;</span>REPLACE-WITH-uuidgen<span class="nt">&lt;/string&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadVersion<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;integer&gt;</span>1<span class="nt">&lt;/integer&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>Rules<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;array&gt;</span>
+<span class="w">        </span><span class="nt">&lt;dict&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>RuleType<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;string&gt;</span>Label<span class="nt">&lt;/string&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>RuleValue<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;string&gt;</span>com.nodonuts.app.agent<span class="nt">&lt;/string&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>TeamIdentifier<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;string&gt;</span>TEAMID1234<span class="nt">&lt;/string&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>Comment<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;string&gt;</span>No<span class="w"> </span>Donuts<span class="w"> </span>bundled<span class="w"> </span>KeepAlive<span class="w"> </span>agent<span class="w"> </span>(ADR-0018)<span class="nt">&lt;/string&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/dict&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/array&gt;</span>
+<span class="nt">&lt;/dict&gt;</span>
+</code></pre></div>
+<p>Alternatives if your MDM prefers them: <code>RuleType</code> <code>TeamIdentifier</code> with <code>RuleValue</code> <code>TEAMID1234</code> (approves everything your team signs), or <code>BundleIdentifier</code> <code>com.nodonuts.app</code>.</p>
+<h3 id="camera-pppc-cant-pre-grant-it">Camera: PPPC can't pre-grant it<a class="headerlink" href="#camera-pppc-cant-pre-grant-it" title="Permanent link">&para;</a></h3>
+<p>The Privacy Preferences Policy Control payload (<code>com.apple.TCC.configuration-profile-policy</code>) can set Camera only to <strong>Deny</strong>. Apple doesn't let MDM grant the camera (or the microphone, or screen recording) without the user. So:</p>
+<ul>
+<li><strong>Don't</strong> ship a Camera PPPC entry for No Donuts. The only possible value would block the app.</li>
+<li>Tell users to expect one "No Donuts would like to access the camera" prompt, and to click <strong>Allow</strong>.</li>
+<li>If a user clicked Don't Allow: System Settings › Privacy &amp; Security › Camera › turn No Donuts on. The app shows an honest "not protecting" state until then (ND-086).</li>
+<li>The grant is tied to the code signature. Keep one Developer ID identity across releases, or users get asked again after every update (<a href="../adr/0021-updates-no-in-app-updater/">ADR-0021</a>).</li>
+</ul>
+<p>No Donuts doesn't need Accessibility, Screen Recording, Full Disk Access or Input Monitoring, so there's nothing else to put in a PPPC profile.</p>
+<h3 id="notifications">Notifications<a class="headerlink" href="#notifications" title="Permanent link">&para;</a></h3>
+<p><strong>Important.</strong> The safety alarms are local notifications: "No Donuts isn't running" (the dead-man alert, ADR-0018), "Couldn't lock your Mac" (ND-054), "Not protecting" and "Identity off" (ND-073). If notifications are denied, none of them can fire, and after a kill nothing tells the user. The app shows a persistent menu warning in that case (ND-113), but pre-enabling notifications is the real fix.</p>
+<p>Payload type <code>com.apple.notificationsettings</code>. <code>AlertType</code> <code>2</code> means persistent <strong>Alerts</strong> (they stay on screen until dismissed), which suits these warnings better than banners that disappear. Use <code>1</code> (banners) if your users object.</p>
+<div class="highlight"><pre><span></span><code><span class="cm">&lt;!-- TEMPLATE: verify with IT. --&gt;</span>
+<span class="nt">&lt;dict&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadType<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;string&gt;</span>com.apple.notificationsettings<span class="nt">&lt;/string&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadIdentifier<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;string&gt;</span>com.nodonuts.app.notifications<span class="nt">&lt;/string&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadUUID<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;string&gt;</span>REPLACE-WITH-uuidgen<span class="nt">&lt;/string&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>PayloadVersion<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;integer&gt;</span>1<span class="nt">&lt;/integer&gt;</span>
+<span class="w">    </span><span class="nt">&lt;key&gt;</span>NotificationSettings<span class="nt">&lt;/key&gt;</span>
+<span class="w">    </span><span class="nt">&lt;array&gt;</span>
+<span class="w">        </span><span class="nt">&lt;dict&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>BundleIdentifier<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;string&gt;</span>com.nodonuts.app<span class="nt">&lt;/string&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>NotificationsEnabled<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;true/&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>AlertType<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;integer&gt;</span>2<span class="nt">&lt;/integer&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>ShowInLockScreen<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;true/&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>ShowInNotificationCenter<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;true/&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>SoundsEnabled<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;true/&gt;</span>
+<span class="w">            </span><span class="nt">&lt;key&gt;</span>BadgesEnabled<span class="nt">&lt;/key&gt;</span>
+<span class="w">            </span><span class="nt">&lt;false/&gt;</span>
+<span class="w">        </span><span class="nt">&lt;/dict&gt;</span>
+<span class="w">    </span><span class="nt">&lt;/array&gt;</span>
+<span class="nt">&lt;/dict&gt;</span>
+</code></pre></div>
+<p>To check on a test Mac: the menu must <strong>not</strong> show "Notifications off", and <strong>Copy diagnostics</strong> should report notifications as authorized.</p>
+<h3 id="location-and-local-network">Location and Local Network<a class="headerlink" href="#location-and-local-network" title="Permanent link">&para;</a></h3>
+<p>Both are used only by <strong>trusted Wi-Fi</strong> (skip locking on a network the user marked as theirs). A user who never trusts a network never sees either prompt.</p>
+<ul>
+<li><strong>Location:</strong> macOS only exposes the Wi-Fi name (SSID) to apps with Location permission. MDM can't grant per-app Location. Location Services must also be on system-wide, and some companies turn it off by policy. If so, trusted Wi-Fi can't work, and the rest of the app is unaffected.</li>
+<li><strong>Local Network:</strong> used to read the router's hardware (MAC) address, so a look-alike hotspot with the same name isn't trusted. Nothing is sent. There's no MDM grant for it; the user allows it once.</li>
+</ul>
+<p>Security note for IT: you may prefer to <strong>disable trusted Wi-Fi</strong> on company Macs, because "never lock on this network" is a policy choice. There's no managed setting for that yet. If you want one, file a backlog item.</p>
+<h3 id="keychain-prompts">Keychain prompts<a class="headerlink" href="#keychain-prompts" title="Permanent link">&para;</a></h3>
+<p>With today's dev signatures, macOS asks "NoDonuts wants to use your confidential information" after each rebuild. The login-keychain ACL falls back to the binary hash when there's no Team ID (ND-102). A <strong>Developer ID signature with a Team ID</strong> (ND-050) makes the ACL stable across updates, so users see it at most once (for example after a bundle-id change, ND-065).</p>
+<h2 id="updates">Updates<a class="headerlink" href="#updates" title="Permanent link">&para;</a></h2>
+<p>There's no in-app updater, and the app makes no internet connections (<a href="../adr/0021-updates-no-in-app-updater/">ADR-0021</a>).</p>
+<ul>
+<li><strong>DMG:</strong> the user quits No Donuts (confirm Quit), replaces <code>/Applications/NoDonuts.app</code> with the new version and opens it. Enrollment, settings and the camera grant carry over, as long as the bundle id and signing identity haven't changed.</li>
+<li><strong>MDM:</strong> push the new <code>.pkg</code>. The KeepAlive agent relaunches the new binary. Prefer MDM for urgent security fixes.</li>
+<li>The version is shown in the menu, in Settings and in <strong>Copy diagnostics</strong>. Ask for it in every bug report.</li>
+</ul>
+<h2 id="uninstall">Uninstall<a class="headerlink" href="#uninstall" title="Permanent link">&para;</a></h2>
+<p><code>scripts/uninstall.sh</code> is self-contained: IT can ship that one file or run it from an MDM script. Run it <strong>as the logged-in user, never with sudo</strong>, because everything it removes lives in the user's session. The script refuses to run as root.</p>
+<div class="highlight"><pre><span></span><code>scripts/uninstall.sh<span class="w"> </span>--dry-run<span class="w">          </span><span class="c1"># show what it would do; changes nothing</span>
+scripts/uninstall.sh<span class="w">                    </span><span class="c1"># stop, unregister start at login, remove the app; KEEP data</span>
+scripts/uninstall.sh<span class="w"> </span>--purge<span class="w">            </span><span class="c1"># ...and delete ALL local data (asks you to type &quot;yes&quot;)</span>
+scripts/uninstall.sh<span class="w"> </span>--purge<span class="w"> </span>--yes<span class="w">      </span><span class="c1"># same, no prompt (scripted / MDM use)</span>
+scripts/uninstall.sh<span class="w"> </span>--keep-app<span class="w">         </span><span class="c1"># just stop it and turn off start at login</span>
+</code></pre></div>
+<p>Steps, in order:</p>
+<ol>
+<li>Boot out the bundled agent (so launchd doesn't relaunch what it stops), then stop any running copy.</li>
+<li>Run <code>NoDonuts --unregister</code>. This removes the start-at-login registration and clears pending notifications, so no "No Donuts isn't running" alert appears 10 minutes after uninstalling. It needs the app binary, which is why it runs before the app is deleted.</li>
+<li>Remove the legacy <code>~/Library/LaunchAgents/com.nodonuts.agent.plist</code>, if present.</li>
+<li>With <code>--purge</code>: delete the Keychain enrollment item, <code>defaults delete com.nodonuts.app</code>, <code>tccutil reset All com.nodonuts.app</code> (this bundle id only), and the fixed folders <code>~/Library/Application Support/NoDonuts</code>, <code>~/Library/Caches/com.nodonuts.app</code>, <code>~/Library/HTTPStorages/com.nodonuts.app</code>, and <code>~/Library/Saved Application State/com.nodonuts.app.savedState</code>.</li>
+<li>Remove <code>/Applications/NoDonuts.app</code>, after checking its bundle id. A symlink or a different app at that path is refused.</li>
+</ol>
+<p>The script finishes with a "What's left" line, and exits <code>1</code> if any step failed.</p>
+<ul>
+<li><strong>Installed by MDM as root:</strong> removing <code>/Applications/NoDonuts.app</code> may need admin rights. The script says so, and IT can remove the app with the MDM. Run the per-user part (<code>uninstall.sh --purge --yes</code>) in each user's session <strong>before</strong> removing the app, because step 2 needs the binary.</li>
+<li><strong>Not removable by script</strong> (no face data in any of them): the Location and Local Network decisions (macOS drops them once the app is gone), the entry in System Settings › Notifications, and crash reports in <code>~/Library/Logs/DiagnosticReports</code>.</li>
+<li><strong>Handing a Mac to someone else:</strong> run <code>--purge</code> first. The enrollment lives in the legacy login keychain, which ignores <code>ThisDeviceOnly</code> and can be carried along by Migration Assistant or a backup restore (<a href="../SECURITY_PRIVACY/">SECURITY_PRIVACY</a>, threat model "Keychain at rest").</li>
+<li>An MDM <strong>managed login item</strong> profile stays in place until IT removes it. It only approves the agent and doesn't start anything once the app is gone.</li>
+</ul>
+<p><code>scripts/uninstall-launchagent.sh</code> is kept as an alias for <code>uninstall.sh --keep-app</code>.</p>
+<h2 id="privacy-notes-for-colleagues-and-it">Privacy notes for colleagues and IT<a class="headerlink" href="#privacy-notes-for-colleagues-and-it" title="Permanent link">&para;</a></h2>
+<p>What you can tell people, and check:</p>
+<ul>
+<li><strong>Everything is on-device.</strong> Camera frames are analysed in memory and dropped right away. Nothing is recorded, saved or sent. The app makes no internet connections, has no telemetry and no updater (<a href="../adr/0021-updates-no-in-app-updater/">ADR-0021</a>). IT can check this with a firewall or <code>nettop</code>.</li>
+<li><strong>What's stored:</strong> one face <strong>embedding</strong> (numbers, not a photo) for the enrolled user, in their login Keychain, plus settings in <code>com.nodonuts.app</code>. Other people's faces seen by the camera are treated as "stranger" in memory and never stored.</li>
+<li><strong>How to delete it:</strong> the menu's <strong>Reset enrollment</strong> (embedding only), or <code>scripts/uninstall.sh --purge</code> (everything).</li>
+</ul>
+<div class="admonition danger">
+<p class="admonition-title">Biometric data: sign-off needed before rollout (ND-111, deferred)</p>
+<p>A face embedding is <strong>biometric personal information</strong>. Before deploying to colleagues:</p>
+<ul>
+<li>Get sign-off from the company <strong>privacy officer</strong> and IT security. Also tell them the app locks the screen through a private API (<a href="../adr/0010-screen-lock-no-accessibility/">ADR-0010</a>).</li>
+<li><strong>Québec (Law 25):</strong> using biometrics to verify identity needs the person's <strong>express consent</strong>. Creating a biometric identification system must be <strong>declared to the Commission d'accès à l'information (CAI) in advance</strong>, under the Act to establish a legal framework for information technology. The privacy officer should confirm the exact obligations and timelines.</li>
+<li>Add the plain-language <strong>privacy notice and consent screen</strong> to onboarding (ND-111(d)). It isn't built yet.</li>
+<li>Using it has to be voluntary, and a colleague who says no needs an alternative (for example the normal auto-lock).</li>
+<li>Check that the face model's licence allows internal use at a for-profit company (ND-089).</li>
+</ul>
+</div>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../adr/0018-bundled-keepalive-agent/">ADR-0018: bundled KeepAlive agent</a> · <a href="../adr/0021-updates-no-in-app-updater/">ADR-0021: updates</a> · <a href="../adr/0015-camera-trust-built-in-only/">ADR-0015: built-in camera only</a> · <a href="../adr/0008-app-packaging/">ADR-0008: app packaging</a></li>
+<li><a href="../SECURITY_PRIVACY/">Security &amp; Privacy</a> · <a href="../EDGE_CASES/">Edge cases</a> · <a href="../BACKLOG/">Backlog</a> (ND-050, ND-051, ND-052, ND-053, ND-111)</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

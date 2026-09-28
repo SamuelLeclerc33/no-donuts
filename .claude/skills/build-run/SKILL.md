@@ -79,17 +79,20 @@ There is **one launcher** (ND-082 / ND-083): a LaunchAgent plist bundled inside 
 scripts/install-app.sh             # make-app.sh + copy to /Applications + remove legacy agent + open
 # then: menu bar → Settings → Start at login (approve in Login Items if asked)
 launchctl print gui/$(id -u)/com.nodonuts.app.agent   # confirm it's loaded
-scripts/uninstall-launchagent.sh   # stop the app + legacy agent; then turn OFF Start at login
+scripts/uninstall.sh --keep-app     # stop + unregister start-at-login, keep app + data (alias: uninstall-launchagent.sh)
+scripts/uninstall.sh                # ...and remove /Applications/NoDonuts.app (data kept)
+scripts/uninstall.sh --purge        # ...and delete Keychain enrollment, defaults, TCC, caches (typed "yes")
+scripts/uninstall.sh --purge --dry-run   # print the plan, change nothing
 ```
 
 - **Register from the copy you'll actually run.** SMAppService records the bundle that called `register()`. Enabling it from `build/NoDonuts.app` makes login launch `build/`. Use `/Applications/NoDonuts.app`.
-- The registration lives in macOS's login-items database, not in a file. `launchctl bootout` only unloads it until next login. To remove it for good, turn off the toggle, remove No Donuts in System Settings › Login Items, or delete the app. `uninstall.sh --purge` is ND-052.
+- The registration lives in macOS's login-items database, not in a file. `launchctl bootout` only unloads it until next login. To remove it for good, turn off the toggle, remove No Donuts in System Settings › Login Items, or run `scripts/uninstall.sh` (it calls `NoDonuts --unregister` before deleting the app). Run it as the logged-in user, never with sudo. See [docs/DEPLOYMENT.md](../../../docs/DEPLOYMENT.md#uninstall).
 - After enabling, the running copy is the one you opened by hand. launchd's RunAtLoad copy exits 0 on the single-instance guard, so KeepAlive supervision starts at next login.
 
 ### Migrating from the old launchers
 
 - **`SMAppService.mainApp` login item** (the old toggle): the app migrates it by itself. It unregisters `mainApp` and, if it was on, registers the agent in its place. You'll see `migration:` lines in the log.
-- **Script-installed `~/Library/LaunchAgents/com.nodonuts.agent.plist`** (ND-016, `install-launchagent.sh`): run `scripts/migrate-launcher.sh` once. It does `launchctl bootout gui/$UID/com.nodonuts.agent` and deletes the plist. `install-app.sh` and `uninstall-launchagent.sh` run it too. `install-launchagent.sh` is deprecated and forwards to `install-app.sh`.
+- **Script-installed `~/Library/LaunchAgents/com.nodonuts.agent.plist`** (ND-016, `install-launchagent.sh`): run `scripts/migrate-launcher.sh` once. It does `launchctl bootout gui/$UID/com.nodonuts.agent` and deletes the plist. `install-app.sh` runs it too, and `uninstall.sh` does the same removal inline. `install-launchagent.sh` is deprecated and forwards to `install-app.sh`.
 
 First launch prompts for Camera (and Location, if you use trusted Wi-Fi).
 
