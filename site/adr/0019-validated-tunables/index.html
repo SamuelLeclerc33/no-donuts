@@ -11,10 +11,10 @@
       
       
       
-        <link rel="prev" href="../0010-screen-lock-no-accessibility/">
+        <link rel="prev" href="../0018-bundled-keepalive-agent/">
       
       
-        <link rel="next" href="../0012-local-identity-featureprint/">
+        <link rel="next" href="../../BACKLOG/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>ADR-0011 — Enforcement gating - No Donuts</title>
+        <title>ADR-0019 — Validated tunables - No Donuts</title>
       
     
     
@@ -70,7 +70,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#adr-0011-enforcement-gating-pause-trusted-wi-fi" class="md-skip">
+        <a href="#adr-0019-all-presence-tunables-pass-through-one-validated-config" class="md-skip">
           Skip to content
         </a>
       
@@ -106,7 +106,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              ADR-0011 — Enforcement gating
+              ADR-0019 — Validated tunables
             
           </span>
         </div>
@@ -723,37 +723,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADR-0011 — Enforcement gating
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../0011-enforcement-gating/" class="md-nav__link">
         
   
   
@@ -769,70 +742,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#context" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Context
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#decision" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Decision
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#consequences" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Consequences
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1038,10 +947,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../0019-validated-tunables/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0019 — Validated tunables
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1057,6 +993,59 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consequences" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consequences
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1182,17 +1171,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#alternatives-considered" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Alternatives considered
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1210,52 +1188,61 @@
 
 
 
-<h1 id="adr-0011-enforcement-gating-pause-trusted-wi-fi">ADR-0011 — Enforcement gating: pause + trusted Wi-Fi<a class="headerlink" href="#adr-0011-enforcement-gating-pause-trusted-wi-fi" title="Permanent link">&para;</a></h1>
+<h1 id="adr-0019-all-presence-tunables-pass-through-one-validated-config">ADR-0019 — All presence tunables pass through one validated Config<a class="headerlink" href="#adr-0019-all-presence-tunables-pass-through-one-validated-config" title="Permanent link">&para;</a></h1>
 <ul>
 <li>Status: Accepted</li>
-<li>Date: 2026-07-01</li>
-<li>Owner: homer + krusty (with gordon for the Location usage string)</li>
+<li>Date: 2026-09-28</li>
+<li>Owner: homer</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>No Donuts continuously enforces presence (lock when the enrolled user is away). Two user needs require <em>not</em> enforcing at certain times:</p>
-<ul>
-<li><strong>Pause</strong> (ND-035): a deliberate, temporary "don't lock me right now" — a coffee break, a whiteboard session, a demo.</li>
-<li><strong>Trusted networks</strong> (ND-036): don't enforce in places the user considers safe (e.g. home Wi-Fi), identified by the current Wi-Fi SSID.</li>
-</ul>
-<p>Separately, ND-013 (ADR-0009) already suspends the loop + camera when the session is locked/asleep/off-console. That is a <em>third</em> reason enforcement should be off. Without a unifying model, three independent code paths would each start/stop the loop and set state, and could fight each other (e.g. a pause timer firing while the screen is locked).</p>
-<p>Reading the current SSID on modern macOS (CoreWLAN <code>CWWiFiClient.interface().ssid()</code>) returns <code>nil</code> unless the app has <strong>Location</strong> authorization — so ND-036 forces a new permission decision.</p>
+<p><code>matchThreshold</code> had a validated resolver (ND-076), but the other presence tunables did not. <code>tickIntervalSeconds</code> and <code>graceSeconds</code> come from Settings/UserDefaults; the rest are code defaults. Unvalidated values are dangerous: a 0 s tick spins the CPU, a huge grace or cap is a fail-open, and a 0-tick consensus locks instantly (ND-062).</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p><strong>A single enforcement gate in the App layer.</strong> Enforcement is enabled iff:</p>
-<div class="highlight"><pre><span></span><code>enabled = sessionActive &amp;&amp; !paused &amp;&amp; !onTrustedNetwork
-</code></pre></div>
-<ul>
-<li><code>sessionActive</code> — from the existing <code>SessionStateMonitor</code> (ND-013).</li>
-<li><code>paused</code> — from a new <code>PauseController</code> (in-memory; 15 min / 1 hr auto-resume timers, or indefinite).</li>
-<li><code>onTrustedNetwork</code> — from a new <code>WiFiMonitor</code>: <code>TrustedNetworksStore.isTrusted(currentSSID)</code>.</li>
-</ul>
-<p>All three inputs funnel through one <code>applyEnforcement()</code> in the app delegate. <strong>Disabling enforcement reuses the ND-013 suspend path</strong> — stop the loop and turn the camera off — so "not watching" is always signalled by the camera indicator light going dark. When disabled, the engine's <em>display</em> state is set by reason <strong>priority</strong>: session-suspended &gt; paused &gt; trusted-network (each via a dedicated engine method — <code>sessionSuspended()</code>, <code>pause()</code>, <code>disabledOnTrustedNetwork()</code> — that also resets absence accounting so re-enabling rebuilds the full consensus + grace, never a grace-less false lock).</p>
-<p><strong>Fail-safe: unknown SSID is never trusted.</strong> <code>TrustedNetworksStore.isTrusted(nil / "")</code> returns <code>false</code>, so if the SSID can't be read (Location denied/unavailable, no Wi-Fi) the app treats the network as untrusted and <strong>keeps enforcing</strong>. Declining Location never weakens protection.</p>
-<p><strong>Location is optional and lazy.</strong> <code>NSLocationWhenInUseUsageDescription</code> is declared; <code>requestWhenInUseAuthorization()</code> is called only when the user first marks a network as trusted — never at launch. Location is used <em>solely</em> to read the SSID; no coordinates are read, stored, or transmitted, and the SSID itself never leaves the device (it is compared against a local <code>UserDefaults</code> list).</p>
-<p><strong>Trusted-list management via the menu, not a settings window.</strong> A checkable "Trust this Wi-Fi network" item toggles the <em>current</em> SSID only (add/remove). A full settings pane (ND-040) stays deferred.</p>
+<p>Every <code>Config</code> the engine or the App loop uses goes through <code>Config.validated()</code>, which clamps each value into <code>Config.Bounds</code>. NaN and ±∞ fall back to the shipped default.</p>
+<table>
+<thead>
+<tr>
+<th>Tunable</th>
+<th>Range</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tick</td>
+<td>0.5–10 s</td>
+</tr>
+<tr>
+<td>grace</td>
+<td>2–60 s</td>
+</tr>
+<tr>
+<td>consensus</td>
+<td>2–20 ticks</td>
+</tr>
+<tr>
+<td>errors-before-absent</td>
+<td>1–20</td>
+</tr>
+<tr>
+<td>busy-camera cap</td>
+<td>60–3600 s</td>
+</tr>
+<tr>
+<td>camera-unavailable cap</td>
+<td>30–600 s</td>
+</tr>
+<tr>
+<td>stranger ticks</td>
+<td>1–10</td>
+</tr>
+<tr>
+<td>stranger grace</td>
+<td>0–10 s</td>
+</tr>
+</tbody>
+</table>
+<p><code>Config.resolved(from:base:)</code> reads the UserDefaults-settable keys. A missing, non-numeric, Bool or out-of-range value is <strong>rejected</strong> (default kept), not clamped, mirroring <code>resolvedMatchThreshold</code>. The result then goes through <code>validated()</code>. <code>PresenceEngine.init</code>, <code>updateConfig</code> and the App's <code>applyStoreToConfig</code> all validate. <code>SettingsStore</code> takes its slider ranges from <code>Config.Bounds</code>, so there is one source of truth.</p>
 <h2 id="consequences">Consequences<a class="headerlink" href="#consequences" title="Permanent link">&para;</a></h2>
-<ul>
-<li>One code path decides whether to run; the three reasons compose cleanly and can't race. New "don't enforce" reasons later (e.g. a calendar hook) drop into the same gate.</li>
-<li>Pause and trusted-network both get honest, distinct menu-bar states; the camera light is an out-of-band trust signal that enforcement is off.</li>
-<li>New permission surface: Location (when-in-use). Mitigated by being optional, lazy, SSID-only, on-device, and fail-safe. Documented in SECURITY_PRIVACY.md.</li>
-<li>Pause is in-memory: it does <strong>not</strong> survive an app relaunch/reboot (a rebooted machine comes back protecting — a safe default). The trusted list <em>is</em> persisted (UserDefaults).</li>
-<li>A timed-pause <code>Timer</code> may fire late across sleep; acceptable because <code>applyEnforcement()</code> re-evaluates on every session/pause/network change (including wake).</li>
-<li>New edge case EC-20 (trusted network); EC-15 (pause) now IMPLEMENTED.</li>
-<li><strong>Pause is App-gate-only (no engine latch).</strong> The engine deliberately keeps <em>no</em> <code>isPaused</code> flag: pausing is enforced solely by the App stopping the loop and suspending the camera. This is a fail-<em>safe</em> choice — there is no latch that could get stuck "paused" and silently stop locking forever; a stray tick while paused sees the camera suspended and cannot lock. <code>PresenceEngine.pause()</code> only sets honest display state + resets absence accounting.</li>
-<li><strong>Accepted residual (in-flight lock at the instant of disable):</strong> if a lock was <em>already dispatched</em> by an in-flight tick at the exact moment the user pauses / joins a trusted network, it still completes and the screen locks. Reaching a lock dispatch requires ~10s of continuous absence, so this is practically unreachable while a user is actively toggling — accepted, not guarded. (Manual "Lock now" is unaffected and always works.)</li>
-</ul>
-<h2 id="alternatives-considered">Alternatives considered<a class="headerlink" href="#alternatives-considered" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Gating inside the PresenceEngine (Core).</strong> Rejected: both new inputs (pause timers, CoreWLAN/CoreLocation) live in the App/AppKit layer, like <code>SessionStateMonitor</code>. Keeping the engine a pure ticking machine preserves the AppKit-free, testable Core split (ADR-0007). The engine only exposes intent methods that set display state + reset accounting.</li>
-<li><strong>Keep the camera running while paused/trusted (just skip locking).</strong> Rejected: leaving the camera light on while "paused" is dishonest and wastes power. Reusing the suspend path makes "off" unambiguous.</li>
-<li><strong>Persist pause across relaunch.</strong> Rejected for MVP: a machine that reboots should come back protecting; a forgotten indefinite pause surviving a reboot is a silent fail-open.</li>
-<li><strong>IP/subnet or geofence instead of SSID.</strong> Rejected: SSID is the user's mental model of "a network"; geofencing needs stronger Location use. SSID via CoreWLAN is the least-privilege fit.</li>
-<li><strong>A full settings window now (ND-040).</strong> Deferred: the current-SSID menu toggle covers the MVP need with far less surface.</li>
-</ul>
+<p>No path, whether Settings, <code>defaults write</code> or future code, can put the engine into a spin, an instant lock, or an unbounded fail-open window. Changing a range is a code change reviewed against this ADR.</p>
 
 
 

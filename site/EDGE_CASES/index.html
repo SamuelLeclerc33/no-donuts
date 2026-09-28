@@ -939,6 +939,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0019-validated-tunables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0019 — Validated tunables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1192,7 +1220,7 @@
 <tr>
 <td>EC-10</td>
 <td><strong>Recognition error / model timeout on a tick</strong></td>
-<td>Conservative HOLD (bounded): a transient <code>.error</code> tick neither advances nor resets the absence consensus — no markAbsent (no lock-storm) and no markPresent (no false-unlock); state + counters left untouched until the next clean reading. The 3-tick absence consensus (<code>consecutiveAbsentTicksToLock</code>) further damps single-frame glitches. <strong>The hold is bounded:</strong> after <code>maxConsecutiveErrorsBeforeAbsent</code> (default 3) CONSECUTIVE errors the engine escalates — it treats the tick as absence (markAbsent), so a wedged recognizer runs the normal grace→lock path and locks rather than holding unlocked forever (no indefinite fail-open). Any clean reading resets the error streak.</td>
+<td>Conservative HOLD (bounded): a transient <code>.error</code> tick neither advances nor resets the absence consensus — no markAbsent (no lock-storm) and no markPresent (no false-unlock); state + counters left untouched until the next clean reading. The 3-tick absence consensus (<code>consecutiveAbsentTicksToLock</code>) further damps single-frame glitches. <strong>The hold is bounded:</strong> after <code>maxConsecutiveErrorsBeforeAbsent</code> (default 3) CONSECUTIVE errors the engine escalates — it treats the tick as absence (markAbsent), so a wedged recognizer runs the normal grace→lock path and locks rather than holding unlocked forever (no indefinite fail-open). Any clean reading resets the error streak. <strong>ND-060 (2026-09-28):</strong> once the error streak hits the escalation threshold, EVERY further consecutive error tick counts as an absence tick (the streak isn't reset on escalation). A fully wedged recognizer now locks at about <strong>12 s</strong> at defaults, comparable to about 10 s for plain absence (was about 20 s). Escalated error ticks hold the ND-061 stranger streak.</td>
 <td>DECIDED</td>
 <td>homer</td>
 </tr>

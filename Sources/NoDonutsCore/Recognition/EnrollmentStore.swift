@@ -4,7 +4,8 @@ import os
 
 // Owner: cooper — enrolled embeddings, encrypted at rest. Backlog: ND-022, ND-023. ADR-0012.
 // Privacy: stores EMBEDDINGS ONLY (never raw images), encrypted at rest in the Keychain,
-// device-only (never syncs to iCloud), never transmitted over any network.
+// never synced to iCloud (not marked synchronizable), never transmitted over any network.
+// See the `EnrollmentStore` doc for what "device-only" does and doesn't mean today (ND-093).
 
 /// Tri-state enrollment status — distinguishes "not enrolled" from "read failed".
 ///
@@ -39,14 +40,67 @@ public protocol EnrollmentStoring: Sendable {
     /// (ADR-0014). On load, a stored version that differs from the active embedder's
     /// forces re-enrollment (see `IdentityRecognizer`) so vectors from different models
     /// are never cross-compared.
-    func enroll(embeddings: [[Float]], modelVersion: String) throws
+    ///
+    /// ND-093: THROWS `EnrollmentStoreError.invalidEmbeddings` (and stores nothing) unless
+    /// `embeddings` is a non-empty set of non-empty, same-length, all-finite vectors whose
+    /// length equals `expectedDimension` when one is given. An empty or malformed set must
+    /// never be persisted: an empty set reads back as not-enrolled → presence-only.
+    func enroll(embeddings: [[Float]], modelVersion: String, expectedDimension: Int?) throws
     func reset() throws
 }
 
+extension EnrollmentStoring {
+    /// Convenience for callers with no known output dimension (e.g. the Vision fallback,
+    /// whose descriptor reports `outputDimension == 0`). Shape/finiteness still validated.
+    public func enroll(embeddings: [[Float]], modelVersion: String) throws {
+        try enroll(embeddings: embeddings, modelVersion: modelVersion, expectedDimension: nil)
+    }
+}
+
+/// Why a set of embeddings was refused by `enroll` (ND-093).
+public enum InvalidEmbeddingsReason: Equatable, Sendable {
+    /// No vectors at all.
+    case emptySet
+    /// Vector at `index` has zero components.
+    case emptyVector(index: Int)
+    /// Vector at `index` has `found` components; the first vector had `expected`.
+    case mixedDimensions(index: Int, expected: Int, found: Int)
+    /// Vector at `index` contains a NaN or infinite component.
+    case nonFinite(index: Int)
+    /// Vectors have `found` components; the active model produces `expected`.
+    case wrongDimension(expected: Int, found: Int)
+}
+
+/// Validate an embedding set before it is persisted (and after it is decoded).
+///
+/// Throws `EnrollmentStoreError.invalidEmbeddings` unless the set is non-empty, every
+/// vector is non-empty and the same length, every component is finite, and (when
+/// `expectedDimension` is given and > 0) that length equals `expectedDimension`.
+public func validateEnrollmentEmbeddings(_ embeddings: [[Float]], expectedDimension: Int?) throws {
+    guard let first = embeddings.first else {
+        throw EnrollmentStoreError.invalidEmbeddings(.emptySet)
+    }
+    let dim = first.count
+    for (i, v) in embeddings.enumerated() {
+        if v.isEmpty { throw EnrollmentStoreError.invalidEmbeddings(.emptyVector(index: i)) }
+        if v.count != dim {
+            throw EnrollmentStoreError.invalidEmbeddings(.mixedDimensions(index: i, expected: dim, found: v.count))
+        }
+        if !v.allSatisfy({ $0.isFinite }) {
+            throw EnrollmentStoreError.invalidEmbeddings(.nonFinite(index: i))
+        }
+    }
+    if let expected = expectedDimension, expected > 0, dim != expected {
+        throw EnrollmentStoreError.invalidEmbeddings(.wrongDimension(expected: expected, found: dim))
+    }
+}
+
 /// Errors surfaced by `EnrollmentStore` for genuine Keychain failures (not "not found").
-public enum EnrollmentStoreError: Error {
+public enum EnrollmentStoreError: Error, Equatable {
     /// A `SecItem*` call failed with an unexpected `OSStatus`.
     case keychain(OSStatus)
+    /// `enroll` refused the input (ND-093); nothing was written.
+    case invalidEmbeddings(InvalidEmbeddingsReason)
 }
 
 /// On-disk (Keychain-blob) schema for a versioned enrollment (ADR-0014). Stored as JSON.
@@ -62,14 +116,24 @@ private struct StoredEnrollment: Codable {
     var embeddings: [[Float]]
 }
 
+private let recognitionLog = Logger(subsystem: "com.nodonuts.app", category: "recognition")
+
 /// Keychain-backed enrollment store — encrypted at rest (ND-023, ADR-0012).
 ///
 /// Stores the enrolled reference embeddings as a single generic-password item whose
 /// data blob is a serialized `[[Float]]`. **Embeddings only** — no raw images ever
-/// touch this store. The item uses
-/// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so it is available in the
-/// background after first unlock (the presence loop needs it) but is **device-only**:
-/// it never syncs to iCloud Keychain and never leaves this Mac.
+/// touch this store. The item is encrypted at rest by the Keychain and is never marked
+/// `kSecAttrSynchronizable`, so it does not sync to iCloud Keychain; the app never
+/// transmits it.
+///
+/// **What is NOT enforced today (ND-093, honest statement):** we set
+/// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` on add AND update, but without
+/// `kSecUseDataProtectionKeychain` the item lives in the legacy file-based login keychain,
+/// where that accessibility class is not meaningfully enforced: it does not bind the item
+/// to this device's Secure Enclave/data-protection keys, and a copied login keychain
+/// (e.g. from a backup or migration) carries the item with it, readable by anyone with
+/// that keychain's password. Moving to the data-protection keychain needs a real signing
+/// identity with a Team ID / keychain-access-group entitlement (ND-050, ND-065).
 ///
 /// `@unchecked Sendable`: all state lives in the Keychain (thread-safe `SecItem*`
 /// calls); this type holds only immutable configuration.
@@ -149,7 +213,7 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
                 log.error("enrollment read returned no data despite success")
                 return .unavailable
             }
-            return decodeEnrollment(data)
+            return Self.decodeEnrollment(data)
         default:
             // e.g. errSecInteractionNotAllowed (before first unlock), errSecAuthFailed —
             // a genuine read failure. Fail SAFE: unavailable, never "not enrolled".
@@ -162,20 +226,34 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
     /// `StoredEnrollment` wrapper first; on failure falls back to a bare `[[Float]]`
     /// (a LEGACY, pre-versioning record → `modelVersion: nil`). A truly undecodable blob →
     /// `.unavailable` (conservative, never presence-only). An empty set → `.notEnrolled`.
-    private func decodeEnrollment(_ data: Data) -> EnrollmentState {
+    ///
+    /// ND-093: a decoded non-empty set whose vectors are inconsistent (an empty vector,
+    /// mixed lengths, or a non-finite component) is also `.unavailable` — fail-safe, never
+    /// presence-only. `public static` so EngineCheck can cover it without a Keychain.
+    public static func decodeEnrollment(_ data: Data) -> EnrollmentState {
         let decoder = JSONDecoder()
+        let embeddings: [[Float]]
+        let version: String?
         if let stored = try? decoder.decode(StoredEnrollment.self, from: data) {
-            return stored.embeddings.isEmpty
-                ? .notEnrolled
-                : .enrolled(stored.embeddings, modelVersion: stored.modelVersion)
+            embeddings = stored.embeddings
+            version = stored.modelVersion
+        } else if let legacy = try? decoder.decode([[Float]].self, from: data) {
+            // Legacy bare array (written before versioning) → nil version = stale.
+            embeddings = legacy
+            version = nil
+        } else {
+            // Corrupt/undecodable blob → conservative, NOT presence-only.
+            recognitionLog.error("failed to decode enrollment blob")
+            return .unavailable
         }
-        // Legacy bare array (written before versioning) → nil version = stale.
-        if let legacy = try? decoder.decode([[Float]].self, from: data) {
-            return legacy.isEmpty ? .notEnrolled : .enrolled(legacy, modelVersion: nil)
+        if embeddings.isEmpty { return .notEnrolled }
+        do {
+            try validateEnrollmentEmbeddings(embeddings, expectedDimension: nil)
+        } catch {
+            recognitionLog.error("stored enrollment vectors are inconsistent; treating as unavailable")
+            return .unavailable
         }
-        // Corrupt/undecodable blob → conservative, NOT presence-only.
-        log.error("failed to decode enrollment blob")
-        return .unavailable
+        return .enrolled(embeddings, modelVersion: version)
     }
 
     // isEnrolled / enrolledEmbeddings derive from the single read path above.
@@ -189,7 +267,9 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
         return []
     }
 
-    public func enroll(embeddings: [[Float]], modelVersion: String) throws {
+    public func enroll(embeddings: [[Float]], modelVersion: String, expectedDimension: Int?) throws {
+        // ND-093: validate BEFORE touching the Keychain — a bad set never replaces a good one.
+        try validateEnrollmentEmbeddings(embeddings, expectedDimension: expectedDimension)
         let data = try JSONEncoder().encode(StoredEnrollment(modelVersion: modelVersion, embeddings: embeddings))
 
         // Non-destructive replace (S2): UPDATE an existing item in place, and only ADD
@@ -201,6 +281,12 @@ public final class EnrollmentStore: EnrollmentStoring, @unchecked Sendable {
                 baseQuery() as CFDictionary,
                 [
                     kSecValueData as String: data,
+                    // NOTE (ND-093 review): do NOT set kSecAttrAccessible here. On the legacy
+                    // login keychain the accessibility class lives in the item's ACL, and
+                    // changing an ACL needs ownership — an item created by a differently
+                    // signed (older ad-hoc / dev) build would fail the update
+                    // (errSecInvalidOwnerEdit) or prompt, blocking re-enrollment. The class
+                    // isn't enforced on this keychain anyway; it's set on ADD only.
                     kSecAttrLabel as String: itemLabel,           // relabel legacy items
                     kSecAttrDescription as String: itemDescription,
                 ] as CFDictionary)
@@ -291,7 +377,9 @@ public final class InMemoryEnrollmentStore: EnrollmentStoring, @unchecked Sendab
         return []
     }
 
-    public func enroll(embeddings: [[Float]], modelVersion: String) throws {
+    public func enroll(embeddings: [[Float]], modelVersion: String, expectedDimension: Int?) throws {
+        // Same validation as the Keychain store (ND-093) so tests exercise real behavior.
+        try validateEnrollmentEmbeddings(embeddings, expectedDimension: expectedDimension)
         lock.lock(); defer { lock.unlock() }
         self.embeddings = embeddings
         self.modelVersion = modelVersion

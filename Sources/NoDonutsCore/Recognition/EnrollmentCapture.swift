@@ -249,9 +249,12 @@ public func runEnrollmentCapture(
     // block on an ACL prompt, so it runs detached (never on the main actor).
     let toStore = report.kept
     let version = embedder.descriptor.version
+    // ND-093: validate the vector length against the model; 0 = unknown (Vision fallback).
+    let dim = embedder.descriptor.outputDimension
+    let expectedDimension: Int? = dim > 0 ? dim : nil
     do {
         try await Task.detached(priority: .userInitiated) {
-            try store.enroll(embeddings: toStore, modelVersion: version)
+            try store.enroll(embeddings: toStore, modelVersion: version, expectedDimension: expectedDimension)
         }.value
     } catch {
         return .saveFailed

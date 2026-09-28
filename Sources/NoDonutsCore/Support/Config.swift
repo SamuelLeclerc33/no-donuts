@@ -37,7 +37,11 @@ public struct Config: Codable, Equatable {
     /// A transient recognition error is held (presence unchanged), but after this
     /// many CONSECUTIVE errors the engine escalates to treating the tick as
     /// absence — so a wedged recognizer still locks rather than holding unlocked
-    /// forever (EC-10, no indefinite fail-open).
+    /// forever (EC-10, no indefinite fail-open). ND-060: once escalated, EVERY further
+    /// consecutive error tick is an absence tick (the streak is not reset), so a fully
+    /// wedged recognizer locks after (this − 1) + consensus ticks + grace ≈ 2 + 5 + 5
+    /// ≈ 11s at defaults — plain absence + 2s, not ~3× the consensus. A clean reading
+    /// (present / noFace / stranger) ends the streak.
     public var maxConsecutiveErrorsBeforeAbsent: Int = 3
     /// Bounds the busy→assume-present fail-open (ADR-0003) so a call app left
     /// running unattended can't keep the Mac unlocked forever; after this many
@@ -65,4 +69,95 @@ public struct Config: Codable, Equatable {
     public var throttleOnBattery: Bool = true
 
     public init() {}
+}
+
+// MARK: - ND-062: validated tunables
+
+extension Config {
+    /// ND-062: the SAFE range for every engine tunable. `validated()` clamps into these
+    /// and every path that feeds the engine (PresenceEngine.init / updateConfig, the
+    /// App's loop cadence) goes through it, so no source — Settings, `defaults write`,
+    /// a decoded Config, a future UI — can inject a 0s tick (CPU spin) or a huge grace
+    /// / consensus / cap (silent fail-open). Each bound is chosen so the product
+    /// promise ("walk away → locked in ~10s; never lock mid-call; bounded fail-opens")
+    /// still holds at the extremes:
+    public enum Bounds {
+        /// 0.5–10s. Below 0.5s = pointless camera/CPU churn (the camera delivers ~1fps);
+        /// above 10s makes consensus × tick alone exceed a minute at the top of its range.
+        public static let tickIntervalSeconds: ClosedRange<Double> = 0.5...10
+        /// 2–60s. Never 0 (a brief look-away must not lock instantly — code-review #3);
+        /// never more than a minute (grace is a fail-open window).
+        public static let graceSeconds: ClosedRange<Double> = 2...60
+        /// 2–20 ticks. 1 would let a single glitchy frame start the lock clock; >20
+        /// stretches the consensus into a fail-open.
+        public static let consecutiveAbsentTicksToLock: ClosedRange<Int> = 2...20
+        /// 1–20 ticks of held recognizer errors before escalating to absence (EC-10).
+        public static let maxConsecutiveErrorsBeforeAbsent: ClosedRange<Int> = 1...20
+        /// 1–60 min busy-camera assume-present cap (ADR-0003 / ND-033 / ND-098).
+        public static let maxCallAssumedPresentSeconds: ClosedRange<Double> = 60...3600
+        /// 30s–10 min lid-open camera-unavailable cap (ND-078).
+        public static let maxCameraUnavailableSeconds: ClosedRange<Double> = 30...600
+        /// 1–10 consecutive stranger ticks for the ND-061 fast path (ADR-0017).
+        public static let consecutiveStrangerTicksToLock: ClosedRange<Int> = 1...10
+        /// 0–10s grace after the stranger streak (ADR-0017; default 0).
+        public static let strangerGraceSeconds: ClosedRange<Double> = 0...10
+    }
+
+    /// UserDefaults keys for the tunables that are user-settable today (ND-040 Settings
+    /// writes exactly these). The other tunables are code-only defaults, but still pass
+    /// through `validated()`.
+    public enum DefaultsKey {
+        public static let tickIntervalSeconds = "tickIntervalSeconds"
+        public static let graceSeconds = "graceSeconds"
+    }
+
+    /// ND-062: this config with every tunable clamped into `Bounds`. A non-finite
+    /// Double (NaN / ±inf) falls back to the shipped default rather than clamping
+    /// (NaN has no meaningful side of a range). Idempotent.
+    public func validated() -> Config {
+        let d = Config()
+        var c = self
+        c.tickIntervalSeconds = Config.clamp(tickIntervalSeconds, Bounds.tickIntervalSeconds, d.tickIntervalSeconds)
+        c.graceSeconds = Config.clamp(graceSeconds, Bounds.graceSeconds, d.graceSeconds)
+        c.consecutiveAbsentTicksToLock = Config.clamp(consecutiveAbsentTicksToLock, Bounds.consecutiveAbsentTicksToLock)
+        c.maxConsecutiveErrorsBeforeAbsent = Config.clamp(maxConsecutiveErrorsBeforeAbsent, Bounds.maxConsecutiveErrorsBeforeAbsent)
+        c.maxCallAssumedPresentSeconds = Config.clamp(maxCallAssumedPresentSeconds, Bounds.maxCallAssumedPresentSeconds, d.maxCallAssumedPresentSeconds)
+        c.maxCameraUnavailableSeconds = Config.clamp(maxCameraUnavailableSeconds, Bounds.maxCameraUnavailableSeconds, d.maxCameraUnavailableSeconds)
+        c.consecutiveStrangerTicksToLock = Config.clamp(consecutiveStrangerTicksToLock, Bounds.consecutiveStrangerTicksToLock)
+        c.strangerGraceSeconds = Config.clamp(strangerGraceSeconds, Bounds.strangerGraceSeconds, d.strangerGraceSeconds)
+        return c
+    }
+
+    /// ND-062: build the engine config from UserDefaults (mirrors `resolvedMatchThreshold`).
+    /// Reads the user-settable keys (`DefaultsKey`); a stored value is accepted ONLY if
+    /// it is a finite number inside its `Bounds` range — absent, non-numeric (incl. a
+    /// Bool), non-finite or out-of-range falls back to `base`'s value (rejected, not
+    /// clamped: an injected `0` tick lands on the default, not the 0.5s floor). The
+    /// result is `validated()`, so `base` itself can't smuggle in a bad value either.
+    public static func resolved(from defaults: UserDefaults, base: Config = Config()) -> Config {
+        var c = base
+        c.tickIntervalSeconds = readDouble(defaults, DefaultsKey.tickIntervalSeconds,
+                                           in: Bounds.tickIntervalSeconds) ?? base.tickIntervalSeconds
+        c.graceSeconds = readDouble(defaults, DefaultsKey.graceSeconds,
+                                    in: Bounds.graceSeconds) ?? base.graceSeconds
+        return c.validated()
+    }
+
+    private static func readDouble(_ defaults: UserDefaults, _ key: String,
+                                   in range: ClosedRange<Double>) -> Double? {
+        guard let raw = defaults.object(forKey: key),
+              let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+        let v = n.doubleValue
+        guard v.isFinite, range.contains(v) else { return nil }
+        return v
+    }
+
+    private static func clamp(_ v: Double, _ r: ClosedRange<Double>, _ fallback: Double) -> Double {
+        guard v.isFinite else { return fallback }
+        return min(max(v, r.lowerBound), r.upperBound)
+    }
+
+    private static func clamp(_ v: Int, _ r: ClosedRange<Int>) -> Int {
+        min(max(v, r.lowerBound), r.upperBound)
+    }
 }

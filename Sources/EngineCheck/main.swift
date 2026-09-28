@@ -176,6 +176,25 @@ final class GatedLocker: ScreenLocking {
     func release(_ result: Bool) { let g = gate; gate = nil; g?.resume(returning: result) }
 }
 
+/// ND-091: camera whose capture() suspends until `release(_:)`, so a tick can be held
+/// "in flight" across a pause / session suspend / loop cancellation.
+@MainActor
+final class GatedCamera: CameraCapturing {
+    private var gate: CheckedContinuation<CaptureOutcome, Never>?
+    var isHeld: Bool { gate != nil }
+    func capture() async -> CaptureOutcome { await withCheckedContinuation { gate = $0 } }
+    func release(_ outcome: CaptureOutcome) { let g = gate; gate = nil; g?.resume(returning: outcome) }
+}
+
+/// ND-091: recognizer whose recognize() suspends until `release(_:)`.
+@MainActor
+final class GatedRecognizer: FaceRecognizing {
+    private var gate: CheckedContinuation<RecognitionResult, Never>?
+    var isHeld: Bool { gate != nil }
+    func recognize(_ frame: CapturedFrame) async -> RecognitionResult { await withCheckedContinuation { gate = $0 } }
+    func release(_ result: RecognitionResult) { let g = gate; gate = nil; g?.resume(returning: result) }
+}
+
 // MARK: - Lock chain fakes (ND-058/ND-074)
 //
 // SAFETY: these NEVER touch login.framework. Fake resolvers return a dummy non-nil
@@ -283,6 +302,17 @@ final class FakeLid: @unchecked Sendable {
     var state: LidState {
         get { q.lock(); defer { q.unlock() }; return _state }
         set { q.lock(); _state = newValue; q.unlock() }
+    }
+}
+
+/// ND-091: returns a closure that runs one tick on a GatedCamera, releasing it with `outcome`.
+@MainActor
+func makeFeeder(_ camera: GatedCamera) -> (PresenceEngine, Date, CaptureOutcome) async -> Void {
+    { engine, now, outcome in
+        let t = Task { @MainActor in await engine.tick(now: now) }
+        for _ in 0..<100 where !camera.isHeld { await Task.yield() }
+        camera.release(outcome)
+        await t.value
     }
 }
 
@@ -1132,6 +1162,12 @@ func runAll() async -> Bool {
     }
 
     // Sustained error from present escalates to absence → lock (bounded hold, no fail-open).
+    // ND-060: once the error streak reaches maxConsecutiveErrorsBeforeAbsent, EVERY further
+    // consecutive error tick is an absence tick (the streak is not reset on escalation).
+    // Pinned time-to-lock for a fully wedged recognizer at defaults (1s tick): the lock
+    // fires on error tick #(maxErrors − 1 + consensus + grace/tick) = 3 − 1 + 5 + 5 = 12,
+    // i.e. 12s after the last present reading — plain absence (10s, below) + 2s, not
+    // the old maxErrors × consensus + grace ≈ 20s.
     do {
         let config = Config()
         let locker = SpyLocker(succeed: true)
@@ -1139,20 +1175,62 @@ func runAll() async -> Bool {
         let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
         await e.tick(now: t0)                       // establish .present
         recognizer.result = .error("wedged recognizer")
-        // Drive consecutive error ticks. Each escalation (every Nth error, where
-        // N = maxConsecutiveErrorsBeforeAbsent) calls markAbsent — which resets the
-        // error streak and advances the absence consensus by one. So reaching the
-        // absence consensus takes maxConsecutiveErrorsBeforeAbsent escalations, i.e.
-        // maxConsecutiveErrorsBeforeAbsent * consecutiveAbsentTicksToLock error ticks.
-        // Then let grace elapse to actually lock.
-        let errorTicks = config.maxConsecutiveErrorsBeforeAbsent * config.consecutiveAbsentTicksToLock
-        for i in 0..<errorTicks {
-            await e.tick(now: t0.addingTimeInterval(Double(i) + 1))
+        let expected = config.maxConsecutiveErrorsBeforeAbsent - 1 + config.consecutiveAbsentTicksToLock
+            + Int(config.graceSeconds / config.tickIntervalSeconds)
+        var firstLockAt: Int?
+        for n in 1...30 {
+            await e.tick(now: t0.addingTimeInterval(Double(n) * config.tickIntervalSeconds))
+            if firstLockAt == nil, locker.lockCallCount > 0 { firstLockAt = n }
         }
-        // A clean no-face reading after grace elapses drives the grace→lock path.
+        c.expect(expected == 12 && firstLockAt == expected,
+                 "ND-060: fully wedged recognizer from present locks on error tick #12 (≈12s at defaults, got \(firstLockAt.map(String.init) ?? "never"))")
+        c.expect(e.state == .suspended && locker.lockCallCount == 1,
+                 "sustained error escalates to absence → locks once, no re-lock storm (EC-10, no fail-open)")
+    }
+    // Reference: plain absence from present locks on no-face tick #10 at defaults.
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        await e.tick(now: t0)
         recognizer.result = .noFace
-        await e.tick(now: t0.addingTimeInterval(Double(errorTicks) + config.graceSeconds + 2))
-        c.expect(e.state == .suspended && locker.lockCallCount == 1, "sustained error escalates to absence → locks once (EC-10, no fail-open)")
+        var firstLockAt: Int?
+        for n in 1...30 {
+            await e.tick(now: t0.addingTimeInterval(Double(n)))
+            if firstLockAt == nil, locker.lockCallCount > 0 { firstLockAt = n }
+        }
+        c.expect(firstLockAt == 10, "ND-060: reference — plain absence from present locks on no-face tick #10 (defaults)")
+    }
+    // ND-060: a clean reading ends the escalated streak — after present, a single error
+    // is held again (no immediate escalation to .absent).
+    do {
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.error("wedged"))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker)
+        for n in 0..<4 { await e.tick(now: t0.addingTimeInterval(Double(n))) }   // escalated
+        let escalated = e.state == .absent
+        recognizer.result = .enrolledUserPresent(confidence: 1)
+        await e.tick(now: t0.addingTimeInterval(4))
+        recognizer.result = .error("glitch")
+        await e.tick(now: t0.addingTimeInterval(5))
+        c.expect(escalated && e.state == .present && locker.lockCallCount == 0,
+                 "ND-060: a clean reading resets the escalated error streak → next lone error is held")
+    }
+    // ND-060: an escalated error streak interrupted by noFace still locks on the normal
+    // path (noFace resets the error streak but counts as absence itself).
+    do {
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.error("wedged"))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker, config)
+        var t = 0.0
+        for n in 0..<40 {
+            recognizer.result = n % 4 == 3 ? .noFace : .error("wedged")
+            await e.tick(now: t0.addingTimeInterval(t)); t += 1
+        }
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended,
+                 "ND-060: error/noFace interleaving still reaches consensus + grace → locks once")
     }
 
     // Recovery
@@ -3062,6 +3140,82 @@ func runAll() async -> Bool {
                  "ND-063 policy: 5 distinct vectors, cap 10, 10 s timeout, FaceNet floors from the descriptor")
     }
 
+    print("\nND-093 / ND-110 — enrollment input validation + blob decode")
+    do {
+        func rejects(_ e: [[Float]], _ dim: Int?, _ reason: InvalidEmbeddingsReason) -> Bool {
+            let store = InMemoryEnrollmentStore(embeddings: [[0, 0, 1, 0]], modelVersion: "fake-test-v1")
+            do {
+                try store.enroll(embeddings: e, modelVersion: "fake-test-v2", expectedDimension: dim)
+                return false
+            } catch let err as EnrollmentStoreError {
+                // Rejected AND the existing enrollment (vectors + version) is untouched.
+                return err == .invalidEmbeddings(reason)
+                    && store.enrolledEmbeddings() == [[0, 0, 1, 0]]
+                    && identityStatus(for: store.enrollmentState(), activeVersion: "fake-test-v1",
+                                      markerVersion: nil) == .active
+            } catch { return false }
+        }
+        c.expect(rejects([], 4, .emptySet),
+                 "ND-093 enroll: empty set throws .emptySet, existing enrollment untouched")
+        c.expect(rejects([[1, 0, 0, 0], []], nil, .emptyVector(index: 1)),
+                 "ND-093 enroll: an empty vector throws .emptyVector")
+        c.expect(rejects([[1, 0, 0, 0], [1, 0, 0]], nil, .mixedDimensions(index: 1, expected: 4, found: 3)),
+                 "ND-093 enroll: mixed vector lengths throw .mixedDimensions")
+        c.expect(rejects([[1, 0, 0, 0], [1, .nan, 0, 0]], nil, .nonFinite(index: 1)),
+                 "ND-093 enroll: a NaN component throws .nonFinite")
+        c.expect(rejects([[.infinity, 0, 0, 0]], nil, .nonFinite(index: 0)),
+                 "ND-093 enroll: an infinite component throws .nonFinite")
+        c.expect(rejects([[1, 0, 0]], 4, .wrongDimension(expected: 4, found: 3)),
+                 "ND-093 enroll: vectors not matching the model's dimension throw .wrongDimension")
+
+        let ok = InMemoryEnrollmentStore()
+        let accepted = (try? ok.enroll(embeddings: [[1, 0, 0, 0], [0.9, 0.1, 0, 0]],
+                                       modelVersion: "fake-test-v1", expectedDimension: 4)) != nil
+        let acceptedUnknownDim = (try? InMemoryEnrollmentStore()
+            .enroll(embeddings: [[1, 0, 0]], modelVersion: "vision", expectedDimension: nil)) != nil
+        let acceptedZeroDim = (try? InMemoryEnrollmentStore()
+            .enroll(embeddings: [[1, 0, 0]], modelVersion: "vision", expectedDimension: 0)) != nil
+        c.expect(accepted && ok.enrolledEmbeddings().count == 2 && acceptedUnknownDim && acceptedZeroDim,
+                 "ND-093 enroll: a valid set is stored; nil/0 expected dimension (Vision fallback) skips only the dimension check")
+
+        // runEnrollmentCapture passes the descriptor's dimension through: 3-d vectors from
+        // a 4-d model → .saveFailed, nothing stored.
+        do {
+            let clock = FakeClock()
+            let v3: [[Float]] = [[1, 0.02, 0], [1, 0, 0.03], [0.98, 0.01, 0], [1, 0.03, 0.01], [0.99, 0, 0.01]]
+            let frames = (0..<5).map { CapturedFrame(captureTime: TimeInterval(500 + $0)) }
+            let embedder = TimeKeyedEmbedder(Dictionary(uniqueKeysWithValues: (0..<5).map {
+                (TimeInterval(500 + $0), v3[$0]) }))
+            let store = InMemoryEnrollmentStore()
+            let out = await runEnrollmentCapture(camera: SequenceCamera(frames), embedder: embedder, store: store,
+                                                 now: { clock.now }, sleep: { clock.advance($0) })
+            c.expect(embedder.descriptor.outputDimension == 4 && out == .saveFailed && !store.isEnrolled,
+                     "ND-093 capture: vectors of the wrong dimension for the model → .saveFailed, nothing stored")
+        }
+
+        // Blob decode (ND-110 coverage). Blobs are hand-written JSON, as the Keychain holds.
+        func decode(_ json: String) -> EnrollmentState { EnrollmentStore.decodeEnrollment(Data(json.utf8)) }
+        func isUnavailable(_ s: EnrollmentState) -> Bool { if case .unavailable = s { return true }; return false }
+        if case .enrolled(let e, let v) = decode(#"{"modelVersion":"m1","embeddings":[[1,0],[0,1]]}"#) {
+            c.expect(e == [[1, 0], [0, 1]] && v == "m1", "ND-110 decode: versioned blob → .enrolled with its version")
+        } else { c.expect(false, "ND-110 decode: versioned blob → .enrolled with its version") }
+        if case .enrolled(let e, let v) = decode("[[1,0,0],[0,1,0]]") {
+            c.expect(e.count == 2 && v == nil, "ND-110 decode: legacy bare array → .enrolled, version nil (stale)")
+        } else { c.expect(false, "ND-110 decode: legacy bare array → .enrolled, version nil (stale)") }
+        c.expect(isNotEnrolled(decode(#"{"modelVersion":"m1","embeddings":[]}"#)) && isNotEnrolled(decode("[]")),
+                 "ND-110 decode: empty set (versioned or legacy) → .notEnrolled")
+        c.expect(isUnavailable(decode("not json")) && isUnavailable(decode(#"{"embeddings":"x"}"#))
+                 && isUnavailable(decode("")),
+                 "ND-110 decode: corrupt / undecodable blob → .unavailable (fail-safe)")
+        c.expect(isUnavailable(decode(#"{"modelVersion":"m1","embeddings":[[1,0,0],[1,0]]}"#))
+                 && isUnavailable(decode("[[1,0,0],[1,0]]")),
+                 "ND-093 decode: mixed vector lengths (versioned or legacy) → .unavailable, never presence-only")
+        c.expect(isUnavailable(decode(#"{"modelVersion":"m1","embeddings":[[1,0],[]]}"#)),
+                 "ND-093 decode: an empty vector inside the set → .unavailable")
+        c.expect(isUnavailable(decode(#"{"modelVersion":"m1","embeddings":[[1e39,0]]}"#)),
+                 "ND-093 decode: an out-of-range (non-finite as Float) component → .unavailable")
+    }
+
     print("\nND-080 / ND-082 — pause + liveness policy")
     do {
         c.expect(PausePolicy.endsOnSessionSuspend(.indefinite),
@@ -3197,6 +3351,240 @@ func runAll() async -> Bool {
                  "ND-090: sleep flag fresh shortly after willSleep")
         c.expect(P.sleepFlagIsStale(willSleepUptime: 100, nowUptime: 100 + P.staleSleepFlagAfter),
                  "ND-090: awake ≥30s after willSleep with no didWake → stale, cleared")
+    }
+
+    print("\nND-060/062/091/092 engine hardening checks:")
+
+    // ND-062: Config.validated() clamps every tunable into Config.Bounds.
+    do {
+        let d = Config()
+        c.expect(d.validated() == d, "ND-062: shipped defaults are inside Bounds (validated() is a no-op)")
+        var bad = Config()
+        bad.tickIntervalSeconds = 0
+        bad.graceSeconds = 100_000
+        bad.consecutiveAbsentTicksToLock = 0
+        bad.maxConsecutiveErrorsBeforeAbsent = -5
+        bad.maxCallAssumedPresentSeconds = 1e9
+        bad.maxCameraUnavailableSeconds = 0
+        bad.consecutiveStrangerTicksToLock = 0
+        bad.strangerGraceSeconds = -3
+        let v = bad.validated()
+        let B = Config.Bounds.self
+        c.expect(v.tickIntervalSeconds == B.tickIntervalSeconds.lowerBound && v.tickIntervalSeconds == 0.5,
+                 "ND-062: 0s tick → clamped to 0.5s (no CPU spin)")
+        c.expect(v.graceSeconds == 60, "ND-062: huge grace → clamped to 60s (no fail-open)")
+        c.expect(v.consecutiveAbsentTicksToLock == 2, "ND-062: 0 consensus → clamped to 2 ticks")
+        c.expect(v.maxConsecutiveErrorsBeforeAbsent == 1, "ND-062: negative error cap → clamped to 1")
+        c.expect(v.maxCallAssumedPresentSeconds == 3600, "ND-062: huge call cap → clamped to 3600s")
+        c.expect(v.maxCameraUnavailableSeconds == 30, "ND-062: 0 unavailable cap → clamped to 30s")
+        c.expect(v.consecutiveStrangerTicksToLock == 1, "ND-062: 0 stranger ticks → clamped to 1")
+        c.expect(v.strangerGraceSeconds == 0, "ND-062: negative stranger grace → clamped to 0")
+        c.expect(v.validated() == v, "ND-062: validated() is idempotent")
+        var high = Config()
+        high.tickIntervalSeconds = 99
+        high.consecutiveAbsentTicksToLock = 1_000
+        high.maxConsecutiveErrorsBeforeAbsent = 1_000
+        high.consecutiveStrangerTicksToLock = 1_000
+        high.strangerGraceSeconds = 99
+        high.graceSeconds = 0
+        high.maxCameraUnavailableSeconds = 1e9
+        high.maxCallAssumedPresentSeconds = 0
+        let hv = high.validated()
+        c.expect(hv.tickIntervalSeconds == 10 && hv.consecutiveAbsentTicksToLock == 20
+                 && hv.maxConsecutiveErrorsBeforeAbsent == 20 && hv.consecutiveStrangerTicksToLock == 10
+                 && hv.strangerGraceSeconds == 10 && hv.graceSeconds == 2
+                 && hv.maxCameraUnavailableSeconds == 600 && hv.maxCallAssumedPresentSeconds == 60,
+                 "ND-062: every tunable clamps at the other end of its range too")
+        var nan = Config()
+        nan.tickIntervalSeconds = .nan
+        nan.graceSeconds = .infinity
+        nan.maxCallAssumedPresentSeconds = -.infinity
+        nan.strangerGraceSeconds = .nan
+        let nv = nan.validated()
+        c.expect(nv.tickIntervalSeconds == d.tickIntervalSeconds && nv.graceSeconds == d.graceSeconds
+                 && nv.maxCallAssumedPresentSeconds == d.maxCallAssumedPresentSeconds
+                 && nv.strangerGraceSeconds == d.strangerGraceSeconds,
+                 "ND-062: non-finite values fall back to the shipped default (not clamped)")
+    }
+
+    // ND-062: the engine validates at init AND on updateConfig — a 0-tick / 0-grace /
+    // 0-consensus config cannot make a single no-face tick lock.
+    do {
+        var bad = Config()
+        bad.graceSeconds = 0
+        bad.consecutiveAbsentTicksToLock = 0
+        bad.tickIntervalSeconds = 0
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker, bad)
+        await e.tick(now: t0)
+        c.expect(locker.lockCallCount == 0 && e.effectiveConfig == bad.validated()
+                 && e.effectiveConfig.tickIntervalSeconds == 0.5,
+                 "ND-062: init validates → 0 consensus/grace config can't lock on one no-face tick")
+        let e2 = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker)
+        e2.updateConfig(bad)
+        await e2.tick(now: t0)
+        c.expect(locker.lockCallCount == 0 && e2.effectiveConfig.consecutiveAbsentTicksToLock == 2
+                 && e2.effectiveConfig.graceSeconds == 2,
+                 "ND-062: updateConfig validates → unsafe live update clamped, no instant lock")
+    }
+
+    // ND-062: Config.resolved(from:) — the UserDefaults resolver (mirrors resolvedMatchThreshold).
+    do {
+        let suiteName = "nd062.check.\(UUID().uuidString)"
+        if let ud = UserDefaults(suiteName: suiteName) {
+            defer { ud.removePersistentDomain(forName: suiteName) }
+            let K = Config.DefaultsKey.self
+            let d = Config()
+            c.expect(Config.resolved(from: ud) == d, "ND-062: resolver — absent keys → defaults")
+            ud.set(3.0, forKey: K.tickIntervalSeconds); ud.set(12.0, forKey: K.graceSeconds)
+            let ok = Config.resolved(from: ud)
+            c.expect(ok.tickIntervalSeconds == 3 && ok.graceSeconds == 12, "ND-062: resolver — in-range values accepted")
+            ud.set(0.0, forKey: K.tickIntervalSeconds); ud.set(100_000.0, forKey: K.graceSeconds)
+            let out = Config.resolved(from: ud)
+            c.expect(out.tickIntervalSeconds == d.tickIntervalSeconds && out.graceSeconds == d.graceSeconds,
+                     "ND-062: resolver — out-of-range rejected → default (not clamped to the floor)")
+            ud.set("fast", forKey: K.tickIntervalSeconds); ud.set(true, forKey: K.graceSeconds)
+            let junk = Config.resolved(from: ud)
+            c.expect(junk.tickIntervalSeconds == d.tickIntervalSeconds && junk.graceSeconds == d.graceSeconds,
+                     "ND-062: resolver — String / Bool values rejected → default")
+            ud.set(Double.nan, forKey: K.tickIntervalSeconds)
+            c.expect(Config.resolved(from: ud).tickIntervalSeconds == d.tickIntervalSeconds,
+                     "ND-062: resolver — NaN rejected → default")
+            var base = Config(); base.graceSeconds = 0
+            ud.removeObject(forKey: K.graceSeconds)
+            c.expect(Config.resolved(from: ud, base: base).graceSeconds == 2,
+                     "ND-062: resolver output is validated (an unsafe base can't leak through)")
+        } else {
+            c.expect(false, "ND-062: could not create a throwaway UserDefaults suite")
+        }
+    }
+
+    // ND-091: pause() while a tick is suspended in capture() → the stale tick must not
+    // overwrite .paused nor count an absence tick into the fresh episode.
+    do {
+        let config = Config()
+        let camera = GatedCamera()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(camera, StubRecognizer(.noFace), locker, config)
+        let inFlight = Task { @MainActor in await e.tick(now: t0) }
+        for _ in 0..<100 where !camera.isHeld { await Task.yield() }
+        let held = camera.isHeld
+        e.pause()
+        camera.release(.frame(CapturedFrame()))
+        await inFlight.value
+        let stayedPaused = e.state == .paused
+        // Resume: if the stale tick had counted, consensus would be reached one tick
+        // early (4 fresh ticks) and a tick at +grace would lock.
+        let resumed = makeFeeder(camera)
+        for n in 0..<(config.consecutiveAbsentTicksToLock - 1) {
+            await resumed(e, t0.addingTimeInterval(10 + Double(n)), .frame(CapturedFrame()))
+        }
+        await resumed(e, t0.addingTimeInterval(10 + Double(config.consecutiveAbsentTicksToLock - 2) + config.graceSeconds + 0.5),
+                      .frame(CapturedFrame()))
+        c.expect(held && stayedPaused && locker.lockCallCount == 0,
+                 "ND-091: pause during in-flight capture → stays .paused, stale tick counts no absence")
+    }
+
+    // ND-091: pause() while a tick is suspended in recognize() → same guarantee.
+    do {
+        let recognizer = GatedRecognizer()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker)
+        let inFlight = Task { @MainActor in await e.tick(now: t0) }
+        for _ in 0..<100 where !recognizer.isHeld { await Task.yield() }
+        let held = recognizer.isHeld
+        e.pause()
+        recognizer.release(.enrolledUserPresent(confidence: 1))
+        await inFlight.value
+        c.expect(held && e.state == .paused && locker.lockCallCount == 0,
+                 "ND-091: pause during in-flight recognize → stays .paused (not flipped to .present)")
+    }
+
+    // ND-091: sessionSuspended() during an in-flight capture that then returns a
+    // stranger frame → stays .suspended, no stranger streak leaked.
+    do {
+        let camera = GatedCamera()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(camera, StubRecognizer(.strangerOnly), locker)
+        let inFlight = Task { @MainActor in await e.tick(now: t0) }
+        for _ in 0..<100 where !camera.isHeld { await Task.yield() }
+        e.sessionSuspended()
+        camera.release(.frame(CapturedFrame()))
+        await inFlight.value
+        let stayed = e.state == .suspended
+        // Two fresh stranger ticks must NOT fast-lock (would if the stale one counted).
+        let feed = makeFeeder(camera)
+        await feed(e, t0.addingTimeInterval(1), .frame(CapturedFrame()))
+        await feed(e, t0.addingTimeInterval(2), .frame(CapturedFrame()))
+        c.expect(stayed && locker.lockCallCount == 0,
+                 "ND-091: session suspend during in-flight tick → stays .suspended, stale stranger tick not counted")
+    }
+
+    // ND-091: the loop Task cancelled (stopLoop) mid-capture, with no reset → nothing mutates.
+    do {
+        let camera = GatedCamera()
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(camera, recognizer, locker)
+        let first = Task { @MainActor in await e.tick(now: t0) }
+        for _ in 0..<100 where !camera.isHeld { await Task.yield() }
+        camera.release(.frame(CapturedFrame()))
+        await first.value
+        let present = e.state == .present
+        recognizer.result = .noFace
+        let inFlight = Task { @MainActor in await e.tick(now: t0.addingTimeInterval(1)) }
+        for _ in 0..<100 where !camera.isHeld { await Task.yield() }
+        inFlight.cancel()
+        camera.release(.frame(CapturedFrame()))
+        await inFlight.value
+        c.expect(present && e.state == .present && locker.lockCallCount == 0,
+                 "ND-091: cancelled in-flight tick → state untouched (no stale .absent)")
+    }
+
+    // ND-091: cancelled auto-lock whose lock() then FAILS → no .lockFailed, no failure count.
+    do {
+        let config = Config()
+        let locker = GatedLocker(laterResult: false)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.noFace), locker, config)
+        for i in 0..<config.consecutiveAbsentTicksToLock {
+            await e.tick(now: t0.addingTimeInterval(Double(i)))
+        }
+        let graceAt = Double(config.consecutiveAbsentTicksToLock) + config.graceSeconds + 1
+        let autoTick = Task { @MainActor in await e.tick(now: t0.addingTimeInterval(graceAt)) }
+        for _ in 0..<100 where !locker.isHeld { await Task.yield() }
+        autoTick.cancel()
+        locker.release(false)
+        await autoTick.value
+        c.expect(e.state == .absent && e.lockFailureCount == 0,
+                 "ND-091: cancelled auto-lock that fails → no stale .lockFailed / failure recorded")
+    }
+
+    // ND-092: a successful lock clears the EC-10 error streak. Two held errors, a manual
+    // lockNow() that succeeds, then ONE error tick: must be held (stay .suspended), not
+    // escalate on the half-finished pre-lock streak to .absent.
+    do {
+        let locker = SpyLocker(succeed: true)
+        let recognizer = StubRecognizer(.enrolledUserPresent(confidence: 1))
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), recognizer, locker)
+        await e.tick(now: t0)
+        recognizer.result = .error("glitch")
+        await e.tick(now: t0.addingTimeInterval(1))
+        await e.tick(now: t0.addingTimeInterval(2))
+        await e.lockNow()
+        let locked = e.state == .suspended
+        await e.tick(now: t0.addingTimeInterval(3))
+        c.expect(locked && e.state == .suspended && locker.lockCallCount == 1,
+                 "ND-092: successful lock clears the error streak → next lone error is held, no .absent")
+    }
+
+    // ND-092: after an AUTO lock reached via EC-10 escalation, further errors neither
+    // re-lock nor clobber .suspended (lockSucceeded preserved, streaks cleared).
+    do {
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.error("wedged")), locker)
+        for n in 0..<40 { await e.tick(now: t0.addingTimeInterval(Double(n))) }
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended,
+                 "ND-092: post-auto-lock error ticks → no re-lock, state stays .suspended")
     }
 
     print("\n\(c.passed) passed, \(c.failed) failed")

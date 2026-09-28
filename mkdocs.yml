@@ -53,5 +53,6 @@ nav:
       - "ADR-0016 — Bounded camera-unavailable window": adr/0016-bounded-camera-unavailable.md
       - "ADR-0017 — Stranger fast lock": adr/0017-stranger-fast-lock.md
       - "ADR-0018 — Bundled KeepAlive agent": adr/0018-bundled-keepalive-agent.md
+      - "ADR-0019 — Validated tunables": adr/0019-validated-tunables.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

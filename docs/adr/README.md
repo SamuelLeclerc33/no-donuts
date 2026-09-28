@@ -25,6 +25,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0016](0016-bounded-camera-unavailable.md) — Bounded camera-unavailable window (lock after 2 min with the lid open; not with the lid closed); busy-camera cap 10 min — **Accepted**
 - [ADR-0017](0017-stranger-fast-lock.md) — Stranger at the keyboard locks after 3 ticks with no grace — **Accepted**
 - [ADR-0018](0018-bundled-keepalive-agent.md) — Single launcher: bundled KeepAlive agent via SMAppService.agent; dead-man notification; confirmed Quit — **Accepted** (supersedes the launcher part of ADR-0013)
+- [ADR-0019](0019-validated-tunables.md) — All presence tunables pass through one validated Config (Config.Bounds) — **Accepted**
 
 ## Template
 

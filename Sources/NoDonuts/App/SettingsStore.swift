@@ -30,19 +30,21 @@ final class SettingsStore: ObservableObject {
     /// UserDefaults keys. `antiSpoofKey` MUST match the recognizer's resolver key
     /// (FaceLiveness.swift). The threshold key is per-model — see `thresholdKey`.
     private enum Keys {
-        static let tickInterval = "tickIntervalSeconds"
-        static let grace = "graceSeconds"
+        static let tickInterval = Config.DefaultsKey.tickIntervalSeconds
+        static let grace = Config.DefaultsKey.graceSeconds
         static let antiSpoof = "antiSpoofEnabled"          // == resolvedAntiSpoofEnabled key
     }
 
     /// Sane clamp ranges for the Config-backed tunables. The match-threshold range is
     /// NOT here: it belongs to the active model (`thresholdRange`), so the slider can
     /// never write a value the resolver would reject and silently fall back on.
+    /// ND-062: the ranges are owned by Core (`Config.Bounds`) so the UI clamp and the
+    /// engine's `Config.validated()` can never drift apart.
     enum Range {
-        static let tick: ClosedRange<Double> = 0.5...10
+        static let tick: ClosedRange<Double> = Config.Bounds.tickIntervalSeconds
         // Lower bound is 2s (not 0): there must always be some away-grace so a brief
-        // look-away never locks instantly (code-review #3). Upper bound unchanged.
-        static let grace: ClosedRange<Double> = 2...60
+        // look-away never locks instantly (code-review #3).
+        static let grace: ClosedRange<Double> = Config.Bounds.graceSeconds
     }
 
     private let defaults: UserDefaults
@@ -174,9 +176,10 @@ final class SettingsStore: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        let d = Config()
-        tickIntervalSeconds = readDouble(Keys.tickInterval, default: d.tickIntervalSeconds, in: Range.tick)
-        graceSeconds = readDouble(Keys.grace, default: d.graceSeconds, in: Range.grace)
+        // ND-062: the shared Core resolver (absent / junk / out-of-range → default).
+        let resolved = Config.resolved(from: defaults)
+        tickIntervalSeconds = resolved.tickIntervalSeconds
+        graceSeconds = resolved.graceSeconds
         loadMatchThreshold(alreadyLoading: true)
         // Anti-spoof defaults ON when absent — matches resolvedAntiSpoofEnabled.
         antiSpoofEnabled = defaults.object(forKey: Keys.antiSpoof) == nil
@@ -195,15 +198,6 @@ final class SettingsStore: ObservableObject {
     }
 
     // MARK: - Helpers
-
-    /// Read a stored Double, falling back to `def` when absent, non-numeric, or out of
-    /// range. Mirrors the Core resolvers' "absent or nonsensical → default" behavior.
-    private func readDouble(_ key: String, default def: Double, in range: ClosedRange<Double>) -> Double {
-        guard let n = defaults.object(forKey: key) as? NSNumber else { return def }
-        let v = n.doubleValue
-        guard range.contains(v) else { return def }
-        return v
-    }
 
     private func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
         min(max(value, range.lowerBound), range.upperBound)

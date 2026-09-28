@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../adr/0018-bundled-keepalive-agent/">
+        <link rel="prev" href="../adr/0019-validated-tunables/">
       
       
         <link rel="next" href="../EDGE_CASES/">
@@ -941,6 +941,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0019-validated-tunables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0019 — Validated tunables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1370,12 +1398,12 @@
 22. ✅ ND-084 — camera: post-suspend stale frame + failed <code>addOutput</code> leaves input attached — blart
 23. ✅ ND-090 — display-asleep ≠ locked in <code>SessionStateMonitor</code> — blart + homer
 24. ✅ ND-098 — busy-camera 30 min cap (Photo Booth = 30 min unlocked): surface/lower — homer + krusty
-25. ND-060 — EC-10 escalation cadence decision — homer
-26. ND-062 — Core resolvers for remaining tunables (UI clamps already shipped) — homer
+25. ✅ ND-060 — EC-10 escalation cadence decision — homer
+26. ✅ ND-062 — Core resolvers for remaining tunables (UI clamps already shipped) — homer
 27. ✅ ND-064 — shared CGSession reader — wiggum + homer
-28. ND-091 — cancelled tick mutates state after stop/pause — homer
-29. ND-092 — post-lock state reset (<code>consecutiveErrorTicks</code>) — homer
-30. ND-093 — <code>enroll()</code> input validation + Keychain doc/attr fixes — cooper
+28. ✅ ND-091 — cancelled tick mutates state after stop/pause — homer
+29. ✅ ND-092 — post-lock state reset (<code>consecutiveErrorTicks</code>) — homer
+30. ✅ ND-093 — <code>enroll()</code> input validation + Keychain doc/attr fixes — cooper
 31. ND-066 — on-device multi-client validation + configured-device busy probe — blart</p>
 <p><strong>Tier 3 — pre-distribution gates (must precede M5; target = internal company distribution, ND-111):</strong>
 32. ND-111 — internal-distribution ADR: channel, signing identity, IT/privacy sign-off — gordon + wiggum
@@ -1514,9 +1542,9 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <p><strong>P1 — correctness &amp; policy:</strong></p>
 <ul>
 <li>[ ] ND-059 Multi-face matching (EC-06) — embed the top-2/3 detected faces by size and report present if ANY clears the threshold; <code>.strangerOnly</code> only when none do. Today only the LARGEST face is embedded: a colleague leaning in closer than the enrolled user → stranger score → false lock of the present user. Bounded top-N because matching any-of-N multiplies false-accept surface → sequence AFTER ND-056. EngineCheck via a per-face fake embedder. — cooper</li>
-<li>[ ] ND-060 EC-10 escalation cadence decision — <code>markAbsent</code> resets <code>consecutiveErrorTicks</code>, so a fully wedged recognizer needs 3×5 error ticks + grace ≈ <strong>20s</strong> to lock vs ~10s for plain absence. Either count an escalated tick without resetting the streak, or record the 2× behavior as intended (EDGE_CASES EC-10 + config comment). One line either way + an EngineCheck assertion pinning the chosen time-to-lock. — homer</li>
+<li>[x] ND-060 EC-10 escalation cadence decision — <code>markAbsent</code> resets <code>consecutiveErrorTicks</code>, so a fully wedged recognizer needs 3×5 error ticks + grace ≈ <strong>20s</strong> to lock vs ~10s for plain absence. Either count an escalated tick without resetting the streak, or record the 2× behavior as intended (EDGE_CASES EC-10 + config comment). One line either way + an EngineCheck assertion pinning the chosen time-to-lock. <strong>DONE 2026-09-28:</strong> escalation no longer resets the error streak, so a wedged recognizer locks at about 12s at defaults (EngineCheck pins it) — homer</li>
 <li>[x] ND-061 Stranger-at-keyboard urgency — sustained <code>.strangerOnly</code> currently gets the identical 5-tick consensus + 5s grace as an empty desk, but grace exists to absorb the enrolled user turning away, not to give a stranger 10 seconds at the keyboard. Consider a shorter consensus/grace pair (e.g. 3 ticks + 0s) for the highest-threat observable state. Policy change → needs an ADR; interacts with ND-056/ND-059 false-positive rates. <strong>DONE 2026-09-28 (ADR-0017):</strong> 3 consecutive stranger ticks lock with no grace; noFace breaks the streak but still counts toward normal absence; errors (including escalated ones) hold it; presence resets it; both triggers share a single <code>maybeLock</code> (ND-054/079 guards). EngineCheck 247/247 — homer + cooper</li>
-<li>[ ] ND-062 Validated runtime tunables — <code>matchThreshold</code> has a validated defaults-override resolver; <code>tickIntervalSeconds</code>/<code>graceSeconds</code>/<code>consecutiveAbsentTicksToLock</code> have none, and unvalidated values are dangerous (0s tick = CPU spin; huge grace = fail-open). Ship Core resolvers mirroring <code>resolvedMatchThreshold</code> (clamped ranges, EngineCheck-covered) so ND-040 builds on a safe substrate. <strong>Partly done (2026-09-24 audit):</strong> <code>SettingsStore.swift:38-43</code> already clamps tick 0.5–10s / grace 2–60s in the UI path; remaining = Core resolvers + EngineCheck + ranges for consecutive-absent ticks, max errors, call cap. — homer</li>
+<li>[x] ND-062 Validated runtime tunables — <code>matchThreshold</code> has a validated defaults-override resolver; <code>tickIntervalSeconds</code>/<code>graceSeconds</code>/<code>consecutiveAbsentTicksToLock</code> have none, and unvalidated values are dangerous (0s tick = CPU spin; huge grace = fail-open). Ship Core resolvers mirroring <code>resolvedMatchThreshold</code> (clamped ranges, EngineCheck-covered) so ND-040 builds on a safe substrate. <strong>Partly done (2026-09-24 audit):</strong> <code>SettingsStore.swift:38-43</code> already clamps tick 0.5–10s / grace 2–60s in the UI path; remaining = Core resolvers + EngineCheck + ranges for consecutive-absent ticks, max errors, call cap. <strong>DONE 2026-09-28 (ADR-0019):</strong> <code>Config.validated()</code> + <code>Config.Bounds</code> for every tunable; <code>Config.resolved(from:)</code> rejects bad defaults values; engine init, updateConfig and the App loop all validate; SettingsStore ranges come from Core — homer</li>
 <li>[x] ND-063 Enrollment quality — two halves: (a) <strong>distinct frames</strong> (blart): the coordinator samples every 200ms but the camera delivers ~1fps, so "10 frames" ≈ 2–3 distinct images and <code>minimumVectors=3</code> can be met by one frame embedded thrice — expose frame identity/timestamp (or raise fps during the enrollment window) and require N distinct; (b) <strong>consistency gate</strong> (cooper): reject vector sets (or outliers) whose pairwise cosine falls below a floor, so a photobombed/blurry capture can't silently poison the reference set — honest <code>notEnoughFaces</code>-style retry, guidance wording with krusty. <strong>DONE 2026-09-25:</strong> <code>CapturedFrame.captureTime</code>; <code>runEnrollmentCapture</code> dedupes by capture time and buffer identity and needs 5 distinct vectors (cap 10, 10s timeout, 4s no-frame bailout); consistency gate (drop outliers below the descriptor floor, median pairwise ≥ floor, at most ⅓ dropped) with a new <code>.inconsistent</code> result that never overwrites the existing enrollment; updated alert copy. EngineCheck 235/235 — blart + cooper + krusty</li>
 <li>[x] ND-064 Shared CGSession reader — one defensive AppKit-free <code>NoDonutsCore/Support</code> helper (Bool <strong>and</strong> NSNumber bridging; locked / on-console / display-asleep) consumed by both <code>ScreenLocker.isScreenLockedNow()</code> and <code>SessionStateMonitor.currentlyActive()</code>. The feared drift already exists: the locker bridges NSNumber defensively, the monitor uses bare <code>as? Bool</code> only. Enables EngineCheck coverage of the parsing. Absorbs the "Dedupe CGSession lock-detection" follow-up. <strong>DONE 2026-09-28 (with ND-090):</strong> the shared <code>CGSessionState</code> reader (Bool/NSNumber, missing = unknown) is used by both ScreenLocker and SessionStateMonitor, with EngineCheck coverage — wiggum + homer</li>
 <li>[ ] ND-065 Identity constants + Keychain migration plan — extract one shared constant for the 7+ hardcoded <code>"com.nodonuts.app"</code> Logger subsystems (ADR-0004), and decide (note in ADR-0004 or mini-ADR) whether the <strong>Keychain service string</strong> (<code>EnrollmentStore</code>, same literal) tracks the bundle id or stays fixed at the ND-050 rename — as-is it's a silent enrollment-loss trap. Gates ND-050 and ND-044. Absorbs the "Log subsystem constant" follow-up. — gordon + wiggum + cooper</li>
@@ -1563,9 +1591,9 @@ ND-019 ADR renumber · ND-067 stale-docs sweep · ND-068 delete dead <code>FaceD
 <p><strong>P2 — polish, power, coverage:</strong></p>
 <ul>
 <li>[x] ND-090 Display-asleep ≠ locked — <code>SessionStateMonitor.swift:117</code> treats a dark display as suspended even when the Mac isn't locked (password-delay, clamshell with external display), so nothing locks during that window and a stranger who wakes the screen gets the full grace. Fix: suspend only on locked / off-console; display sleep may stop the camera but not reset absence. EC-02/EC-13. <strong>DONE 2026-09-28:</strong> the loop suspends only on a locked screen, off-console, or machine sleep (willSleep/didWake plus a stale-sleep guard); display sleep keeps the loop running. ADR-0009 amended — blart + homer</li>
-<li>[ ] ND-091 Cancelled tick mutates state — a tick in flight after <code>stopLoop()</code> finishes after <code>pause()</code>/<code>sessionSuspended()</code> and overwrites <code>state</code> (<code>.paused</code> → <code>.present</code>/<code>.absent</code>) or leaks an absence tick; fast resume can run old + new ticks and double-count consensus (<code>main.swift:545</code>, <code>PresenceEngine.swift:63-67</code>). Fix: <code>Task.isCancelled</code> check after each await in <code>tick()</code>. With ND-042. — homer</li>
-<li>[ ] ND-092 Post-lock reset — after a successful lock <code>consecutiveErrorTicks</code> isn't cleared (<code>PresenceEngine.swift:174-178</code>); if the session monitor misses the lock, a returning-user frame flips state to <code>.present</code> while still locked. Fix: route through <code>resetAbsenceAccounting()</code> preserving <code>lockAttempted</code>. — homer</li>
-<li>[ ] ND-093 Enrollment store hardening — <code>enroll()</code> accepts empty or wrong-dim vectors (<code>EnrollmentStore.swift:188</code>); empty reads back as not-enrolled → presence-only. Update path doesn't re-set <code>kSecAttrAccessible</code> (<code>:196-202</code>); doc at <code>:70-72</code> claims device-only, which the login keychain ignores (data-protection keychain → with ND-050). Fix: throw on bad input, fix doc + update attrs. — cooper</li>
+<li>[x] ND-091 Cancelled tick mutates state — a tick in flight after <code>stopLoop()</code> finishes after <code>pause()</code>/<code>sessionSuspended()</code> and overwrites <code>state</code> (<code>.paused</code> → <code>.present</code>/<code>.absent</code>) or leaks an absence tick; fast resume can run old + new ticks and double-count consensus (<code>main.swift:545</code>, <code>PresenceEngine.swift:63-67</code>). Fix: <code>Task.isCancelled</code> check after each await in <code>tick()</code>. With ND-042. <strong>DONE 2026-09-28:</strong> <code>tick()</code> captures <code>episodeGeneration</code> and bails after each await if the task was cancelled or a reset happened; a cancelled auto-lock doesn't record <code>.lockFailed</code> — homer</li>
+<li>[x] ND-092 Post-lock reset — after a successful lock <code>consecutiveErrorTicks</code> isn't cleared (<code>PresenceEngine.swift:174-178</code>); if the session monitor misses the lock, a returning-user frame flips state to <code>.present</code> while still locked. Fix: route through <code>resetAbsenceAccounting()</code> preserving <code>lockAttempted</code>. <strong>DONE 2026-09-28:</strong> a successful lock clears the absence, error and stranger streaks via <code>clearStreaks()</code> (not a full reset, so the generation isn't bumped) — homer</li>
+<li>[x] ND-093 Enrollment store hardening — <code>enroll()</code> accepts empty or wrong-dim vectors (<code>EnrollmentStore.swift:188</code>); empty reads back as not-enrolled → presence-only. Update path doesn't re-set <code>kSecAttrAccessible</code> (<code>:196-202</code>); doc at <code>:70-72</code> claims device-only, which the login keychain ignores (data-protection keychain → with ND-050). Fix: throw on bad input, fix doc + update attrs. <strong>DONE 2026-09-28:</strong> <code>validateEnrollmentEmbeddings</code> rejects an empty set, empty vectors, mixed lengths, non-finite values and the wrong dimension (throws before any write); decoding inconsistent blobs gives <code>.unavailable</code>; kSecAttrAccessible is set on add only (setting it on update could fail on items owned by an older build, per code review); the doc now states honestly that ThisDeviceOnly isn't enforced on the legacy keychain (ND-050/065). EngineCheck covers decode legacy/empty/corrupt (part of ND-110) — cooper</li>
 <li>[x] ND-094 Threshold-study rigor — <code>ThresholdAnalysis.swift:126</code> endorses "clean separation" from 1 genuine + 1 impostor sample; FaceScore ignores EXIF orientation (<code>FaceScore/main.swift:133</code>) and reads its own defaults domain instead of <code>com.nodonuts.app</code> for <code>visionOrientation</code>. Fix: minimum sample counts + margin; apply EXIF; read the app's key. Before ND-056. <strong>DONE 2026-09-25:</strong> <code>recommendThreshold</code> refuses unless genuine ≥30, impostor ≥30, at least 2 impostor identities, and the gap is ≥0.05, and lists every failed check; overlap is checked first; FaceScore applies EXIF orientation, reads <code>visionOrientation</code> and the per-model threshold from <code>com.nodonuts.app</code>, and reports skipped images by reason. EngineCheck 203/203 — cooper</li>
 <li>[ ] ND-095 Model load off main — the 45 MB model loads synchronously on the main thread at launch (<code>main.swift:44</code> → <code>CoreMLFaceEmbedder.swift:108</code>), compute units left default. Fix: background load + explicit <code>MLModelConfiguration.computeUnits</code>. — cooper</li>
 <li>[ ] ND-096 Capture power &amp; device switching — no <code>sessionPreset</code> (full-res capture), 1 fps only checks the first frame-rate range and may be reset by <code>startRunning</code> (<code>CameraController.swift:156, 213-240</code>); <code>systemPreferredCamera</code> changes (Continuity/external) are ignored. Fix: 640×480 preset, lowest supported range, keep device locked across <code>startRunning</code>, observe <code>systemPreferredCamera</code> and rebuild. Also: <code>suspend()</code> while not yet running doesn't prevent a later <code>ensureConfigured</code> from starting the camera behind the lock screen (<code>:240</code>) — add a sticky <code>suspended</code> flag. EC-18. <strong>Update 2026-09-25:</strong> following <code>systemPreferredCamera</code> is moot (ADR-0015 is built-in only), and the camera-behind-lock-screen gap is closed by ND-084's sticky <code>suspended</code> flag — blart</li>

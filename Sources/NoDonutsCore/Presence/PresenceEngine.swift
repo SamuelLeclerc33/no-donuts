@@ -93,13 +93,24 @@ public final class PresenceEngine {
         self.lidState = lidState
         self.recognizer = recognizer
         self.locker = locker
-        self.config = config
+        self.config = config.validated()   // ND-062: no path can inject unsafe tunables
     }
 
     /// One iteration of the loop. Call every `config.tickIntervalSeconds`.
     /// `now` is injected so the policy is deterministic + unit-testable.
+    ///
+    /// ND-091: every `await` below (capture, recognize, lock) can straddle a
+    /// `pause()` / `sessionSuspended()` / `disabledOnTrustedNetwork()` or a loop
+    /// cancellation (stopLoop). Swift doesn't abort a suspended await, so after each
+    /// one the tick bails — mutating nothing — if the task was cancelled or the
+    /// episode was reset meanwhile (`episodeGeneration` changed). Otherwise a stale
+    /// tick would overwrite `.paused` with `.present`/`.absent`, leak an absence tick
+    /// into the fresh episode, or double-count consensus alongside a resumed loop.
     public func tick(now: Date) async {
-        switch await camera.capture() {
+        let generation = episodeGeneration
+        let outcome = await camera.capture()
+        guard isCurrent(generation) else { return }
+        switch outcome {
         case .suspended:
             // EC-02/EC-13: locked/asleep/inactive (ND-013). The live CameraController
             // returns this whenever its session is suspended (lock/sleep/pause). Mirror `.unavailable`
@@ -125,7 +136,9 @@ public final class PresenceEngine {
             // multi-client frames while a call app holds the camera and the user
             // walked away) stay bounded by maxCallAssumedPresentSeconds and then lock.
             unavailableSince = nil        // a frame ends any unavailable run (ND-078)
-            switch await recognizer.recognize(frame) {
+            let result = await recognizer.recognize(frame)
+            guard isCurrent(generation) else { return }   // ND-091
+            switch result {
             case .enrolledUserPresent:
                 markPresent(.present)
             case .strangerOnly:
@@ -145,7 +158,11 @@ public final class PresenceEngine {
                 if consecutiveErrorTicks >= config.maxConsecutiveErrorsBeforeAbsent {
                     // Sustained recognizer failure: stop holding unlocked — treat as absence
                     // so the normal grace→lock path runs (EC-10, no indefinite fail-open).
-                    await markAbsent(now: now, holdStrangerStreak: true)
+                    // ND-060: the streak is NOT reset on escalation, so every further
+                    // consecutive error tick is also an absence tick — a wedged recognizer
+                    // locks ≈ (max − 1) ticks after plain absence would, not after
+                    // max × consensus ticks. A clean reading ends the streak.
+                    await markAbsent(now: now, errorEscalation: true)
                 }
                 // else: transient glitch → conservative hold (presence + absence
                 // counters untouched — incl. the ND-061 stranger streak; an escalated
@@ -234,11 +251,12 @@ public final class PresenceEngine {
             // Bounded fail-open expired with the lid open: can't verify presence for
             // too long → treat as absence so the normal grace→lock path runs.
             unavailableEscalated = true
+            let generation = episodeGeneration
             await markAbsent(now: now)
             // Honest display: still "camera unavailable" (not "away") until locked /
             // lock failed. Only rewrite .absent, so a reset during the lock await
-            // (.paused/.suspended/...) is never clobbered.
-            if state == .absent { state = .cameraUnavailable }
+            // (.paused/.suspended/...) is never clobbered (ND-091: nor after a cancel).
+            if isCurrent(generation), state == .absent { state = .cameraUnavailable }
         } else {
             // HOLD: neither advance nor reset the absence episode (see doc above).
             if state != .lockFailed && !lockSucceeded { state = .cameraUnavailable }
@@ -256,19 +274,33 @@ public final class PresenceEngine {
     /// `endingWindows: false` is used only by the lid-closed unavailable path, which
     /// must keep the call-cap window open (ND-078).
     private func resetAbsenceAccounting(endingWindows: Bool = true) {
-        consecutiveAbsentTicks = 0
-        absentSince = nil
+        clearStreaks()
         lockSucceeded = false
         failedLockAttempts = 0
         nextLockRetryAt = nil
         episodeGeneration &+= 1
-        consecutiveErrorTicks = 0
-        consecutiveStrangerTicks = 0
-        strangerSince = nil
         if endingWindows {
             callAssumedSince = nil
             unavailableSince = nil
         }
+    }
+
+    /// The per-reading streaks (absence consensus + grace clock, EC-10 error streak,
+    /// ND-061 stranger streak + clock). Shared by resetAbsenceAccounting() and the
+    /// post-lock cleanup (ND-092), which must clear these WITHOUT bumping
+    /// episodeGeneration or dropping lockSucceeded (that would re-arm the auto-lock).
+    private func clearStreaks() {
+        consecutiveAbsentTicks = 0
+        absentSince = nil
+        consecutiveErrorTicks = 0
+        consecutiveStrangerTicks = 0
+        strangerSince = nil
+    }
+
+    /// ND-091: true when a tick that captured `generation` before an `await` may still
+    /// mutate state — the task wasn't cancelled and no reset happened meanwhile.
+    private func isCurrent(_ generation: Int) -> Bool {
+        !Task.isCancelled && generation == episodeGeneration
     }
 
     /// Entry point the app calls when the OS session is suspended
@@ -306,8 +338,13 @@ public final class PresenceEngine {
         resetAbsenceAccounting()
     }
 
+    /// - Parameter auto: true from the tick loop (maybeLock). An auto attempt whose
+    ///   task was cancelled during the await writes nothing (ND-091: the loop is
+    ///   stopped; a stale `.lockFailed` would raise a false "will keep retrying"
+    ///   alarm). The manual `lockNow()` runs in its own uncancelled Task and always
+    ///   records its honest outcome.
     @discardableResult
-    private func attemptLock() async -> Bool {
+    private func attemptLock(auto: Bool = false) async -> Bool {
         if isLocking { return false }   // a lock attempt is already in flight (async) — skip; don't double-fire or clobber state (NOT a failure, so leave state untouched)
         isLocking = true
         defer { isLocking = false }
@@ -319,12 +356,16 @@ public final class PresenceEngine {
         // a stale .lockFailed would raise a false "will keep retrying" alarm while
         // the loop is stopped.
         guard generation == episodeGeneration else { return locked }
+        if auto && Task.isCancelled { return locked }   // ND-091
         if locked {
             state = .suspended
-            consecutiveAbsentTicks = 0   // reset stale absence accounting on successful lock
-            absentSince = nil
-            consecutiveStrangerTicks = 0
-            strangerSince = nil
+            // ND-092: clear ALL stale per-reading streaks — incl. the EC-10 error streak,
+            // which previously survived the lock: after a manual lock the session monitor
+            // may miss, one more error tick would escalate straight to `.absent` (and on
+            // toward a re-lock) on a half-finished pre-lock streak. Not a full
+            // resetAbsenceAccounting(): the episode (generation, lockSucceeded, retry
+            // state) must survive so maybeLock records the success and doesn't re-lock.
+            clearStreaks()
             return true
         } else {
             state = .lockFailed          // honest status; do NOT pretend suspended (no fail-open)
@@ -337,16 +378,18 @@ public final class PresenceEngine {
     /// call cap, lid-open unavailable past its cap) is a non-stranger absence and
     /// breaks the stranger streak. Two independent triggers can make the lock due;
     /// both go through the single `maybeLock(now:)`.
-    /// - Parameter holdStrangerStreak: an ESCALATED error tick (EC-10) is not a real
+    /// - Parameter errorEscalation: an ESCALATED error tick (EC-10) is not a real
     ///   no-face reading, so it must neither advance nor break the ND-061 stranger
-    ///   streak (ADR-0017: "a recognition error holds it") — otherwise a stranger whose
+    ///   streak, nor reset the error streak itself (ND-060) (ADR-0017: "a recognition error holds it") — otherwise a stranger whose
     ///   face intermittently fails to embed would dodge the fast lock.
-    private func markAbsent(now: Date, stranger: Bool = false, holdStrangerStreak: Bool = false) async {
-        consecutiveErrorTicks = 0    // a real (or escalated) reading clears the error streak
+    private func markAbsent(now: Date, stranger: Bool = false, errorEscalation: Bool = false) async {
+        // A real reading clears the error streak. An escalated error tick does NOT
+        // (ND-060): the streak stays at/above the cap so the next error escalates too.
+        if !errorEscalation { consecutiveErrorTicks = 0 }
         consecutiveAbsentTicks += 1
         if stranger {
             consecutiveStrangerTicks += 1
-        } else if holdStrangerStreak {
+        } else if errorEscalation {
             // EC-10 escalation: leave the stranger streak (and its clock) untouched.
         } else {
             consecutiveStrangerTicks = 0
@@ -413,10 +456,11 @@ public final class PresenceEngine {
         // the next tick re-evaluates — if the manual lock failed, we attempt then.
         if isLocking { return }
         let generation = episodeGeneration
-        let locked = await attemptLock()
+        let locked = await attemptLock(auto: true)
         // The episode was reset during the await (session suspend caused by this very
         // lock, pause, presence...) → don't leak its lock state into the new episode.
-        guard generation == episodeGeneration else { return }
+        // ND-091: likewise a cancelled loop records nothing.
+        guard isCurrent(generation) else { return }
         if locked {
             lockSucceeded = true
         } else {
@@ -441,7 +485,14 @@ public final class PresenceEngine {
     ///
     /// `tickIntervalSeconds` is consumed by the App's loop, not the engine, so
     /// changing the cadence is the App's responsibility (out of scope here).
+    ///
+    /// ND-062: the new config passes through `Config.validated()` (as at init), so a
+    /// live update can't inject a 0s tick / zero consensus / huge grace either.
     public func updateConfig(_ config: Config) {
-        self.config = config
+        self.config = config.validated()
     }
+
+    /// The validated config the engine is actually enforcing (ND-062). Diagnostics /
+    /// the App loop can read the clamped values from here.
+    public var effectiveConfig: Config { config }
 }

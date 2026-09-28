@@ -756,10 +756,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Copy the Settings store's tunables into `config` (ND-040): `graceSeconds` +
     /// `tickIntervalSeconds`, consumed by the engine/loop. The match threshold is NOT in
     /// Config (ND-076) — the recognizer resolves it per tick from the active model's
-    /// descriptor. The store has already clamped these; the Core resolvers are the guard.
+    /// descriptor. The store has already clamped these; `Config.validated()` (ND-062) is
+    /// the Core guard — applied here too because the LOOP reads `config.tickIntervalSeconds`
+    /// directly (the engine validates its own copy in init / updateConfig).
     private func applyStoreToConfig(_ store: SettingsStore) {
         config.tickIntervalSeconds = store.tickIntervalSeconds
         config.graceSeconds = store.graceSeconds
+        config = config.validated()
     }
 
     /// Log the effective identity matchThreshold once (pairs with cooper's per-tick score
