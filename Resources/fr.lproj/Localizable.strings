@@ -59,7 +59,6 @@
 "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren’t trusted)" = "No Donuts — ⚠️ caméra indisponible (aucune caméra intégrée; les caméras externes ou virtuelles ne sont pas considérées comme fiables)";
 "No Donuts — ⚠️ camera unavailable (grant access)" = "No Donuts — ⚠️ caméra indisponible (autorisez l’accès)";
 "No Donuts Settings" = "Réglages de No Donuts";
-"Behavior" = "Comportement";
 "Lock sensitivity" = "Sensibilité du verrouillage";
 "Lenient" = "Souple";
 "Strict" = "Strict";
@@ -77,7 +76,6 @@
 "How often No Donuts checks the camera. Faster reacts sooner; slower uses less power." = "Fréquence à laquelle No Donuts vérifie la caméra. Plus rapide, il réagit plus tôt; plus lent, il consomme moins d’énergie.";
 "Security" = "Sécurité";
 "Reject photos of me (anti-spoofing)" = "Refuser les photos de moi (anti-usurpation)";
-"Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It’s a basic, conservative check (no blink or motion test) and isn’t fully hardened — turn it off if a live face is ever rejected." = "Ignore une photo de votre visage imprimée ou affichée à l’écran en analysant sa texture. Fonctionne avec les deux modèles de reconnaissance. Il s’agit d’une vérification simple et prudente (sans test de clignement ni de mouvement) qui n’est pas entièrement renforcée — désactivez-la si un vrai visage est refusé.";
 "Recognition" = "Reconnaissance";
 "Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere." = "Lecture seule. Tout ceci est calculé sur ce Mac; aucune donnée faciale n’est affichée ni envoyée où que ce soit.";
 "Model" = "Modèle";
@@ -109,7 +107,6 @@
 "Start at login" = "Ouvrir à la connexion";
 "Needs approval in System Settings › General › Login Items." = "Nécessite une approbation dans Réglages Système › Général › Ouverture.";
 "Couldn't change this. It may need approval in System Settings › General › Login Items." = "Impossible de modifier ce réglage. Une approbation est peut-être requise dans Réglages Système › Général › Ouverture.";
-"Trusted Wi-Fi networks" = "Réseaux Wi-Fi de confiance";
 "No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (“Trust this Wi-Fi network”)." = "Aucun réseau de confiance. Sur un réseau de confiance, No Donuts suspend le verrouillage. Ajoutez-en un depuis la barre des menus (« Faire confiance à ce réseau Wi-Fi »).";
 "Remove" = "Retirer";
 "Remove %@" = "Retirer %@";
@@ -208,3 +205,23 @@
 "No Donuts %@ (%@)" = "No Donuts %1$@ (%2$@)";
 "development build" = "version de développement";
 "Version" = "Version";
+
+/* ND-117: Settings sidebar categories and pane copy. */
+"General" = "Général";
+"Trusted Wi-Fi" = "Wi-Fi de confiance";
+"Timing" = "Délais";
+"About" = "À propos";
+"Settings categories" = "Catégories de réglages";
+"Pausing" = "Suspension";
+"Pause from the No Donuts menu in the menu bar: for 15 minutes, for 1 hour, or until you resume. While paused, No Donuts doesn’t use the camera or lock your Mac, and the menu bar shows that it’s paused. A timed pause resumes on its own." = "Suspendez la protection depuis le menu No Donuts dans la barre des menus : pendant 15 minutes, pendant 1 heure ou jusqu’à ce que vous repreniez. Pendant la suspension, No Donuts n’utilise pas la caméra et ne verrouille pas votre Mac, et la barre des menus indique qu’il est en pause. Une suspension limitée dans le temps se termine d’elle-même.";
+"On a trusted Wi-Fi network, locking is paused automatically (see Trusted Wi-Fi)." = "Sur un réseau Wi-Fi de confiance, le verrouillage est suspendu automatiquement (voir Wi-Fi de confiance).";
+"Checks that the face is live, not a printed or on-screen photo: it must blink or move naturally at least once a minute, and have the fine texture of a real face. A photo held up to the camera keeps the Mac unlocked for about a minute at most, plus the grace period. A video of you replayed on a screen can still get past it. Turn it off only if you’re ever locked out while at your Mac." = "Vérifie que le visage est bien vivant et non une photo imprimée ou affichée à l’écran : il doit cligner des yeux ou bouger naturellement au moins une fois par minute, et présenter la texture fine d’un vrai visage. Une photo tenue devant la caméra garde le Mac déverrouillé pendant environ une minute au plus, plus le délai de grâce. Une vidéo de vous rejouée sur un écran peut encore passer. Ne désactivez cette option que si le Mac se verrouille alors que vous êtes devant.";
+"Weakened security settings are also shown in the menu bar menu and in Copy diagnostics." = "Les réglages de sécurité affaiblis sont aussi signalés dans le menu de la barre des menus et dans Copier le diagnostic.";
+"Security settings" = "Réglages de sécurité";
+"At the recommended defaults or stricter" = "Aux valeurs recommandées ou plus strictes";
+"Protection reduced: %@" = "Protection réduite : %@";
+"No Donuts has crashed on this Mac at least once (a recorded crash report exists). The crash summary is included in Copy diagnostics." = "No Donuts a déjà planté sur ce Mac au moins une fois (un rapport de plantage existe). Le résumé est inclus dans « Copier le diagnostic ».";
+"Locks your Mac when you step away, so nobody can volunteer you for the next donut run." = "Verrouille votre Mac quand vous vous éloignez, pour que personne ne vous inscrive d’office à la prochaine tournée de beignes.";
+"Privacy" = "Confidentialité";
+"Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain." = "Tout se passe sur ce Mac. Aucune image de la caméra, aucune donnée faciale ni aucun nom de réseau Wi-Fi n’en sort : rien n’est téléversé et il n’y a aucune télémétrie. Les images de la caméra sont analysées en mémoire puis supprimées; votre enregistrement facial est conservé dans votre trousseau.";
+"No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or “Lock now” in the menu." = "No Donuts est un filet de sécurité : il ne remplace pas le verrouillage manuel de votre Mac. Verrouillez-le à tout moment avec Contrôle-Commande-Q ou « Verrouiller maintenant » dans le menu.";

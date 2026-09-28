@@ -382,6 +382,108 @@ func runLivenessChecks(_ c: Checks) async {
                  "regression Test A: live user, 2 track breaks 2 s apart → never .notLive, no lock (tracks \(tr.tracksStarted), notLive ticks \(notLive))")
     }
 
+    // MARK: ND-118a — the startup window starts at the FIRST ANALYZED FACE
+    do {
+        var w = LivenessStartWindow()
+        c.expect(w.start == nil, "start window: never begun → no window")
+        w.begin(at: 100)
+        c.expect(w.start == 100 && w.firstFaceAt == nil, "start window: armed, no face yet → runs from arming (fail-closed bound)")
+        w.faceAnalyzed(at: 99.9)
+        c.expect(w.firstFaceAt == nil, "start window: a frame stamped before arming doesn't start it")
+        w.faceAnalyzed(at: 108)
+        w.faceAnalyzed(at: 130)
+        w.faceAnalyzed(at: .nan)
+        c.expect(w.start == 108, "start window: starts ONCE at the first analyzed face; later faces never move it")
+        w.begin(at: 200)
+        c.expect(w.start == 200 && w.firstFaceAt == nil, "start window: a new beginWindow re-arms it")
+        w.begin(at: .infinity)
+        c.expect(w.start == 200, "start window: non-finite arm time ignored")
+    }
+    do {
+        // 7 fps analysis, a 1 s recognition tick that MATCHES whenever a face is in view
+        // (a still photo matches too — only liveness can stop it). Enforcement starts at 0.
+        let dt = 1.0 / 7
+        let box = CGRect(x: 0.35, y: 0.3, width: 0.3, height: 0.4)
+        struct Sim { var results: [RecognitionResult] = []; var notLive = 0; var lastLive = -1.0 }
+        func simulate(seconds: Double, legacyWindow: Bool = false,
+                      visible: (Double) -> Bool, evidence: (Double) -> Bool) -> Sim {
+            var sw = LivenessStartWindow(); sw.begin(at: 0)
+            var tr = FaceTracker(); var sim = Sim()
+            var t = 0.0, nextTick = 1.0
+            while t < seconds {
+                let seen = visible(t)
+                if seen {
+                    sw.faceAnalyzed(at: t)
+                    tr.observe(box: box, interOcular: 70, time: t)
+                    if evidence(t) { tr.recordEvidence(at: t) }
+                }
+                if t >= nextTick {
+                    if seen {
+                        let v = tr.verdict(now: t, matchedBox: box, windowStart: legacyWindow ? sw.armedAt : sw.start)
+                        sim.results.append(v.live ? .enrolledUserPresent(confidence: 0.8) : .notLive)
+                        if v.live { sim.lastLive = t } else { sim.notLive += 1 }
+                    } else {
+                        sim.results.append(.noFace)
+                    }
+                    nextTick += 1
+                }
+                t += dt
+            }
+            return sim
+        }
+        func locks(_ r: [RecognitionResult]) async -> (count: Int, atTick: Int?) {
+            let locker = SpyLocker(succeed: true)
+            let e = makeEngine(StubCamera(.frame(CapturedFrame())), SeqRecognizer(r), locker)
+            var at: Int?
+            for k in 0..<r.count {
+                await e.tick(now: t0.addingTimeInterval(Double(k)))
+                if at == nil, locker.lockCallCount > 0 { at = k + 1 }      // tick k is at t = k + 1 s
+            }
+            return (locker.lockCallCount, at)
+        }
+        /// One evidence event (blink / motion) per window [a, a + dt).
+        func at(_ times: [Double]) -> (Double) -> Bool { { t in times.contains { t >= $0 && t < $0 + dt } } }
+
+        // User present and still from the start; first evidence at 55 s, then ~every 10 s.
+        let still = simulate(seconds: 130, visible: { _ in true }, evidence: at([55, 65, 75, 85, 95, 105, 115, 125]))
+        let stillLock = await locks(still.results)
+        c.expect(still.notLive == 0 && stillLock.count == 0,
+                 "ND-118a: user still for 50 s after start, first evidence at 55 s → never .notLive, no lock (notLive \(still.notLive))")
+
+        // The on-device near miss: the user's face is first analyzed 10 s after enforcement
+        // (camera warm-up / sitting back down), first evidence at 66 s.
+        let late: (Double) -> Bool = { $0 >= 10 }
+        let lateEv = at([66, 76, 86, 96, 106, 116])
+        let fixed = simulate(seconds: 125, visible: late, evidence: lateEv)
+        let legacy = simulate(seconds: 125, legacyWindow: true, visible: late, evidence: lateEv)
+        let fixedLock = await locks(fixed.results)
+        c.expect(fixed.notLive == 0 && fixedLock.count == 0 && legacy.notLive >= 5,
+                 "ND-118a regression: face first analyzed at 10 s, first evidence at 66 s → never .notLive (window from arming would have given \(legacy.notLive))")
+
+        // Still photo from enforcement start: live only for 60 s of analysis, then locks
+        // within consensus + grace.
+        let photo = simulate(seconds: 100, visible: { _ in true }, evidence: { _ in false })
+        let photoLock = await locks(photo.results)
+        let bound = defaultLivenessWindowSeconds + Double(Config().consecutiveAbsentTicksToLock) + Config().graceSeconds + 2
+        c.expect(photo.lastLive <= defaultLivenessWindowSeconds + 0.5 && photoLock.count >= 1
+                 && (photoLock.atTick.map { Double($0) <= bound } ?? false),
+                 "ND-118a: still photo from start → not live after 60 s of face analysis → locked at \(photoLock.atTick.map(String.init) ?? "never") s (bound \(Int(bound)) s)")
+
+        // Hiding then re-showing the photo does NOT restart (or extend) the window.
+        let peekaboo = simulate(seconds: 100, visible: { t in !(t >= 30 && t < 40) && !(t >= 58 && t < 62) },
+                                evidence: { _ in false })
+        c.expect(peekaboo.lastLive <= defaultLivenessWindowSeconds + 0.5 && peekaboo.notLive > 30,
+                 "ND-118a: photo hidden and re-shown → window NOT restarted (last live at \(String(format: "%.1f", peekaboo.lastLive)) s)")
+
+        // Analyzer blind to the face the recognizer matches: the window still expires
+        // 60 s after arming (fail-closed, as before ND-118).
+        var blind = LivenessStartWindow(); blind.begin(at: 0)
+        var btr = FaceTracker()
+        c.expect(btr.verdict(now: 59, matchedBox: box, windowStart: blind.start).live
+                 && !btr.verdict(now: 61, matchedBox: box, windowStart: blind.start).live,
+                 "ND-118a: no face ever analyzed → window expires 60 s after arming (no fail-open)")
+    }
+
     // MARK: Homography residual
     do {
         let head = syntheticHead().map(project)
@@ -545,6 +647,14 @@ func runLivenessChecks(_ c: Checks) async {
         let d = a.diagnostics()
         c.expect(d.framesAnalyzed + d.framesDropped == 3 && d.framesWithFace == 0 && d.blinks == 0 && d.lastEvidenceAge == nil,
                  "analyzer: faceless frames analyzed, no evidence")
+        c.expect(d.windowAge != nil && d.windowFaceAge == nil && d.notLiveTicks == 0,
+                 "analyzer: faceless frames don't start the startup window (ND-118a); no not-live ticks yet")
+        let short = LivenessAnalyzer(window: 0.05, antiSpoofEnabled: { true })
+        short.beginWindow()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        let sv = short.currentVerdict(matchedFaceBox: nil)
+        c.expect(!sv.live && short.diagnostics().notLiveTicks == 1,
+                 "analyzer: an expired window with no evidence → not live, counted in notLiveTicks (ND-118b summary)")
         enabled.value = false
         let before = a.diagnostics().framesAnalyzed + a.diagnostics().framesDropped
         a.submit(CapturedFrame(pixelBuffer: frame, captureTime: livenessHostNow()))

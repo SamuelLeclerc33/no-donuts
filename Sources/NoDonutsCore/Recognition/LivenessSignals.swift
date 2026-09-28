@@ -39,6 +39,8 @@ public let defaultLivenessWindowSeconds: TimeInterval = 60
 /// - we are within `window` seconds of `windowStart` — the bootstrap after enforcement
 ///   (re)starts (launch, unlock/wake, end of pause / trusted Wi-Fi / enrollment), so a
 ///   user who just typed their password isn't locked before their first blink lands.
+///   Since ND-118a `windowStart` is the first analyzed face after the restart
+///   (`LivenessStartWindow`), not the restart itself.
 ///
 /// `windowStart` is deliberately NOT reset by a face (re)appearing: if it were, an
 /// attacker could hide and re-show a photo to reopen a fresh 60 s window forever.
@@ -54,6 +56,68 @@ public func isLive(now: TimeInterval,
     if let e = lastEvidence, e.isFinite, now - e <= window { return true }
     if let s = windowStart, s.isFinite, now >= s, now - s <= window { return true }
     return false
+}
+
+// MARK: - Enforcement-start window (ND-118a)
+
+/// When the enforcement-start ("bootstrap") window STARTS (ND-118a; pure value type,
+/// EngineCheck-covered).
+///
+/// On-device near miss (2026-09-28): the window used to start at `beginWindow()` —
+/// enforcement (re)start — so time before the analyzer had seen the user's face at all
+/// (camera warm-up, the user not yet back at the desk after a pause / trusted Wi-Fi
+/// ended) was spent from the 60 s budget, and it expired before any evidence landed
+/// (5 + 3 `.notLive` ticks). Now the window starts at the FIRST ANALYZED FACE (first
+/// landmark-bearing frame) after `begin(at:)`, and lasts `window` seconds from there.
+///
+/// Bounded, by construction:
+/// - The start is set ONCE per `begin(at:)` and never moves: a face disappearing and
+///   reappearing (hiding / re-showing a photo) cannot reopen or extend it. So a still
+///   photo shown from enforcement start stops being live `window` s after its first
+///   analyzed frame, then locks after consensus + grace (ADR-0022's bound).
+/// - Before any face is analyzed the window runs from `begin(at:)` as before, so a
+///   landmark pass that is blind to a face the recognizer matches can't hold the Mac
+///   unlocked past `armedAt + 1.5 × window` either: a first face later than `maxFirstFaceDelay` after arming doesn't move the start (fail-closed).
+/// - Frames stamped before `begin(at:)` (in flight across a restart) don't count.
+///
+/// Rejected: "≥ N s of face-present analysis time" — pausing the budget while no face
+/// is seen lets an attacker stretch it by hiding the photo for just under the grace
+/// period between ticks (each re-show resets the absence consensus): wall time grows
+/// ~10× before any cap. Starting once at the first face gives the same fix for the
+/// observed case without that lever.
+public struct LivenessStartWindow: Sendable, Equatable {
+    /// `begin(at:)` time (enforcement (re)start); `nil` = never begun.
+    public private(set) var armedAt: TimeInterval?
+    /// First analyzed face at or after `armedAt`; `nil` = none yet.
+    public private(set) var firstFaceAt: TimeInterval?
+
+    public init() {}
+
+    /// Arm a fresh window (enforcement (re)start, anti-spoof toggled back on).
+    public mutating func begin(at time: TimeInterval) {
+        guard time.isFinite else { return }
+        armedAt = time; firstFaceAt = nil
+    }
+
+    /// A landmark-bearing frame captured at `time`. Only the first one after `begin`
+    /// counts; later faces (including after a gap) never move the start.
+    public mutating func faceAnalyzed(at time: TimeInterval) {
+        guard firstFaceAt == nil, let a = armedAt, time.isFinite, time >= a else { return }
+        firstFaceAt = time
+    }
+
+    /// Latest point after arming at which a first face may still anchor the window.
+    /// Review fix: an uncapped first face could push the start arbitrarily late (or
+    /// re-open an already-expired window). Capping it at half the window after arming
+    /// bounds the startup window to at most `armedAt + 1.5 × window` in wall time.
+    public static let maxFirstFaceDelay: TimeInterval = defaultLivenessWindowSeconds / 2
+
+    /// The `windowStart` to hand the policy (`isLive` / `FaceTracker.verdict`).
+    public var start: TimeInterval? {
+        guard let a = armedAt else { return nil }
+        if let f = firstFaceAt, f - a <= Self.maxFirstFaceDelay { return f }
+        return a
+    }
 }
 
 /// Result of a liveness query, for the recognizer's decision + its log line.

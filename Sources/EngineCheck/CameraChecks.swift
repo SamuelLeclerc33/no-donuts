@@ -118,4 +118,18 @@ func runCaptureFormatPolicyChecks(_ c: Checks) async {
     c.expect(pick?.fps == 1, "fps: never below the 1 fps target even if the device could go lower")
     c.expect(P.lowestRate(in: []) == nil, "fps: no ranges → leave the device default")
     c.expect(P.lowestRate(in: [r(0, 0), r(.nan, 30)]) == nil, "fps: degenerate ranges ignored")
+
+    // Post-start verification: BOTH min and max duration must equal the target.
+    let t = 1.0 / 15
+    c.expect(P.isPinned(minDuration: t, maxDuration: t, targetDuration: t),
+             "pin: min = max = 1/15 s → pinned (15 fps)")
+    c.expect(!P.isPinned(minDuration: 1.0 / 30, maxDuration: t, targetDuration: t),
+             "pin: min 1/30 s, max 1/15 s (on-device revert, can run 30 fps) → NOT pinned, re-pin")
+    c.expect(!P.isPinned(minDuration: 1.0 / 30, maxDuration: 1.0 / 30, targetDuration: t),
+             "pin: both at 1/30 s → NOT pinned")
+    c.expect(P.isPinned(minDuration: 0.0667, maxDuration: 0.0667, targetDuration: t),
+             "pin: rounding within tolerance (0.0667 vs 1/15) → pinned")
+    c.expect(!P.isPinned(minDuration: .nan, maxDuration: t, targetDuration: t)
+             && !P.isPinned(minDuration: 0, maxDuration: 0, targetDuration: t),
+             "pin: invalid CMTime (NaN / zero) → never pinned")
 }

@@ -79,4 +79,20 @@ public enum CaptureFormatPolicy {
         let fps = min(max(targetFPS, best.element.minFrameRate), best.element.maxFrameRate)
         return (best.offset, fps)
     }
+
+    /// Tolerance (seconds) when comparing frame durations read back from the
+    /// device against the pinned target (CMTime → Double rounding).
+    public static let durationTolerance: Double = 0.0005
+
+    /// Whether the device is actually pinned to `targetDuration`: BOTH the min
+    /// and the max frame duration equal it. A min shorter than the max (e.g.
+    /// 1/30…1/15 s) means the session reverted to the format's variable-rate
+    /// default and the camera can run at the faster rate — re-pin. Non-finite or
+    /// non-positive values (invalid CMTime) are never "pinned".
+    public static func isPinned(minDuration: Double, maxDuration: Double, targetDuration: Double) -> Bool {
+        guard minDuration.isFinite, maxDuration.isFinite, targetDuration.isFinite,
+              minDuration > 0, maxDuration > 0, targetDuration > 0 else { return false }
+        return abs(minDuration - targetDuration) <= durationTolerance
+            && abs(maxDuration - targetDuration) <= durationTolerance
+    }
 }

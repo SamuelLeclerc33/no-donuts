@@ -20,7 +20,11 @@ public func livenessHostNow() -> TimeInterval {
 /// Diagnostics snapshot (numbers only).
 public struct LivenessDiagnostics: Sendable, Equatable {
     public var lastEvidenceAge: TimeInterval?
+    /// Seconds since the startup window was armed (enforcement (re)start).
     public var windowAge: TimeInterval?
+    /// Seconds since the startup window STARTED (first analyzed face, ND-118a); `nil` =
+    /// no face analyzed since it was armed.
+    public var windowFaceAge: TimeInterval? = nil
     public var blinks: Int
     public var motionEvents: Int
     public var framesAnalyzed: Int
@@ -31,6 +35,8 @@ public struct LivenessDiagnostics: Sendable, Equatable {
     /// Track handoffs: fresh probations issued / probations inherited (FaceTracker).
     public var freshHandoffs: Int = 0
     public var inheritedHandoffs: Int = 0
+    /// Verdicts that returned NOT live (each = one `.notLive` recognition tick).
+    public var notLiveTicks: Int = 0
     /// Mean / max wall time of one landmark analysis, milliseconds.
     public var meanAnalysisMs: Double?
     public var maxAnalysisMs: Double?
@@ -42,8 +48,8 @@ public struct LivenessDiagnostics: Sendable, Equatable {
         let mx = maxAnalysisMs.map { String(format: "%.1f ms max", $0) } ?? "n/a"
         return [
             "  last live evidence: \(age(lastEvidenceAge)) (window \(Int(defaultLivenessWindowSeconds))s)",
-            "  window (re)started: \(age(windowAge))",
-            "  blinks: \(blinks), non-rigid motion events: \(motionEvents)",
+            "  startup window: armed \(age(windowAge)), first face \(age(windowFaceAge))",
+            "  blinks: \(blinks), non-rigid motion events: \(motionEvents), not-live ticks: \(notLiveTicks)",
             "  face tracks started: \(tracksStarted), handoffs: \(freshHandoffs) fresh / \(inheritedHandoffs) inherited",
             "  frames analyzed: \(framesAnalyzed) (with face: \(framesWithFace)), dropped busy: \(framesDropped)",
             "  analysis cost: \(ms), \(mx)",
@@ -66,7 +72,8 @@ public protocol LiveFrameSink: AnyObject, Sendable {
 /// if the previous analysis is still running), feeds the largest face's landmarks to a
 /// `BlinkDetector` and a `NonRigidMotionDetector`, and records `lastEvidence` — the
 /// host time of the last blink or motion event. `currentVerdict()` applies the pure
-/// `isLive` policy (60 s window + bootstrap window from `beginWindow()`).
+/// `isLive` policy (60 s window + a bootstrap window that starts at the first analyzed
+/// face after `beginWindow()`, ND-118a — `LivenessStartWindow`).
 ///
 /// Skips all work while anti-spoofing is off (`resolvedAntiSpoofEnabled()`): liveness is
 /// part of "Reject photos of me". Turning it back on opens a fresh bootstrap window so
@@ -78,7 +85,8 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
     private struct Shared {
         var busy = false
         var tracker = FaceTracker()
-        var windowStart: TimeInterval?
+        var startWindow = LivenessStartWindow()
+        var notLiveTicks = 0
         var blinks = 0
         var motionEvents = 0
         var analyzed = 0
@@ -97,8 +105,11 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
     // Touched ONLY on `queue` (one analysis at a time).
     private var blink = BlinkDetector()
     private var motion = NonRigidMotionDetector()
-    private var periodStart: TimeInterval = 0
+    private var periodStart: TimeInterval?
     private var periodMaxMotionRatio = 0.0
+    private var periodBase = PeriodCounts()
+    /// Summary cadence (ND-118b): one persisted line per this many seconds of frames.
+    static let summaryInterval: TimeInterval = 60
     /// One landmarks request reused for every frame (queue-confined). Measured on the
     /// dev Mac at 7 fps pacing, `.utility`: ~7 ms median vs ~9 ms with a fresh request.
     private let landmarksRequest = VNDetectFaceLandmarksRequest()
@@ -109,11 +120,13 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         self.antiSpoofEnabled = antiSpoofEnabled
     }
 
-    /// Open a bootstrap window (enforcement started / resumed). Also ends the face track
-    /// and drops the detectors' history (the frames before a suspend are another moment).
+    /// Arm a bootstrap window (enforcement started / resumed). It STARTS at the first
+    /// analyzed face after this call (ND-118a) and never restarts until the next call.
+    /// Also ends the face track and drops the detectors' history (the frames before a
+    /// suspend are another moment).
     public func beginWindow() {
         let now = livenessHostNow()
-        shared.withLock { $0.windowStart = now; $0.tracker.end() }
+        shared.withLock { $0.startWindow.begin(at: now); $0.tracker.end() }
         queue.async { [self] in blink.reset(); motion.reset() }
     }
 
@@ -121,7 +134,9 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         let now = livenessHostNow()
         return shared.withLock { s in
             s.tracker.window = window
-            return s.tracker.verdict(now: now, matchedBox: matchedFaceBox, windowStart: s.windowStart)
+            let v = s.tracker.verdict(now: now, matchedBox: matchedFaceBox, windowStart: s.startWindow.start)
+            if !v.live { s.notLiveTicks += 1 }
+            return v
         }
     }
 
@@ -130,11 +145,13 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         return shared.withLock { s in
             LivenessDiagnostics(
                 lastEvidenceAge: s.tracker.current?.evidenceAt.map { max(0, now - $0) },
-                windowAge: s.windowStart.map { max(0, now - $0) },
+                windowAge: s.startWindow.armedAt.map { max(0, now - $0) },
+                windowFaceAge: s.startWindow.firstFaceAt.map { max(0, now - $0) },
                 blinks: s.blinks, motionEvents: s.motionEvents,
                 framesAnalyzed: s.analyzed, framesDropped: s.dropped, framesWithFace: s.withFace,
                 tracksStarted: s.tracker.tracksStarted,
                 freshHandoffs: s.tracker.freshHandoffs, inheritedHandoffs: s.tracker.inheritedHandoffs,
+                notLiveTicks: s.notLiveTicks,
                 meanAnalysisMs: s.analyzed > 0 ? s.totalMs / Double(s.analyzed) : nil,
                 maxAnalysisMs: s.analyzed > 0 ? s.maxMs : nil)
         }
@@ -147,7 +164,7 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         let enabled = antiSpoofEnabled()
         let accept: Bool = shared.withLock { s in
             // Off → on: a fresh bootstrap window, so flipping the toggle can't lock at once.
-            if enabled, s.wasEnabled == false { s.windowStart = time }
+            if enabled, s.wasEnabled == false { s.startWindow.begin(at: time) }
             s.wasEnabled = enabled
             guard enabled else { return false }
             if s.busy { s.dropped += 1; return false }
@@ -170,10 +187,14 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         let ms = (livenessHostNow() - started) * 1000
         shared.withLock { s in
             s.analyzed += 1
-            if sample != nil { s.withFace += 1 }
+            if sample != nil {
+                s.withFace += 1
+                s.startWindow.faceAnalyzed(at: time)        // ND-118a: first face starts the window
+            }
             s.totalMs += ms
             s.maxMs = max(s.maxMs, ms)
         }
+        defer { summarizeIfDue(time: time) }
         guard let sample else { return }
 
         // Track continuity first: a new track owns no evidence, and history from the
@@ -204,14 +225,36 @@ public final class LivenessAnalyzer: LiveFrameSink, LivenessProviding, @unchecke
         if evidence != nil {
             shared.withLock { $0.tracker.recordEvidence(at: time) }
         }
+    }
 
-        // Tuning summary every 30 s (numbers only): how close the signals came.
-        if time - periodStart >= 30 {
-            let d = diagnostics()
-            log.info("liveness summary: blinks \(d.blinks, privacy: .public), motion \(d.motionEvents, privacy: .public), peak motion/required \(self.periodMaxMotionRatio, format: .fixed(precision: 2), privacy: .public), jitter floor \(self.motion.noiseFloor ?? -1, format: .fixed(precision: 4), privacy: .public), analysis \(d.meanAnalysisMs ?? -1, format: .fixed(precision: 1), privacy: .public) ms mean / \(d.maxAnalysisMs ?? -1, format: .fixed(precision: 1), privacy: .public) max, dropped \(d.framesDropped, privacy: .public)")
-            periodStart = time
-            periodMaxMotionRatio = 0
+    /// Counters at the start of a summary period (deltas are what tuning needs).
+    struct PeriodCounts {
+        var blinks = 0, motion = 0, tracks = 0, fresh = 0, inherited = 0, notLive = 0
+        var analyzed = 0, withFace = 0, dropped = 0
+        init() {}
+        init(_ d: LivenessDiagnostics) {
+            blinks = d.blinks; motion = d.motionEvents; tracks = d.tracksStarted
+            fresh = d.freshHandoffs; inherited = d.inheritedHandoffs; notLive = d.notLiveTicks
+            analyzed = d.framesAnalyzed; withFace = d.framesWithFace; dropped = d.framesDropped
         }
+    }
+
+    /// ND-118b: one PERSISTED (`.notice` = the unified log's default level; `.info` and
+    /// `.debug` are memory-only unless a profile is installed) summary line every 60 s
+    /// of analyzed frames, so on-device tuning doesn't need a `log stream --level debug`
+    /// session. Numbers only — no image, landmark or identity data. Counts are for the
+    /// last period, with running totals in brackets.
+    private func summarizeIfDue(time: TimeInterval) {
+        guard let start = periodStart else { periodStart = time; return }
+        guard time - start >= Self.summaryInterval else { return }
+        let d = diagnostics()
+        let now = PeriodCounts(d), b = periodBase
+        let faceAge = d.windowFaceAge.map { String(format: "%.0fs", $0) } ?? "none"
+        let evAge = d.lastEvidenceAge.map { String(format: "%.1fs", $0) } ?? "never"
+        log.notice("liveness summary (\(time - start, format: .fixed(precision: 0), privacy: .public)s): blinks \(now.blinks - b.blinks, privacy: .public) [\(now.blinks, privacy: .public)], motion \(now.motion - b.motion, privacy: .public) [\(now.motion, privacy: .public)], track starts \(now.tracks - b.tracks, privacy: .public) [\(now.tracks, privacy: .public)], handoffs \(now.fresh - b.fresh, privacy: .public) fresh / \(now.inherited - b.inherited, privacy: .public) inherited, notLive ticks \(now.notLive - b.notLive, privacy: .public) [\(now.notLive, privacy: .public)]; last evidence \(evAge, privacy: .public), window first face \(faceAge, privacy: .public) ago; frames \(now.analyzed - b.analyzed, privacy: .public) (face \(now.withFace - b.withFace, privacy: .public)), dropped \(now.dropped - b.dropped, privacy: .public); peak motion/required \(self.periodMaxMotionRatio, format: .fixed(precision: 2), privacy: .public), jitter floor \(self.motion.noiseFloor ?? -1, format: .fixed(precision: 4), privacy: .public); analysis \(d.meanAnalysisMs ?? -1, format: .fixed(precision: 1), privacy: .public) ms mean / \(d.maxAnalysisMs ?? -1, format: .fixed(precision: 1), privacy: .public) max")
+        periodStart = time
+        periodBase = now
+        periodMaxMotionRatio = 0
     }
 
     private struct Sample {

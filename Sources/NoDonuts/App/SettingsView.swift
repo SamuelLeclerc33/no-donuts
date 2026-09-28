@@ -2,10 +2,17 @@ import SwiftUI
 import ServiceManagement
 import NoDonutsCore
 
-// Owner: krusty — the Settings window UI (ND-040). A native SwiftUI Form bound to
-// the SettingsStore, plus a few injected actions for things the view shouldn't own
-// (login item, trusted-network removal, diagnostics). No policy lives here: the view
-// reflects/writes the store and forwards intent, exactly like the menu bar does.
+// Owner: krusty — the Settings window UI (ND-040). SwiftUI bound to the SettingsStore,
+// plus a few injected actions for things the view shouldn't own (login item,
+// trusted-network removal, diagnostics). No policy lives here: the view reflects/writes
+// the store and forwards intent, exactly like the menu bar does.
+//
+// ND-117 layout: macOS System Settings style. A left sidebar of categories
+// (`SettingsCategory`) and a scrollable detail pane per category, so the window fits a
+// 13" screen instead of one tall form. The panes live in SettingsPanes*.swift; this file
+// holds the shared models, the shell, and the small shared row views. The last selected
+// category is remembered in UserDefaults (`settings.selectedCategory`), a viewer
+// convenience only; it has no effect on protection.
 //
 // Privacy: no network, no external assets. Trusted networks are shown by name (plus the
 // router MAC's last two octets) only in the local UI (they already live in the user's
@@ -76,29 +83,92 @@ struct SettingsActions {
     var recognitionInfo: () -> RecognitionInfo
 }
 
+
+/// ND-117: the sidebar categories, in display order. Raw values are persisted (last
+/// selected category), so keep them stable.
+enum SettingsCategory: String, CaseIterable, Identifiable {
+    case general, recognition, security, trustedWiFi, timing, diagnostics, about
+
+    var id: String { rawValue }
+
+    /// UserDefaults key for the last selected category (per-user viewer convenience).
+    static let selectionDefaultsKey = "settings.selectedCategory"
+
+    var title: String {
+        switch self {
+        case .general:     return String(localized: "General")
+        case .recognition: return String(localized: "Recognition")
+        case .security:    return String(localized: "Security")
+        case .trustedWiFi: return String(localized: "Trusted Wi-Fi")
+        case .timing:      return String(localized: "Timing")
+        case .diagnostics: return String(localized: "Diagnostics")
+        case .about:       return String(localized: "About")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general:     return "gearshape"
+        case .recognition: return "person.crop.square"
+        case .security:    return "lock.shield"
+        case .trustedWiFi: return "wifi"
+        case .timing:      return "timer"
+        case .diagnostics: return "stethoscope"
+        case .about:       return "info.circle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general:     return .gray
+        case .recognition: return .blue
+        case .security:    return .red
+        case .trustedWiFi: return .teal
+        case .timing:      return .orange
+        case .diagnostics: return .purple
+        case .about:       return .indigo
+        }
+    }
+}
+
 @MainActor
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
     let actions: SettingsActions
 
-    // Local UI state (not persisted). `startAtLogin` and the trusted list now live on the
-    // SettingsStore as @Published mirrors so they can be refreshed when the retained
-    // window is re-fronted (code-review #2); the view binds to them, not local @State.
-    @State private var loginError: String?
-    @State private var copiedConfirmation = false
+    /// ND-117: last selected category, remembered across opens and launches.
+    @AppStorage(SettingsCategory.selectionDefaultsKey)
+    private var selection: SettingsCategory = .general
+    /// The sidebar always stays visible (there is no toolbar toggle to bring it back).
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    /// ND-117 window geometry, shared with AppWindows so the NSWindow and the SwiftUI
+    /// root agree. The minimum fits a 13" MacBook screen (1280×800 and up).
+    nonisolated static let defaultSize = CGSize(width: 720, height: 520)
+    nonisolated static let minimumSize = CGSize(width: 620, height: 420)
 
     var body: some View {
-        Form {
-            behaviorSection
-            antiSpoofSection
-            recognitionSection
-            startupSection
-            trustedNetworksSection
-            diagnosticsSection
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            List(SettingsCategory.allCases, selection: Binding<SettingsCategory?>(
+                get: { selection },
+                set: { if let newValue = $0 { selection = newValue } }
+            )) { category in
+                SettingsSidebarRow(category: category)
+                    .tag(category)
+            }
+            .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
+            .toolbar(removing: .sidebarToggle)
+            .accessibilityLabel("Settings categories")
+        } detail: {
+            detail(for: selection)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .fixedSize(horizontal: false, vertical: true)
+        .onChange(of: columnVisibility) { _, newValue in
+            if newValue != .all { columnVisibility = .all }
+        }
+        .frame(minWidth: Self.minimumSize.width, maxWidth: .infinity,
+               minHeight: Self.minimumSize.height, maxHeight: .infinity)
         .onAppear {
             // First-creation seed. On REOPEN of the retained window this won't re-fire,
             // so the AppDelegate also calls store.refresh() in the open path (code-review
@@ -107,331 +177,103 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Behavior (sensitivity / grace / interval)
-
-    private var behaviorSection: some View {
-        Section("Behavior") {
-            // Lock sensitivity (matchThreshold). Higher = stricter match required
-            // (locks more readily for lookalikes); lower = more lenient.
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Lock sensitivity")
-                    Spacer()
-                    Text(verbatim: displayNumber(store.matchThreshold, digits: 2))
-                        .foregroundStyle(.secondary).monospacedDigit()
-                }
-                // Bounds come from the ACTIVE model (ND-076) — per-model score scales differ.
-                Slider(value: $store.matchThreshold,
-                       in: store.thresholdRange,
-                       step: 0.01) {
-                    Text("Lock sensitivity")
-                } minimumValueLabel: {
-                    Text("Lenient").font(.caption).foregroundStyle(.secondary)
-                } maximumValueLabel: {
-                    Text("Strict").font(.caption).foregroundStyle(.secondary)
-                }
-                .accessibilityLabel("Lock sensitivity")
-                .accessibilityValue(displayNumber(store.matchThreshold, digits: 2))
-                .accessibilityHint("Higher is stricter.")
-                Text("How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    // Honest about provenance: an un-tuned default is a provisional guess.
-                    Text(store.thresholdIsTuned
-                         ? String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (tuned)")
-                         : String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (not yet tuned)"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Reset to default") { store.resetMatchThreshold() }
-                        .controlSize(.small)
-                        .disabled(!store.hasThresholdOverride)
-                }
-            }
-
-            // Grace period (graceSeconds).
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Grace period")
-                    Spacer()
-                    Text("\(Int(store.graceSeconds.rounded())) s")
-                        .foregroundStyle(.secondary).monospacedDigit()
-                }
-                Slider(value: $store.graceSeconds,
-                       in: SettingsStore.Range.grace,
-                       step: 1)
-                .accessibilityLabel("Grace period")
-                .accessibilityValue("\(Int(store.graceSeconds.rounded())) seconds")
-                Text("How long you can be away before the Mac locks.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            // Check interval (tickIntervalSeconds).
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Check interval")
-                    Spacer()
-                    Text("\(displayNumber(store.tickIntervalSeconds, digits: 1)) s")
-                        .foregroundStyle(.secondary).monospacedDigit()
-                }
-                Slider(value: $store.tickIntervalSeconds,
-                       in: SettingsStore.Range.tick,
-                       step: 0.5)
-                .accessibilityLabel("Check interval")
-                .accessibilityValue("\(displayNumber(store.tickIntervalSeconds, digits: 1)) seconds")
-                Text("How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+    @ViewBuilder
+    private func detail(for category: SettingsCategory) -> some View {
+        switch category {
+        case .general:     GeneralSettingsPane(store: store, actions: actions)
+        case .recognition: RecognitionSettingsPane(store: store, actions: actions)
+        case .security:    SecuritySettingsPane(store: store, actions: actions)
+        case .trustedWiFi: TrustedWiFiSettingsPane(store: store, actions: actions)
+        case .timing:      TimingSettingsPane(store: store)
+        case .diagnostics: DiagnosticsSettingsPane(actions: actions)
+        case .about:       AboutSettingsPane()
         }
     }
+}
 
-    // MARK: - Anti-spoofing
+// MARK: - Shared pieces
 
-    private var antiSpoofSection: some View {
-        Section("Security") {
-            Toggle("Reject photos of me (anti-spoofing)", isOn: $store.antiSpoofEnabled)
-            // ND-099: honest now that ND-072 landed — the texture check runs on both
-            // recognition models. Still a basic check (no blink/motion liveness), and its
-            // floor hasn't been re-measured against a clean spoof test yet.
-            Text("Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It\u{2019}s a basic, conservative check (no blink or motion test) and isn\u{2019}t fully hardened — turn it off if a live face is ever rejected.")
-                .font(.caption).foregroundStyle(.secondary)
+/// One sidebar row: a System-Settings-style tinted icon tile plus the category name.
+struct SettingsSidebarRow: View {
+    let category: SettingsCategory
+
+    var body: some View {
+        Label {
+            Text(verbatim: category.title)
+        } icon: {
+            Image(systemName: category.symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(category.tint.gradient))
+                .accessibilityHidden(true)   // ND-100: decorative; the name is the label
         }
     }
+}
 
-    // MARK: - Recognition (read-only, ND-099)
+/// The detail pane container: the category title, then a grouped Form (which scrolls
+/// on its own when the content is taller than the window).
+struct SettingsPane<Content: View>: View {
+    let category: SettingsCategory
+    @ViewBuilder let content: () -> Content
 
-    /// What recognition is actually doing, so the user never has to trust a claim they
-    /// can't check. Read-only; polled every 2 s because a retained window doesn't re-fire
-    /// `.onAppear`, and model load / camera / identity can change while it's open.
-    private var recognitionSection: some View {
-        Section("Recognition") {
-            TimelineView(.periodic(from: .now, by: 2)) { _ in
-                let info = actions.recognitionInfo()
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Self.recognitionRows(info), id: \.label) { row in
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(row.label)
-                            Spacer(minLength: 12)
-                            Text(row.value)
-                                .multilineTextAlignment(.trailing)
-                                .foregroundStyle(row.warning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                                .textSelection(.enabled)
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-            }
-            Text("Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere.")
-                .font(.caption).foregroundStyle(.secondary)
+    var body: some View {
+        Form {
+            content()
         }
-    }
-
-    struct RecognitionRow {
-        let label: String
-        let value: String
-        /// Rendered in orange: something here weakens or disables protection.
-        var warning = false
-    }
-
-    /// Pure mapping from the snapshot to display rows (kept static so it has no view state).
-    static func recognitionRows(_ info: RecognitionInfo) -> [RecognitionRow] {
-        var rows: [RecognitionRow] = []
-
-        let model = info.modelLoading
-            ? String(localized: "\(info.modelName) (\(info.modelVersion)), loading\u{2026}")
-            : "\(info.modelName) (\(info.modelVersion))"
-        rows.append(RecognitionRow(label: String(localized: "Model"), value: model))
-
-        rows.append(RecognitionRow(label: String(localized: "Threshold tuned"),
-                                   value: info.thresholdIsTuned
-                                       ? String(localized: "Yes")
-                                       : String(localized: "No (provisional default)"),
-                                   warning: !info.thresholdIsTuned))
-
-        let threshold: String
-        if abs(info.effectiveThreshold - info.defaultThreshold) < 0.000_5 {
-            threshold = String(localized: "\(displayNumber(info.effectiveThreshold, digits: 2)) (model default)")
-        } else {
-            let effective = displayNumber(info.effectiveThreshold, digits: 2)
-            let modelDefault = displayNumber(info.defaultThreshold, digits: 2)
-            threshold = String(localized: "\(effective) (custom; default \(modelDefault))")
-        }
-        rows.append(RecognitionRow(label: String(localized: "Effective threshold"), value: threshold))
-
-        let enrollment: String
-        var enrollmentWarning = false
-        switch info.identity {
-        case .active:
-            enrollment = String(localized: "\(info.modelVersion), matches the active model")
-        case .notEnrolled:
-            enrollment = String(localized: "Not enrolled (any face keeps the Mac unlocked)")
-            enrollmentWarning = true
-        case .off(.modelMismatch(let stored, _)):
-            let storedName = stored ?? String(localized: "legacy, unversioned")
-            enrollment = String(localized: "\(storedName): re-enroll needed (identity check off)")
-            enrollmentWarning = true
-        case .off(.enrollmentMissing(let expected)):
-            enrollment = String(localized: "Missing (was \(expected)): re-enroll needed (identity check off)")
-            enrollmentWarning = true
-        case .unknown:
-            enrollment = String(localized: "Checking\u{2026}")
-        }
-        rows.append(RecognitionRow(label: String(localized: "Enrollment"), value: enrollment, warning: enrollmentWarning))
-
-        let antiSpoof: String
-        var antiSpoofWarning = false
-        switch (info.antiSpoofEnabled, info.antiSpoofSupportedByModel) {
-        case (false, _):
-            antiSpoof = String(localized: "Off (turned off above)")
-            antiSpoofWarning = true
-        case (true, true?):
-            antiSpoof = String(localized: "Active on this model")
-        case (true, false?):
-            antiSpoof = String(localized: "Not supported by this model")
-            antiSpoofWarning = true
-        case (true, nil):
-            antiSpoof = String(localized: "Unknown for this model")
-            antiSpoofWarning = true
-        }
-        rows.append(RecognitionRow(label: String(localized: "Photo rejection"), value: antiSpoof, warning: antiSpoofWarning))
-
-        var camera = info.cameraName ?? String(localized: "Built-in camera (not opened yet)")
-        if let reason = info.cameraUnavailableReason {
-            // The reason comes from NoDonutsCore (CameraController) in English; known
-            // values are localized here, an unknown one is shown as-is.
-            let localizedReason = CoreStrings.cameraUnavailableReason(reason)
-            camera = String(localized: "\(camera), unavailable: \(localizedReason)")
-        }
-        rows.append(RecognitionRow(label: String(localized: "Camera"), value: camera,
-                                   warning: info.cameraUnavailableReason != nil))
-
-        rows.append(RecognitionRow(label: String(localized: "Lock mechanisms"),
-                                   value: info.lockMechanisms.isEmpty
-                                       ? String(localized: "None: can\u{2019}t lock on this macOS")
-                                       : info.lockMechanisms.joined(separator: ", "),
-                                   warning: info.lockMechanisms.isEmpty))
-        return rows
-    }
-
-    // MARK: - Start at login
-
-    private var startupSection: some View {
-        Section("Startup") {
-            Toggle("Start at login", isOn: Binding(
-                get: { store.startAtLogin },
-                set: { newValue in setStartAtLogin(newValue) }
-            ))
-            if let loginError {
-                Text(loginError)
-                    .font(.caption).foregroundStyle(.orange)
-            }
-        }
-    }
-
-    private func setStartAtLogin(_ enabled: Bool) {
-        // ND-082: from the launchd-managed copy, "off" means quitting now. Leave the
-        // toggle on (store unchanged) until the user confirms in that window.
-        if !enabled, actions.isAgentManaged() {
-            loginError = nil
-            actions.confirmDisableStartAtLogin()
-            return
-        }
-        do {
-            try LoginItem.setEnabled(enabled)
-            // Reflect the effective status (may be .requiresApproval even after a
-            // successful register on an ad-hoc build).
-            store.startAtLogin = LoginItem.isEnabled()
-            if enabled && LoginItem.status() == .requiresApproval {
-                loginError = String(localized: "Needs approval in System Settings › General › Login Items.")
-            } else {
-                loginError = nil
-            }
-            if enabled && store.startAtLogin {
-                // Let SwiftUI draw the toggle as on before a possible handover exit.
-                let didEnable = actions.didEnableStartAtLogin
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(300))
-                    didEnable()
-                }
-            }
-        } catch {
-            // Keep the toggle honest: reflect actual status, surface the reason.
-            store.startAtLogin = LoginItem.isEnabled()
-            loginError = String(localized: "Couldn't change this. It may need approval in System Settings › General › Login Items.")
-        }
-    }
-
-    // MARK: - Trusted Wi-Fi
-
-    private var trustedNetworksSection: some View {
-        Section("Trusted Wi-Fi networks") {
-            if store.trustedNetworks.isEmpty {
-                Text("No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (\u{201C}Trust this Wi-Fi network\u{201D}).")
-                    .font(.caption).foregroundStyle(.secondary)
-            } else {
-                ForEach(store.trustedNetworks) { network in
-                    HStack {
-                        Image(systemName: "wifi").foregroundStyle(.secondary)
-                            .accessibilityHidden(true)   // ND-100: decorative
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(network.ssid)
-                            Text(Self.routerLabel(for: network))
-                                .font(.caption)
-                                .foregroundStyle(network.needsReTrust ? .orange : .secondary)
-                        }
-                        Spacer()
-                        Button("Remove") {
-                            store.trustedNetworks = actions.removeTrustedNetwork(network)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Remove \(network.ssid)")   // ND-100: which one
-                    }
-                }
-                Text("A network is trusted only on the router it was trusted on (Wi-Fi name + router address), so a hotspot using the same name isn\u{2019}t trusted.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    /// Second line of a trusted-network row (ND-081). Shows only the router MAC's last
-    /// two octets: enough to tell several routers of one SSID apart.
-    static func routerLabel(for network: TrustedNetwork) -> String {
-        guard let mac = network.gatewayMAC else {
-            return String(localized: "Needs re-confirming: join it and choose \u{201C}Trust this Wi-Fi network\u{201D} again (not trusted until then)")
-        }
-        let tail = mac.split(separator: ":").suffix(2).joined(separator: ":")
-        return String(localized: "Router \u{2026}\(tail) (trusted only on this router)")
-    }
-
-    // MARK: - Diagnostics
-
-    private var diagnosticsSection: some View {
-        Section("Diagnostics") {
-            // ADR-0021: which build is running (stamped by scripts/make-app.sh).
-            HStack(alignment: .firstTextBaseline) {
-                Text("Version")
-                Spacer(minLength: 12)
-                Text(verbatim: AppVersion.versionAndBuild)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-            .accessibilityElement(children: .combine)
+        .formStyle(.grouped)
+        .safeAreaInset(edge: .top, spacing: 0) {
             HStack {
-                Button("Copy diagnostics") {
-                    actions.copyDiagnostics()
-                    withAnimation { copiedConfirmation = true }
-                    Task {
-                        try? await Task.sleep(for: .seconds(2))
-                        withAnimation { copiedConfirmation = false }
-                    }
-                }
-                if copiedConfirmation {
-                    Text("Copied").font(.caption).foregroundStyle(.secondary)
-                        .transition(.opacity)
-                }
+                Text(verbatim: category.title)
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
             }
-            Text("A local, privacy-safe summary you can paste into a bug report. Never includes photos, face data, or network names.")
-                .font(.caption).foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 2)
+        }
+    }
+}
+
+/// A read-only "label ... value" row (ND-099 recognition facts and friends).
+struct SettingsStatusRow {
+    let label: String
+    let value: String
+    /// Rendered in orange: something here weakens or disables protection.
+    var warning = false
+}
+
+struct SettingsStatusRowsView: View {
+    let rows: [SettingsStatusRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(rows, id: \.label) { row in
+                HStack(alignment: .firstTextBaseline) {
+                    Text(verbatim: row.label)
+                    Spacer(minLength: 12)
+                    Text(verbatim: row.value)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(row.warning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                        .textSelection(.enabled)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+}
+
+/// Polls the live recognition snapshot every 2 s: a retained window doesn't re-fire
+/// `.onAppear`, and model load / camera / identity can change while it's open (ND-099).
+struct LiveRecognitionInfo<Content: View>: View {
+    let actions: SettingsActions
+    @ViewBuilder let content: (RecognitionInfo) -> Content
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            content(actions.recognitionInfo())
         }
     }
 }

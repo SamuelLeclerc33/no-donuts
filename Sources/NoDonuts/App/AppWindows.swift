@@ -26,6 +26,29 @@ final class AppWindows {
         case enrollmentResult     // outcome of "Enroll my face…"
         case keychainExplainer    // one-time "stored in your Keychain" note before the first enroll
         case startAtLoginError    // "Couldn't turn off Start at login"
+
+        /// ND-117: resizable geometry for kinds that scroll their own content. nil = a
+        /// fixed-size window fitted to its SwiftUI content (the message/onboarding kinds).
+        var sizing: Sizing? {
+            switch self {
+            case .settings:
+                return Sizing(initial: NSSize(width: SettingsView.defaultSize.width,
+                                              height: SettingsView.defaultSize.height),
+                              minimum: NSSize(width: SettingsView.minimumSize.width,
+                                              height: SettingsView.minimumSize.height),
+                              autosaveName: "NoDonutsSettingsWindow")
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// Geometry of a resizable window: first-open content size, minimum content size,
+    /// and the frame autosave name (the user's last size/position is restored).
+    struct Sizing {
+        let initial: NSSize
+        let minimum: NSSize
+        let autosaveName: String
     }
 
     private var windows: [Kind: NSWindow] = [:]
@@ -71,13 +94,35 @@ final class AppWindows {
         }
 
         let hosting = NSHostingController(rootView: content())
+        if kind.sizing != nil {
+            // ND-117: the window, not SwiftUI's ideal size, owns the geometry, so the
+            // user can resize it (the root view still declares the same minimum).
+            hosting.sizingOptions = []
+        }
         let window = NSWindow(contentViewController: hosting)
         window.title = title
-        window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false   // we retain it; reuse on next open
-        window.center()
-        // Fit the SwiftUI content's fitting size.
-        window.setContentSize(hosting.view.fittingSize)
+        if let sizing = kind.sizing {
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.contentMinSize = sizing.minimum
+            window.setContentSize(sizing.initial)
+            // Restore the last size/position if saved; otherwise center the default.
+            if !window.setFrameUsingName(sizing.autosaveName) {
+                window.center()
+            }
+            window.setFrameAutosaveName(sizing.autosaveName)
+            // A saved frame from an older, smaller layout must still meet the minimum.
+            let content = window.contentRect(forFrameRect: window.frame).size
+            if content.width < sizing.minimum.width || content.height < sizing.minimum.height {
+                window.setContentSize(NSSize(width: max(content.width, sizing.minimum.width),
+                                             height: max(content.height, sizing.minimum.height)))
+            }
+        } else {
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.center()
+            // Fit the SwiftUI content's fitting size.
+            window.setContentSize(hosting.view.fittingSize)
+        }
 
         // Retain a delegate so a close via the window's red button (not just a
         // programmatic close) still fires `onClose`. Guard prevents double-firing when a

@@ -464,18 +464,29 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     /// by `resume()`'s restart after a suspend. `stopRunning()` / `startRunning()`
     /// can drop the device back to its default format + rate (30 fps on the
     /// built-in camera), so both are re-applied on every start:
-    /// lock the device → set the 640×480 format + lowest frame duration → start →
-    /// unlock → log what the device actually runs at.
+    /// lock the device → set the 640×480 format + pin min AND max frame duration
+    /// to the lowest rate → start → unlock → read back; if the session reverted
+    /// the durations, re-lock and re-pin while running → log what the device
+    /// actually runs at.
     ///
     /// Format + rate are skipped (device left untouched, not locked) when another
     /// app is using the camera, so a call's stream is never downscaled or throttled;
     /// that is re-evaluated at every start. Must be called on `sessionQueue`.
     /// Returns whether `startRunning()` completed without an exception.
     ///
+    /// Why activeFormat is assigned on EVERY start, even when already equal: that
+    /// assignment is what flips the session to `.inputPriority`. While the session
+    /// is preset-driven (e.g. `.vga640x480`, whose native format is already the
+    /// 640×480 one, so a "skip if equal" never assigned it), `startRunning()`
+    /// re-applies the preset's defaults — including the format's variable
+    /// 1/30…1/15 s frame-duration range — on its own schedule, which may land
+    /// after our lock is released. That race is why some restarts ran 15 fps and
+    /// others 15–30 fps. With `.inputPriority` the session leaves the device's
+    /// format and frame durations alone; the post-start read-back + re-pin is the
+    /// belt-and-braces check that it did.
+    ///
     /// Why the device stays LOCKED across `startRunning()`: an unlocked device lets
-    /// the session start reset the frame duration to the format default, and a
-    /// locked device keeps its activeFormat, so the format is set explicitly too
-    /// (the preset alone could leave it at the previous 1080p format).
+    /// the session start reset the frame duration to the format default.
     ///
     /// Frame rate: the range with the lowest minimum rate is chosen (not merely the
     /// first), and `targetFPS` is clamped into it; on the built-in camera that is
@@ -487,40 +498,20 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
     private func startRunningWithCaptureFormat(device: AVCaptureDevice, context: String) -> Bool {
         let sharedWithAnotherApp = device.isInUseByAnotherApplication
         var locked = false
+        var target: CMTime?
         if !sharedWithAnotherApp, (try? device.lockForConfiguration()) != nil {
             locked = true
             let formats = device.formats
             if let idx = CaptureFormatPolicy.preferredFormatIndex(dimensions: formats.map {
                 let d = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
                 return (Int(d.width), Int(d.height))
-            }), formats[idx] != device.activeFormat {
+            }) {
+                // Unconditional (see the doc comment): forces `.inputPriority`.
+                // Assigning activeFormat also resets the frame durations, so it
+                // must precede pinFrameRate.
                 _ = objcSafe("setting the capture format") { device.activeFormat = formats[idx] }
             }
-            let ranges = device.activeFormat.videoSupportedFrameRateRanges
-            if let pick = CaptureFormatPolicy.lowestRate(in: ranges.map {
-                CaptureFormatPolicy.RateRange(minFrameRate: $0.minFrameRate, maxFrameRate: $0.maxFrameRate)
-            }) {
-                let range = ranges[pick.index]
-                // At the range floor use the device's own CMTime (exact); else 1/fps.
-                var frameDuration = pick.fps <= range.minFrameRate
-                    ? range.maxFrameDuration
-                    : CMTime(value: 1, timescale: CMTimeScale(pick.fps.rounded()))
-                // Duration is inverse to rate: min rate -> max duration.
-                if CMTimeCompare(frameDuration, range.minFrameDuration) < 0 {
-                    frameDuration = range.minFrameDuration
-                }
-                if CMTimeCompare(frameDuration, range.maxFrameDuration) > 0 {
-                    frameDuration = range.maxFrameDuration
-                }
-                var shimError: NSError?
-                let ok = nd_runCatchingObjCException({
-                    device.activeVideoMinFrameDuration = frameDuration
-                    device.activeVideoMaxFrameDuration = frameDuration
-                }, &shimError)
-                if !ok {
-                    cameraLog.notice("Device rejected a fixed frame rate (\(shimError?.localizedDescription ?? "unknown", privacy: .public)); continuing at the default rate")
-                }
-            }
+            target = pinFrameRate(device: device)
         } else if sharedWithAnotherApp {
             cameraLog.notice("Camera is in use by another app; not changing its format or frame rate (\(context, privacy: .public))")
         }
@@ -530,13 +521,25 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
         if locked { device.unlockForConfiguration() }
         guard started else { return false }
 
+        // Verify after the start: both durations must equal the pinned target.
+        // If the session reverted them (min < max → it can run at 30 fps),
+        // re-pin while running — a running session honours a locked write.
+        // Review fix: re-check the camera isn't now held by a call app before touching
+        // it — a call's stream must never be throttled (same rule as the pre-start skip).
+        if let target, !isPinned(device: device, to: target), !device.isInUseByAnotherApplication {
+            let before = durationSummary(device)
+            if (try? device.lockForConfiguration()) != nil {
+                _ = pinFrameRate(device: device)
+                device.unlockForConfiguration()
+            }
+            cameraLog.notice("Camera (\(context, privacy: .public)): frame duration reverted to \(before, privacy: .public) after start; re-pinned → \(self.durationSummary(device), privacy: .public)\(self.isPinned(device: device, to: target) ? "" : " (STILL NOT PINNED)", privacy: .public)")
+        }
+
         // What the device actually runs at. `.notice` once per distinct result
         // (so a revert to 30 fps after a restart is visible), `.debug` otherwise —
         // resume() runs on every unlock/wake.
         let dims = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
-        let minD = device.activeVideoMinFrameDuration.seconds
-        let maxD = device.activeVideoMaxFrameDuration.seconds
-        let summary = "preset \(session.sessionPreset.rawValue), active format \(dims.width)x\(dims.height), frame duration \(String(format: "%.4f", minD))–\(String(format: "%.4f", maxD))s (≈\(String(format: "%.1f", minD > 0 ? 1 / minD : 0)) fps max)"
+        let summary = "preset \(session.sessionPreset.rawValue), active format \(dims.width)x\(dims.height), \(durationSummary(device))"
         if summary != lastLoggedCaptureFormat {
             lastLoggedCaptureFormat = summary
             cameraLog.notice("Camera (\(context, privacy: .public)): \(summary, privacy: .public)")
@@ -544,6 +547,51 @@ public final class CameraController: CameraCapturing, @unchecked Sendable {
             cameraLog.debug("Camera (\(context, privacy: .public)): \(summary, privacy: .public)")
         }
         return true
+    }
+
+    /// Pin BOTH `activeVideoMinFrameDuration` and `activeVideoMaxFrameDuration`
+    /// to the lowest supported rate of the active format (CaptureFormatPolicy).
+    /// Caller holds the device lock. Returns the target duration, or nil when the
+    /// format offers no usable range or the device threw (left at its default).
+    private func pinFrameRate(device: AVCaptureDevice) -> CMTime? {
+        let ranges = device.activeFormat.videoSupportedFrameRateRanges
+        guard let pick = CaptureFormatPolicy.lowestRate(in: ranges.map {
+            CaptureFormatPolicy.RateRange(minFrameRate: $0.minFrameRate, maxFrameRate: $0.maxFrameRate)
+        }) else { return nil }
+        let range = ranges[pick.index]
+        // At the range floor use the device's own CMTime (exact); else 1/fps.
+        var frameDuration = pick.fps <= range.minFrameRate
+            ? range.maxFrameDuration
+            : CMTime(value: 1, timescale: CMTimeScale(pick.fps.rounded()))
+        // Duration is inverse to rate: min rate -> max duration.
+        if CMTimeCompare(frameDuration, range.minFrameDuration) < 0 {
+            frameDuration = range.minFrameDuration
+        }
+        if CMTimeCompare(frameDuration, range.maxFrameDuration) > 0 {
+            frameDuration = range.maxFrameDuration
+        }
+        var shimError: NSError?
+        let ok = nd_runCatchingObjCException({
+            device.activeVideoMinFrameDuration = frameDuration
+            device.activeVideoMaxFrameDuration = frameDuration
+        }, &shimError)
+        if !ok {
+            cameraLog.notice("Device rejected a fixed frame rate (\(shimError?.localizedDescription ?? "unknown", privacy: .public)); continuing at the default rate")
+            return nil
+        }
+        return frameDuration
+    }
+
+    private func isPinned(device: AVCaptureDevice, to target: CMTime) -> Bool {
+        CaptureFormatPolicy.isPinned(minDuration: device.activeVideoMinFrameDuration.seconds,
+                                     maxDuration: device.activeVideoMaxFrameDuration.seconds,
+                                     targetDuration: target.seconds)
+    }
+
+    private func durationSummary(_ device: AVCaptureDevice) -> String {
+        let minD = device.activeVideoMinFrameDuration.seconds
+        let maxD = device.activeVideoMaxFrameDuration.seconds
+        return "frame duration \(String(format: "%.4f", minD))–\(String(format: "%.4f", maxD))s (≈\(String(format: "%.1f", minD > 0 ? 1 / minD : 0)) fps max)"
     }
 
     // MARK: - Device trust (ND-075)

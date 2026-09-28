@@ -74,7 +74,6 @@
 "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren’t trusted)" = "No Donuts — ⚠️ camera unavailable (no built-in camera; external/virtual cameras aren’t trusted)";
 "No Donuts — ⚠️ camera unavailable (grant access)" = "No Donuts — ⚠️ camera unavailable (grant access)";
 "No Donuts Settings" = "No Donuts Settings";
-"Behavior" = "Behavior";
 "Lock sensitivity" = "Lock sensitivity";
 "Lenient" = "Lenient";
 "Strict" = "Strict";
@@ -92,7 +91,6 @@
 "How often No Donuts checks the camera. Faster reacts sooner; slower uses less power." = "How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.";
 "Security" = "Security";
 "Reject photos of me (anti-spoofing)" = "Reject photos of me (anti-spoofing)";
-"Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It’s a basic, conservative check (no blink or motion test) and isn’t fully hardened — turn it off if a live face is ever rejected." = "Ignores a flat printed or on-screen photo of your face by checking its texture. Works with both recognition models. It’s a basic, conservative check (no blink or motion test) and isn’t fully hardened — turn it off if a live face is ever rejected.";
 "Recognition" = "Recognition";
 "Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere." = "Read-only. Everything here is computed on this Mac; no face data is shown or sent anywhere.";
 "Model" = "Model";
@@ -124,7 +122,6 @@
 "Start at login" = "Start at login";
 "Needs approval in System Settings › General › Login Items." = "Needs approval in System Settings › General › Login Items.";
 "Couldn't change this. It may need approval in System Settings › General › Login Items." = "Couldn't change this. It may need approval in System Settings › General › Login Items.";
-"Trusted Wi-Fi networks" = "Trusted Wi-Fi networks";
 "No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (“Trust this Wi-Fi network”)." = "No trusted networks. On a trusted network, No Donuts pauses locking. Add one from the menu bar (“Trust this Wi-Fi network”).";
 "Remove" = "Remove";
 "Remove %@" = "Remove %@";
@@ -223,3 +220,23 @@
 "No Donuts %@ (%@)" = "No Donuts %1$@ (%2$@)";
 "development build" = "development build";
 "Version" = "Version";
+
+/* ND-117: Settings sidebar categories and pane copy. */
+"General" = "General";
+"Trusted Wi-Fi" = "Trusted Wi-Fi";
+"Timing" = "Timing";
+"About" = "About";
+"Settings categories" = "Settings categories";
+"Pausing" = "Pausing";
+"Pause from the No Donuts menu in the menu bar: for 15 minutes, for 1 hour, or until you resume. While paused, No Donuts doesn’t use the camera or lock your Mac, and the menu bar shows that it’s paused. A timed pause resumes on its own." = "Pause from the No Donuts menu in the menu bar: for 15 minutes, for 1 hour, or until you resume. While paused, No Donuts doesn’t use the camera or lock your Mac, and the menu bar shows that it’s paused. A timed pause resumes on its own.";
+"On a trusted Wi-Fi network, locking is paused automatically (see Trusted Wi-Fi)." = "On a trusted Wi-Fi network, locking is paused automatically (see Trusted Wi-Fi).";
+"Checks that the face is live, not a printed or on-screen photo: it must blink or move naturally at least once a minute, and have the fine texture of a real face. A photo held up to the camera keeps the Mac unlocked for about a minute at most, plus the grace period. A video of you replayed on a screen can still get past it. Turn it off only if you’re ever locked out while at your Mac." = "Checks that the face is live, not a printed or on-screen photo: it must blink or move naturally at least once a minute, and have the fine texture of a real face. A photo held up to the camera keeps the Mac unlocked for about a minute at most, plus the grace period. A video of you replayed on a screen can still get past it. Turn it off only if you’re ever locked out while at your Mac.";
+"Weakened security settings are also shown in the menu bar menu and in Copy diagnostics." = "Weakened security settings are also shown in the menu bar menu and in Copy diagnostics.";
+"Security settings" = "Security settings";
+"At the recommended defaults or stricter" = "At the recommended defaults or stricter";
+"Protection reduced: %@" = "Protection reduced: %@";
+"No Donuts has crashed on this Mac at least once (a recorded crash report exists). The crash summary is included in Copy diagnostics." = "No Donuts has crashed on this Mac at least once (a recorded crash report exists). The crash summary is included in Copy diagnostics.";
+"Locks your Mac when you step away, so nobody can volunteer you for the next donut run." = "Locks your Mac when you step away, so nobody can volunteer you for the next donut run.";
+"Privacy" = "Privacy";
+"Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain." = "Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain.";
+"No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or “Lock now” in the menu." = "No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or “Lock now” in the menu.";
