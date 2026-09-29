@@ -59,6 +59,8 @@ scripts/make-app.sh        # add --debug for a faster compile
 open build/NoDonuts.app
 ```
 
+On Command Line Tools 27+, bare `swift build` / `swift run EngineCheck` need the wrapper `scripts/swift-env.sh` (e.g. `scripts/swift-env.sh swift run EngineCheck`), which falls back to the macOS 26 SDK because CLT lacks the `SwiftUIMacros` plugin; `make-app.sh` does it for you (ND-120).
+
 **Install + start at login:** `scripts/install-app.sh` builds the app, copies it to `/Applications/NoDonuts.app`, removes any legacy script-installed LaunchAgent, and opens the app (idempotent, no sudo). Then turn on **Settings › Start at login**: this registers the LaunchAgent bundled inside the app (`com.nodonuts.app.agent`), which starts No Donuts at login and relaunches it after a crash or kill. Menu Quit stays quit. macOS may ask you to approve it in System Settings › General › Login Items.
 
 ```sh

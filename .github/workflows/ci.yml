@@ -46,8 +46,10 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
 
+      # scripts/swift-env.sh (ND-120) is a no-op here: macos-latest uses full Xcode, which
+      # ships the SwiftUIMacros plugin. It only pins an older SDK on CLT 27+ toolchains.
       - name: swift build
-        run: swift build
+        run: scripts/swift-env.sh swift build
 
       - name: swift run EngineCheck
-        run: swift run EngineCheck
+        run: scripts/swift-env.sh swift run EngineCheck

@@ -51,7 +51,12 @@ INFO_PLIST="Resources/Info.plist"
 ENTITLEMENTS="Resources/NoDonuts.entitlements"
 
 # --- build ------------------------------------------------------------------
-echo "==> swift build -c ${CONFIG}"
+# ND-120: on Command Line Tools 27+ (no SwiftUIMacros plugin), fall back to the newest
+# MacOSX26*.sdk. Sourced once so the build and --show-bin-path use the same SDK.
+# No-op when SDKROOT is preset or the toolchain has the plugin (full Xcode).
+# shellcheck source=scripts/swift-env.sh
+. scripts/swift-env.sh
+echo "==> swift build -c ${CONFIG}${SDKROOT:+ (SDKROOT=${SDKROOT})}"
 swift build -c "${CONFIG}"
 
 BIN_PATH="$(swift build -c "${CONFIG}" --show-bin-path)/${APP_NAME}"

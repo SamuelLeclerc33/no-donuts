@@ -21,6 +21,8 @@ swift --version        # should print a Swift toolchain
 swift build            # builds the executable target
 swift run NoDonuts     # runs it (camera prompt requires a proper app bundle, see below)
 ```
+**Command Line Tools 27+ (ND-120):** the default macOS 27 SDK needs the `SwiftUIMacros` compiler plugin, which CLT doesn't ship, so bare `swift build` fails with "plugin for module 'SwiftUIMacros' not found". Wrap SwiftPM commands: `scripts/swift-env.sh swift build`, `scripts/swift-env.sh swift run EngineCheck`. It exports `SDKROOT` = newest installed `MacOSX26*.sdk` (warns once), respects a preset `SDKROOT`, and is a no-op on full Xcode. `scripts/make-app.sh` sources it automatically. You can also `. scripts/swift-env.sh` once per shell.
+
 SPM is fine for compiling/logic, but the camera permission prompt and `LSUIElement` behavior need a real `.app` bundle (`Info.plist`) — see below.
 
 ## Build a runnable `.app` (local, CLT-friendly)

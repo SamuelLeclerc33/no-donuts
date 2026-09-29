@@ -755,6 +755,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-29-sdk-fallback-on-command-line-tools-27-nd-120" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-29): SDK fallback on Command Line Tools 27 (ND-120)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1298,6 +1309,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-29-sdk-fallback-on-command-line-tools-27-nd-120" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment (2026-09-29): SDK fallback on Command Line Tools 27 (ND-120)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1346,6 +1368,8 @@
 <h2 id="amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102">Amendment (2026-09-25): optional stable dev signing identity (ND-102)<a class="headerlink" href="#amendment-2026-09-25-optional-stable-dev-signing-identity-nd-102" title="Permanent link">&para;</a></h2>
 <p>Ad-hoc signing gives every build a new cdhash, so the login-keychain ACL and the TCC camera grant no longer match, and each rebuild re-prompts ("NoDonuts wants to use your confidential information"). <code>scripts/make-dev-cert.sh</code> creates a local self-signed code-signing certificate, "No Donuts Dev" (user trust, code signing only), without an Apple account. When that identity exists, <code>make-app.sh</code> signs with it by SHA-1, giving a certificate-based designated requirement that stays stable across rebuilds. Otherwise it falls back to ad-hoc. The build still needs only CLT; hardened runtime and Developer ID stay with ND-050.</p>
 <p><strong>Correction (2026-09-25):</strong> the stable identity fixes TCC (Camera permission survives rebuilds), but <strong>not</strong> the Keychain prompt. The legacy login keychain partitions items by Team ID, and a self-signed certificate has none, so the partition falls back to the binary's cdhash (<code>user approved XARA access for 'cdhash:…'</code>). Every rebuild that changes the binary therefore re-prompts once. Since ND-102 the prompt no longer blocks the app. Only a Developer ID with a Team ID removes it (ND-050).</p>
+<h2 id="amendment-2026-09-29-sdk-fallback-on-command-line-tools-27-nd-120">Amendment (2026-09-29): SDK fallback on Command Line Tools 27 (ND-120)<a class="headerlink" href="#amendment-2026-09-29-sdk-fallback-on-command-line-tools-27-nd-120" title="Permanent link">&para;</a></h2>
+<p>Command Line Tools 27.0 made <code>MacOSX27.0.sdk</code> the default. In that SDK, SwiftUI's <code>@State</code> and related property wrappers are macros implemented by the <code>SwiftUIMacros</code> compiler plugin, which ships with full Xcode but not with CLT. A CLT-only <code>swift build</code> therefore fails ("plugin for module 'SwiftUIMacros' not found"). To keep this ADR's CLT-only local build, <code>scripts/swift-env.sh</code> checks the active toolchain for the plugin. If the plugin is missing and the default SDK is 27 or newer, it exports <code>SDKROOT</code> = the newest installed <code>MacOSX26*.sdk</code> and prints one warning. It leaves a preset <code>SDKROOT</code> alone and does nothing on full Xcode, including CI. <code>make-app.sh</code> sources it, and bare SwiftPM commands can be wrapped with it (<code>scripts/swift-env.sh swift run EngineCheck</code>). If no 26.x SDK is installed, it warns and the build fails with the real error. The fallback lasts only as long as CLT keeps a 26.x SDK. The lasting fixes are a CLT release that ships the plugin, or full Xcode (already required for ND-050 distribution).</p>
 
 
 
