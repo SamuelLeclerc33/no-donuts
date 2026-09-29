@@ -75,7 +75,7 @@ The single source of truth for planned work. Keep it current (see the `backlog` 
 42. ✅ ND-042 — loop timing + power (deadline tick, cancellation-aware capture, pre-warm, buffer copy) — blart + homer
 43. ✅ ND-096 — capture preset 640×480, lowest fps range, follow `systemPreferredCamera` — blart
 44. ✅ ND-095 — model load off main thread + explicit compute units — cooper
-45. ND-102 — `isEnrolled` Keychain read off main at launch — krusty
+45. ✅ ND-102 — `isEnrolled` Keychain read off main at launch — krusty
 46. ✅ ND-099 — Recognition row in Settings + model/version in diagnostics — krusty + gordon
 47. ✅ ND-070 — de-modalize the two remaining `runModal` alerts — krusty
 48. ✅ ND-100 — VoiceOver labels — krusty
