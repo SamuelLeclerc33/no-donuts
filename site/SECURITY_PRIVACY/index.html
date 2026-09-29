@@ -1649,6 +1649,13 @@
 <td>Mitigated</td>
 </tr>
 <tr>
+<td><strong>Drift monitor retains scores</strong></td>
+<td>Reads drift history to profile the user</td>
+<td>ND-119 keeps match-score margins and stranger-lock times in memory only (≤5 min / 15 min, capped); nothing persisted or sent. The notification copy is static (no scores); logs carry the mean margin and counts only</td>
+<td>Same as logs: memory readable by malware running as the user</td>
+<td>Mitigated</td>
+</tr>
+<tr>
 <td><strong>Keychain at rest</strong></td>
 <td>Enrollment copied off the device via backup or migration</td>
 <td>Generic-password item requesting <code>…ThisDeviceOnly</code>; input validated before write (ND-093)</td>

@@ -65,6 +65,39 @@ public struct Config: Codable, Equatable {
     /// escalates. Like the call cap, this is NOT the time to lock: effective ceiling
     /// ≈ this + consensus (`consecutiveAbsentTicksToLock` × tick) + `graceSeconds`.
     public var maxCameraUnavailableSeconds: Double = 120
+    // MARK: ND-119 enrollment drift warning (advisory only)
+    //
+    // Fixed code-only constants (no Settings UI, no defaults key) consumed by
+    // `EnrollmentDriftMonitor`. They drive a WARN-ONLY "recognition weak —
+    // re-enroll" prompt; nothing here changes the lock policy, and enrollment
+    // templates are never adapted from live scores (spoof-poisoning risk).
+    // Scores and lock times stay in memory only (docs/SECURITY_PRIVACY.md).
+
+    /// ND-119: rolling window (seconds) over which live-verified
+    /// `.enrolledUserPresent` match margins are averaged. 5 min at defaults.
+    public var driftWindowSeconds: Double = 300
+    /// ND-119: minimum match samples inside `driftWindowSeconds` before the
+    /// low-margin trigger may fire (≈2 min of recognized presence at the 1s tick),
+    /// so a handful of bad-light frames can't raise the warning. This is a CEILING:
+    /// the monitor lowers it to 40% of the ticks the window can hold at the current
+    /// `tickIntervalSeconds` (floor 10), so a slow tick can't make it unreachable.
+    public var driftMinSamples: Int = 120
+    /// ND-119: the low-margin trigger fires when the window's mean of
+    /// (score − threshold-at-sample) is BELOW this. 0.10 = the user is recognized,
+    /// but only just (e.g. a shaved beard: ~0.85 → 0.50–0.60 at threshold 0.50).
+    public var driftMarginThreshold: Double = 0.10
+    /// ND-119: this many stranger-driven auto-locks (ADR-0017 fast path), each
+    /// shortly after an unlock, inside `driftStrangerLockWindowSeconds` → warn.
+    public var driftStrangerLockCount: Int = 3
+    /// ND-119: a stranger lock counts toward the burst only if it happened at most
+    /// this many seconds after the session was unlocked (the user just logged back
+    /// in and was immediately "not recognized" again).
+    public var driftStrangerLockAfterUnlockSeconds: Double = 60
+    /// ND-119: window (seconds) for the stranger-lock burst. 15 min at defaults.
+    public var driftStrangerLockWindowSeconds: Double = 900
+    /// ND-119: minimum interval (seconds) between two drift notifications while
+    /// the warning stays active. 4 h at defaults.
+    public var driftRenotifySeconds: Double = 14_400
     // ND-069: there is deliberately NO "throttle on battery" tunable. Slowing the
     // tick on battery multiplies the walk-away→lock time (consensus × tick), so an
     // unplugged laptop — the one most likely to be carried into an open office —
@@ -106,6 +139,24 @@ extension Config {
         public static let consecutiveStrangerTicksToLock: ClosedRange<Int> = 1...10
         /// 0–10s grace after the stranger streak (ADR-0017; default 0).
         public static let strangerGraceSeconds: ClosedRange<Double> = 0...10
+        /// ND-119: 1–30 min drift window. Shorter reacts to noise; longer delays the
+        /// warning past the lock storm it exists to pre-empt.
+        public static let driftWindowSeconds: ClosedRange<Double> = 60...1800
+        /// ND-119: 10–1800 samples. Never below 10 (one bad-light moment must not warn);
+        /// the top stays under `EnrollmentDriftMonitor.maxSamples`. Reachability at the
+        /// actual tick cadence is guaranteed by `EnrollmentDriftMonitor.effectiveMinSamples`.
+        public static let driftMinSamples: ClosedRange<Int> = 10...1800
+        /// ND-119: 0.01–0.5 mean margin. Never 0 (would never fire); never above 0.5
+        /// (would warn a perfectly recognized user).
+        public static let driftMarginThreshold: ClosedRange<Double> = 0.01...0.5
+        /// ND-119: 2–10 stranger locks. 1 would warn on a single real stranger lock.
+        public static let driftStrangerLockCount: ClosedRange<Int> = 2...10
+        /// ND-119: 10s–10 min after an unlock for a stranger lock to count.
+        public static let driftStrangerLockAfterUnlockSeconds: ClosedRange<Double> = 10...600
+        /// ND-119: 2 min–1 h stranger-lock burst window.
+        public static let driftStrangerLockWindowSeconds: ClosedRange<Double> = 120...3600
+        /// ND-119: 15 min–24 h between drift notifications (no notification spam).
+        public static let driftRenotifySeconds: ClosedRange<Double> = 900...86_400
     }
 
     /// UserDefaults keys for the tunables that are user-settable today (ND-040 Settings
@@ -130,6 +181,17 @@ extension Config {
         c.maxCameraUnavailableSeconds = Config.clamp(maxCameraUnavailableSeconds, Bounds.maxCameraUnavailableSeconds, d.maxCameraUnavailableSeconds)
         c.consecutiveStrangerTicksToLock = Config.clamp(consecutiveStrangerTicksToLock, Bounds.consecutiveStrangerTicksToLock)
         c.strangerGraceSeconds = Config.clamp(strangerGraceSeconds, Bounds.strangerGraceSeconds, d.strangerGraceSeconds)
+        c.driftWindowSeconds = Config.clamp(driftWindowSeconds, Bounds.driftWindowSeconds, d.driftWindowSeconds)
+        c.driftMinSamples = Config.clamp(driftMinSamples, Bounds.driftMinSamples)
+        c.driftMarginThreshold = Config.clamp(driftMarginThreshold, Bounds.driftMarginThreshold, d.driftMarginThreshold)
+        c.driftStrangerLockCount = Config.clamp(driftStrangerLockCount, Bounds.driftStrangerLockCount)
+        c.driftStrangerLockAfterUnlockSeconds = Config.clamp(driftStrangerLockAfterUnlockSeconds,
+                                                             Bounds.driftStrangerLockAfterUnlockSeconds,
+                                                             d.driftStrangerLockAfterUnlockSeconds)
+        c.driftStrangerLockWindowSeconds = Config.clamp(driftStrangerLockWindowSeconds,
+                                                        Bounds.driftStrangerLockWindowSeconds,
+                                                        d.driftStrangerLockWindowSeconds)
+        c.driftRenotifySeconds = Config.clamp(driftRenotifySeconds, Bounds.driftRenotifySeconds, d.driftRenotifySeconds)
         return c
     }
 

@@ -1,6 +1,7 @@
 import AppKit
 import NoDonutsCore
 import os.log
+import UserNotifications
 
 // Owner: krusty (app shell) + homer (loop wiring). Entry point.
 // Backlog: ND-010, ND-015, ND-035 (pause), ND-036 (trusted Wi-Fi). Runs as an
@@ -51,6 +52,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ND-108: local-only MetricKit crash summaries (held: MetricKit's subscriber list
     /// isn't a reliable owner). Shown only in Copy diagnostics; never uploaded.
     private let crashCollector = CrashSummaryCollector()
+    /// ND-119: enrollment drift (appearance change) detector + its advisory alert.
+    /// Scores and lock times live in this struct, in memory only (never persisted).
+    /// Rebuilt from the live `config` once Settings are loaded (its min-sample gate is
+    /// sized to the tick interval), and again whenever the tick interval changes.
+    private var driftMonitor = EnrollmentDriftMonitor()
+    private let driftNotifier = EnrollmentDriftNotifier()
+    /// ND-119: routes notification taps (drift alert → enrollment). Held: the center's
+    /// delegate is weak.
+    private var notificationResponder: NotificationResponder?
+    /// ND-119: the menu's "Recognition weak — re-enroll…" is showing. Cleared only by a
+    /// successful re-enroll or identity leaving `.active`.
+    private var driftWarningActive = false
+    /// ND-119: when the drift alert was last posted (4 h rate limit, Core policy).
+    private var lastDriftNotifiedAt: Date?
+    /// ND-119: last seen `engine.strangerLockCount` (monotonic), to spot new locks.
+    private var lastSeenStrangerLockCount = 0
+    /// ND-119: wall-clock time of the last session inactive→active transition (an
+    /// unlock / wake). nil until the first one after launch: the launch itself (which
+    /// follows the login) is deliberately not treated as an unlock.
+    private var lastUnlockAt: Date?
     /// ND-113: app-activation observer that refreshes the "Notifications off" warning.
     private var didBecomeActiveObserver: NSObjectProtocol?
     /// ND-082: set once the user confirmed Quit, so a double click can't re-enter.
@@ -154,6 +175,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var enrollmentTask: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // ND-119: notification taps (drift alert → start enrollment). Installed first so
+        // a tap that arrives during launch is routed.
+        let responder = NotificationResponder(onEnrollmentDriftTapped: { [weak self] in
+            // Never start the camera for a tap processed while locked / asleep.
+            guard let self, self.sessionMonitor?.isActive ?? false else { return }
+            self.startEnrollment()
+        })
+        notificationResponder = responder
+        UNUserNotificationCenter.current().delegate = responder
+
         // Pause (ND-035) + trusted Wi-Fi (ND-036) inputs to the enforcement gate.
         let pauseController = PauseController()
         self.pauseController = pauseController
@@ -246,14 +277,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsStore = SettingsStore(descriptor: embedder.descriptor)
         self.settingsStore = settingsStore
         applyStoreToConfig(settingsStore)
+        // ND-119: size the drift gate to the user's saved tick interval, not defaults.
+        driftMonitor = EnrollmentDriftMonitor(config: config)
         // onChange: rebuild Config from the store + live-apply to the engine. Threshold /
         // anti-spoof are already persisted to their UserDefaults keys by the store and are
         // consumed live by the recognizer on the next tick — no engine round-trip needed
         // for those. The tick interval is picked up by the loop each iteration.
         settingsStore.onChange = { [weak self] in
             guard let self, let engine = self.engine, let store = self.settingsStore else { return }
+            let previousTick = self.config.tickIntervalSeconds
             self.applyStoreToConfig(store)
             engine.updateConfig(self.config)
+            // ND-119: the drift min-sample gate depends on the tick interval, so rebuild
+            // the monitor when it changes. This drops the in-memory drift history
+            // (acceptable: it re-accumulates within one window). An already-showing
+            // warning stays up; it clears only on re-enroll / identity leaving .active.
+            if self.config.tickIntervalSeconds != previousTick {
+                self.driftMonitor = EnrollmentDriftMonitor(config: self.config)
+            }
             self.refreshProtectionAudit()   // ND-077: a Settings change may weaken/restore protection
         }
         // Log the effective matchThreshold once at launch (pairs with cooper's per-tick
@@ -316,6 +357,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Timed pauses keep their own expiry (PausePolicy). Resuming fires the
             // pause onChange → applyEnforcement(); the call below is idempotent.
             if !active { self?.pauseController?.sessionDidSuspend() }
+            // ND-119: an unlock / wake starts the "locked right after unlocking" clock.
+            if active { self?.lastUnlockAt = Date() }
             self?.applyEnforcement()
             // ND-058: re-check on every unlock/wake (e.g. an OS update applied while
             // asleep). Resolve-only, so cheap and safe.
@@ -620,6 +663,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ND-073: ONLY a successful enroll records the marker (under the model that
             // produced the vectors). Refresh now so the header clears before the alert.
             if case .success = result {
+                // ND-119: fresh templates → old drift evidence no longer applies.
+                self.clearEnrollmentDrift(reason: "re-enrolled")
                 self.enrollmentMarker.setMarker(self.embedder.descriptor.version)
                 self.refreshIdentityFromStore()
             }
@@ -712,6 +757,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Self.appLog.notice("identity status → \(description, privacy: .public)")
         menuBar?.setIdentityStatus(status)
         notProtectingNotifier.update(identity: status)
+        // ND-119: the drift advice only applies to an enforced enrollment. Reset /
+        // identity-off (which has its own loud re-enroll alert) drops it.
+        if status != .active { clearEnrollmentDrift(reason: "identity \(description)") }
+    }
+
+    // MARK: - ND-119 enrollment drift
+
+    /// Record any NEW stranger-driven auto-lock the engine made this tick. Runs right
+    /// after `engine.tick`, BEFORE the loop's cancellation check: the lock itself
+    /// suspends the session, which cancels the loop mid-tick, and the lock must still
+    /// be counted (with the unlock it followed).
+    private func observeStrangerLocks(engine: PresenceEngine, now: Date) {
+        let count = engine.strangerLockCount
+        guard count > lastSeenStrangerLockCount else {
+            lastSeenStrangerLockCount = count
+            return
+        }
+        let newLocks = count - lastSeenStrangerLockCount
+        lastSeenStrangerLockCount = count
+        guard lastPushedIdentity == .active else { return }
+        let sinceUnlock = lastUnlockAt.map { now.timeIntervalSince($0) }
+        for _ in 0..<newLocks {
+            driftMonitor.recordStrangerLock(now: now, secondsSinceUnlock: sinceUnlock)
+        }
+        evaluateEnrollmentDrift(now: now)
+    }
+
+    /// Feed this tick's live-verified match score. Only while identity is ACTIVE (the
+    /// presence-only fallback reports a fake 1.0), against the threshold the
+    /// recognizer resolves live (same resolver, same descriptor).
+    private func observeMatchScore(engine: PresenceEngine, identity: IdentityStatus, now: Date) {
+        guard identity == .active, let score = engine.lastMatchScore else { return }
+        driftMonitor.recordMatch(score: score,
+                                 threshold: resolvedMatchThreshold(for: embedder.descriptor),
+                                 now: now)
+        evaluateEnrollmentDrift(now: now)
+    }
+
+    /// Trip the advisory warning (menu item + one notification, re-posted at most every
+    /// 4 h while the drift persists). Never changes the lock policy or the glyph.
+    private func evaluateEnrollmentDrift(now: Date) {
+        guard lastPushedIdentity == .active, let reason = driftMonitor.evaluate(now: now) else { return }
+        let tripped = !driftWarningActive
+        if tripped {
+            driftWarningActive = true
+            menuBar?.setEnrollmentDriftWarning(true)
+        }
+        let notify = driftMonitor.shouldNotify(lastNotifiedAt: lastDriftNotifiedAt, now: now)
+        if tripped || notify {
+            // Numbers only (never an embedding / image / raw score list).
+            switch reason {
+            case .lowMargin(let mean):
+                Self.appLog.notice("enrollment drift: low margin, mean \(mean, format: .fixed(precision: 3), privacy: .public) over \(self.driftMonitor.sampleCount, privacy: .public) samples (warning \(tripped ? "tripped" : "still active", privacy: .public); notify \(notify, privacy: .public))")
+            case .repeatedStrangerLocks(let count):
+                Self.appLog.notice("enrollment drift: \(count, privacy: .public) stranger locks soon after unlock (warning \(tripped ? "tripped" : "still active", privacy: .public); notify \(notify, privacy: .public))")
+            }
+        }
+        if notify {
+            lastDriftNotifiedAt = now
+            driftNotifier.post()
+        }
+    }
+
+    /// Drop the drift evidence + warning (re-enrolled, or identity no longer active).
+    private func clearEnrollmentDrift(reason: String) {
+        let wasActive = driftWarningActive
+        driftMonitor.reset()
+        driftWarningActive = false
+        lastDriftNotifiedAt = nil
+        menuBar?.setEnrollmentDriftWarning(false)
+        driftNotifier.clear()
+        if wasActive {
+            Self.appLog.notice("enrollment drift warning cleared (\(reason, privacy: .public))")
+        }
     }
 
     /// ND-058/ND-074: run the resolve-only lock self-test and, on change, log it and push
@@ -1058,6 +1177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let workStart = ProcessInfo.processInfo.systemUptime
                 await engine.tick(now: Date())
                 let workEnd = ProcessInfo.processInfo.systemUptime
+                // ND-119: count a stranger lock even if that lock cancelled this loop.
+                self.observeStrangerLocks(engine: engine, now: Date())
                 // A tick cancelled mid-flight (e.g. session suspend) must not
                 // render stale state on top of a freshly-resumed loop.
                 if Task.isCancelled { break }
@@ -1083,6 +1204,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.lastSeenRecognizerIdentity = seen
                         self.pushIdentityStatus(seen)
                     }
+                    // ND-119: this tick's score, only from a tick that saw identity active.
+                    self.observeMatchScore(engine: engine, identity: seen, now: Date())
                 }
                 // Read the interval fresh each iteration so a Settings change to the
                 // check interval (ND-040) live-applies without restarting the loop.

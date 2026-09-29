@@ -40,6 +40,10 @@
 "Wi-Fi network unknown (grant Location in System Settings)" = "Wi-Fi network unknown (grant Location in System Settings)";
 "Enroll my face…" = "Enroll my face…";
 "Re-enroll my face (required)…" = "Re-enroll my face (required)…";
+"Recognition weak — re-enroll…" = "Recognition weak — re-enroll…";
+"Your face is matching less reliably. Re-enrolling avoids unexpected locks. Protection is still on." = "Your face is matching less reliably. Re-enrolling avoids unexpected locks. Protection is still on.";
+"Recognition is weaker than usual" = "Recognition is weaker than usual";
+"Your face is matching less reliably (a new look, glasses or lighting?). Re-enroll to avoid unexpected locks." = "Your face is matching less reliably (a new look, glasses or lighting?). Re-enroll to avoid unexpected locks.";
 "Reset enrollment" = "Reset enrollment";
 "Settings…" = "Settings…";
 "Lock now" = "Lock now";

@@ -602,6 +602,159 @@ func runAbsenceAndStrangerChecks(_ c: Checks) async {
         }
         c.expect(e.state == .absent && locker.lockCallCount == 0, "absent but within grace → no lock yet")
     }
+
+    // MARK: ND-119 read-only observables (lastMatchScore, strangerLockCount)
+    do {
+        // lastMatchScore = this tick's enrolled confidence; nil after every other tick kind.
+        let cam = StubCamera(.frame(CapturedFrame()))
+        let rec = StubRecognizer(.enrolledUserPresent(confidence: 0.73))
+        let e = makeEngine(cam, rec, SpyLocker(succeed: true))
+        let fresh = e.lastMatchScore == nil
+        var t = 0.0
+        func step() async { await e.tick(now: t0.addingTimeInterval(t)); t += 1 }
+        await step()
+        let set = e.lastMatchScore == 0.73
+        var clearedBy: [String] = []
+        let readings: [(String, RecognitionResult)] = [("noFace", .noFace), ("stranger", .strangerOnly),
+                                                        ("notLive", .notLive), ("error", .error("vision"))]
+        for (name, r) in readings {
+            rec.result = .enrolledUserPresent(confidence: 0.61); await step()
+            let before = e.lastMatchScore == 0.61
+            rec.result = r; await step()
+            if before && e.lastMatchScore == nil { clearedBy.append(name) }
+        }
+        let outcomes: [(String, CaptureOutcome)] = [("busy", .cameraBusyNoFrames), ("unavailable", .unavailable("x")),
+                                                     ("suspended", .suspended)]
+        for (name, o) in outcomes {
+            cam.outcome = .frame(CapturedFrame()); rec.result = .enrolledUserPresent(confidence: 0.61); await step()
+            let before = e.lastMatchScore == 0.61
+            cam.outcome = o; await step()
+            if before && e.lastMatchScore == nil { clearedBy.append(name) }
+        }
+        cam.outcome = .frame(CapturedFrame())
+        let resets: [(String, () -> Void)] = [("pause", { e.pause() }), ("sessionSuspended", { e.sessionSuspended() }),
+                                              ("trustedNetwork", { e.disabledOnTrustedNetwork() })]
+        for (name, reset) in resets {
+            rec.result = .enrolledUserPresent(confidence: 0.61); await step()
+            let before = e.lastMatchScore == 0.61
+            reset()
+            if before && e.lastMatchScore == nil { clearedBy.append(name) }
+        }
+        c.expect(fresh && set && clearedBy == ["noFace", "stranger", "notLive", "error", "busy", "unavailable",
+                                                "suspended", "pause", "sessionSuspended", "trustedNetwork"],
+                 "ND-119: lastMatchScore = enrolled confidence; nil after every other tick kind + resets (got \(clearedBy))")
+    }
+    do {
+        // Presence-only fallback's confidence 1.0 is reported as-is (the App filters by identity status).
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())),
+                           StubRecognizer(.enrolledUserPresent(confidence: 1.0)), SpyLocker(succeed: true))
+        await e.tick(now: t0)
+        c.expect(e.lastMatchScore == 1.0, "ND-119: engine reports presence-only 1.0 unfiltered")
+    }
+    do {
+        // A tick that bails on a reset during recognize() leaves lastMatchScore nil.
+        let rec = GatedRecognizer()
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), rec, SpyLocker(succeed: true))
+        let task = Task { @MainActor in await e.tick(now: t0) }
+        for _ in 0..<100 where !rec.isHeld { await Task.yield() }
+        e.pause()
+        rec.release(.enrolledUserPresent(confidence: 0.8))
+        await task.value
+        c.expect(e.lastMatchScore == nil && e.state == .paused,
+                 "ND-119: enrolled reading straddling a pause is not reported")
+    }
+    do {
+        // Successful stranger fast lock → count 1; more stranger ticks (already locked) don't re-count.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        let zero = e.strangerLockCount == 0
+        for i in 0..<2 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let notYet = e.strangerLockCount == 0
+        for i in 2..<20 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let one = e.strangerLockCount == 1 && locker.lockCallCount == 1
+        // The lock's own sessionSuspended() + a fresh stranger run → a second counted lock (monotonic).
+        e.sessionSuspended()
+        let survivesReset = e.strangerLockCount == 1
+        for i in 100..<103 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        c.expect(zero && notYet && one && survivesReset && e.strangerLockCount == 2 && locker.lockCallCount == 2,
+                 "ND-119: strangerLockCount +1 per successful stranger lock; not reset by sessionSuspended")
+    }
+    do {
+        // Absence-only lock (2 stranger + noFace → normal consensus + grace) does not count.
+        let config = Config()
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())),
+                           SeqRecognizer([.strangerOnly, .strangerOnly, .noFace]), locker, config)
+        for i in 0..<30 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended && e.strangerLockCount == 0,
+                 "ND-119: absence-driven lock does not bump strangerLockCount")
+    }
+    do {
+        // Failed stranger locks don't count; the eventual successful retry counts once.
+        let locker = ScriptedLocker([false, false, true])
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        var countWhileFailing = 0
+        var t = 0.0
+        while locker.lockCallCount < 3 && t < 200 {
+            await e.tick(now: t0.addingTimeInterval(t)); t += 1
+            if locker.lockCallCount < 3 { countWhileFailing = max(countWhileFailing, e.strangerLockCount) }
+        }
+        for _ in 0..<20 { await e.tick(now: t0.addingTimeInterval(t)); t += 1 }
+        c.expect(countWhileFailing == 0 && locker.lockCallCount == 3 && e.strangerLockCount == 1 && e.state == .suspended,
+                 "ND-119: failed stranger lock attempts don't count; successful retry counts once")
+    }
+    do {
+        // Both triggers due on the same tick → counted (stranger path was due).
+        var config = Config()
+        config.consecutiveAbsentTicksToLock = 2; config.graceSeconds = 2         // absence due at t=3
+        config.consecutiveStrangerTicksToLock = 4; config.strangerGraceSeconds = 0 // stranger due at t=3
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker, config)
+        for i in 0..<3 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let noLockYet = locker.lockCallCount == 0
+        await e.tick(now: t0.addingTimeInterval(3))
+        c.expect(noLockYet && locker.lockCallCount == 1 && e.strangerLockCount == 1,
+                 "ND-119: absence + stranger due on the same tick → counted once")
+    }
+    do {
+        // Manual lockNow() never counts, even mid-stranger-streak.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        for i in 0..<2 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        await e.lockNow()
+        c.expect(locker.lockCallCount == 1 && e.state == .suspended && e.strangerLockCount == 0,
+                 "ND-119: manual lockNow() does not bump strangerLockCount")
+    }
+    do {
+        // Stranger lock that SUCCEEDS while the episode resets mid-await (its own
+        // sessionSuspended) still counts; one that FAILS across a reset does not.
+        for succeed in [true, false] {
+            let locker = GatedLocker(laterResult: true)
+            let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+            for i in 0..<2 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+            let task = Task { @MainActor in await e.tick(now: t0.addingTimeInterval(2)) }
+            for _ in 0..<100 where !locker.isHeld { await Task.yield() }
+            let held = locker.isHeld
+            e.sessionSuspended()
+            locker.release(succeed)
+            await task.value
+            c.expect(held && e.state == .suspended && e.strangerLockCount == (succeed ? 1 : 0),
+                     "ND-119: stranger lock straddling a reset — \(succeed ? "success counts" : "failure doesn't count")")
+        }
+    }
+    do {
+        // Cancelled tick at the stranger threshold never locks → never counts.
+        let locker = SpyLocker(succeed: true)
+        let e = makeEngine(StubCamera(.frame(CapturedFrame())), StubRecognizer(.strangerOnly), locker)
+        for i in 0..<2 { await e.tick(now: t0.addingTimeInterval(Double(i))) }
+        let task = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            await e.tick(now: t0.addingTimeInterval(2))
+        }
+        await task.value
+        c.expect(locker.lockCallCount == 0 && e.strangerLockCount == 0,
+                 "ND-119: cancelled stranger tick → no lock, no count")
+    }
 }
 
 /// Recognition error → conservative HOLD (EC-10, ND-060).

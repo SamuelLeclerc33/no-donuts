@@ -25,6 +25,10 @@
 "Wi-Fi network unknown (grant Location in System Settings)" = "Réseau Wi-Fi inconnu (autorisez la localisation dans Réglages Système)";
 "Enroll my face…" = "Enregistrer mon visage…";
 "Re-enroll my face (required)…" = "Réenregistrer mon visage (requis)…";
+"Recognition weak — re-enroll…" = "Reconnaissance faible — réenregistrer…";
+"Your face is matching less reliably. Re-enrolling avoids unexpected locks. Protection is still on." = "Votre visage est reconnu de façon moins fiable. Le réenregistrer évite des verrouillages inattendus. La protection reste active.";
+"Recognition is weaker than usual" = "La reconnaissance est plus faible que d’habitude";
+"Your face is matching less reliably (a new look, glasses or lighting?). Re-enroll to avoid unexpected locks." = "Votre visage est reconnu de façon moins fiable (nouveau look, lunettes ou éclairage?). Réenregistrez-le pour éviter des verrouillages inattendus.";
 "Reset enrollment" = "Réinitialiser l’enregistrement";
 "Settings…" = "Réglages…";
 "Lock now" = "Verrouiller maintenant";

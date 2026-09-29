@@ -82,6 +82,13 @@ public final class MenuBarController: NSObject {
     private let trustItem = NSMenuItem(title: String(localized: "Trust this Wi-Fi network"), action: #selector(trustClicked), keyEquivalent: "")
     /// "Enroll my face…" — always visible; re-enrolls/overwrites when already enrolled (ND-022).
     private let enrollItem = NSMenuItem(title: String(localized: "Enroll my face…"), action: #selector(enrollClicked), keyEquivalent: "")
+    /// ND-119: advisory "Recognition weak — re-enroll…" (click → onEnroll). Shown only
+    /// while the drift warning is active AND identity is active. It is NOT a protection
+    /// state: the glyph and header are untouched (identity is still enforced).
+    private let driftWarningItem = NSMenuItem(title: String(localized: "Recognition weak \u{2014} re-enroll\u{2026}"),
+                                              action: #selector(driftWarningClicked), keyEquivalent: "")
+    /// ND-119: the AppDelegate's drift verdict (visibility also needs `isEnrolled`).
+    private var driftWarningActive = false
     /// "Reset enrollment" — shown only when enrolled; clears back to presence-only.
     private let resetEnrollmentItem = NSMenuItem(title: String(localized: "Reset enrollment"), action: #selector(resetEnrollmentClicked), keyEquivalent: "")
     /// "Settings…" — opens the SwiftUI settings window (ND-040). ⌘, per macOS convention.
@@ -144,8 +151,21 @@ public final class MenuBarController: NSObject {
         trustItem.isEnabled = false   // until refreshTrustItem() confirms a known SSID
         menu.addItem(trustItem)
 
-        // Enrollment (ND-022): [sep] Enroll my face… [Reset enrollment (if enrolled)].
+        // Enrollment (ND-022): [sep] [Recognition weak — re-enroll… (ND-119, if drifting)]
+        //   Enroll my face… [Reset enrollment (if enrolled)].
         menu.addItem(.separator())
+        driftWarningItem.target = self
+        driftWarningItem.isEnabled = true
+        driftWarningItem.isHidden = true
+        // ND-100: VoiceOver reads the title; add a help string that says it's advice,
+        // not a loss of protection.
+        driftWarningItem.setAccessibilityHelp(String(localized: "Your face is matching less reliably. Re-enrolling avoids unexpected locks. Protection is still on."))
+        driftWarningItem.toolTip = driftWarningItem.accessibilityHelp()
+        if let image = NSImage(systemSymbolName: "exclamationmark.circle",
+                               accessibilityDescription: nil) {
+            driftWarningItem.image = image
+        }
+        menu.addItem(driftWarningItem)
         enrollItem.target = self
         enrollItem.isEnabled = true
         menu.addItem(enrollItem)
@@ -193,6 +213,7 @@ public final class MenuBarController: NSObject {
     @objc private func trustClicked() { onToggleTrustCurrentNetwork() }
     @objc private func enrollClicked() { onEnroll() }
     @objc private func resetEnrollmentClicked() { onResetEnrollment() }
+    @objc private func driftWarningClicked() { onEnroll() }
     @objc private func settingsClicked() { onOpenSettings() }
 
     /// ND-113: System Settings › Notifications, on our app's row where supported.
@@ -244,11 +265,24 @@ public final class MenuBarController: NSObject {
         enrollItem.title = status.isOff
             ? String(localized: "Re-enroll my face (required)…")
             : String(localized: "Enroll my face…")
+        refreshDriftWarningItem()   // ND-119: only while identity is active
         // The glyph AND header depend on identity, so force a full redraw of the last
         // rendered state (render(state:)'s cache would otherwise skip it).
         if let state = lastRenderedState {
             draw(state: state)
         }
+    }
+
+    /// ND-119: show/hide the advisory drift item. Advisory only: never touches the
+    /// glyph or header. Hidden whenever identity isn't active (the advice only applies
+    /// to an enforced enrollment; identity-off has its own loud re-enroll item).
+    public func setEnrollmentDriftWarning(_ active: Bool) {
+        driftWarningActive = active
+        refreshDriftWarningItem()
+    }
+
+    private func refreshDriftWarningItem() {
+        driftWarningItem.isHidden = !(driftWarningActive && isEnrolled)
     }
 
     /// ND-075: feed the camera's last unavailable reason; redraws only on change.
@@ -292,6 +326,7 @@ public final class MenuBarController: NSObject {
     public func setEnrolling(_ enrolling: Bool) {
         isEnrolling = enrolling
         enrollItem.isEnabled = !enrolling
+        driftWarningItem.isEnabled = !enrolling
         resetEnrollmentItem.isEnabled = !enrolling
         if let state = lastRenderedState {
             statusItemHeader.title = headerTitle(for: state)

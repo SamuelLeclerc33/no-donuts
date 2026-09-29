@@ -43,6 +43,7 @@ func runAll() async -> Bool {
     await runCoreMLEmbeddingHelperChecks(c)
     await runDeferredEmbedderChecks(c)
     await runAppIdentityChecks(c)
+    await runEnrollmentDriftChecks(c)
 
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0

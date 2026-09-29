@@ -84,6 +84,25 @@ public final class PresenceEngine {
     /// Manual lockNow() failures are not counted (they never start retries).
     public var lockFailureCount: Int { failedLockAttempts }
 
+    /// ND-119 (read-only observable, no policy): the confidence of THIS tick's
+    /// `.enrolledUserPresent(confidence:)` reading; nil after any tick that wasn't
+    /// one (noFace, stranger, notLive, error, busy, unavailable, suspended, or a tick
+    /// that bailed on a reset/cancel mid-await) and after pause / session suspend /
+    /// trusted-network resets. NOTE: the presence-only fallback recognizer also
+    /// reports `.enrolledUserPresent(confidence: 1.0)` — the engine reports it as-is;
+    /// the App must filter by identity status before feeding a drift monitor.
+    public private(set) var lastMatchScore: Double?
+
+    /// ND-119 (read-only observable, no policy): monotonically increasing count of
+    /// SUCCESSFUL auto-locks driven by the ND-061 stranger fast path (it was due on
+    /// the tick that invoked the lock — also when normal absence was due on the same
+    /// tick). Failed attempts / retries, absence-only locks and manual `lockNow()`
+    /// never count. A stranger-driven lock that succeeded while the episode was reset
+    /// during its await (e.g. the sessionSuspended() the lock itself caused) or the
+    /// loop was cancelled STILL counts: the Mac really locked, stranger-driven. Never
+    /// reset by the engine (the App diffs it).
+    public private(set) var strangerLockCount = 0
+
     public init(camera: CameraCapturing,
                 recognizer: FaceRecognizing,
                 locker: ScreenLocking,
@@ -108,6 +127,7 @@ public final class PresenceEngine {
     /// into the fresh episode, or double-count consensus alongside a resumed loop.
     public func tick(now: Date) async {
         let generation = episodeGeneration
+        lastMatchScore = nil              // ND-119: only this tick's enrolled reading counts
         let outcome = await camera.capture()
         guard isCurrent(generation) else { return }
         switch outcome {
@@ -139,8 +159,9 @@ public final class PresenceEngine {
             let result = await recognizer.recognize(frame)
             guard isCurrent(generation) else { return }   // ND-091
             switch result {
-            case .enrolledUserPresent:
+            case .enrolledUserPresent(let confidence):
                 markPresent(.present)
+                lastMatchScore = confidence   // ND-119: after markPresent (its reset clears it)
             case .strangerOnly:
                 // EC-03: a stranger is never present. Counts toward the normal
                 // absence consensus AND the ND-061 stranger fast path.
@@ -286,6 +307,7 @@ public final class PresenceEngine {
         lockSucceeded = false
         failedLockAttempts = 0
         nextLockRetryAt = nil
+        lastMatchScore = nil              // ND-119: pause / suspend / trusted network / camera down
         episodeGeneration &+= 1
         if endingWindows {
             callAssumedSince = nil
@@ -419,7 +441,7 @@ public final class PresenceEngine {
         let absenceDue = normalAbsenceLockDue(now: now)
         let strangerDue = strangerLockDue(now: now)
         guard absenceDue || strangerDue else { return }
-        await maybeLock(now: now)
+        await maybeLock(now: now, strangerDriven: strangerDue)
     }
 
     /// Normal path: `consecutiveAbsentTicksToLock` absence ticks, then `graceSeconds`.
@@ -443,7 +465,9 @@ public final class PresenceEngine {
     /// + grace, ND-061 stranger fast path). Owns the ND-054 retry/backoff, the
     /// cancellation guard, the ND-079 in-flight skip and the episode-generation
     /// check — so no trigger can bypass them.
-    private func maybeLock(now: Date) async {
+    /// - Parameter strangerDriven: the ND-061 stranger path was due on this tick
+    ///   (ND-119 `strangerLockCount` bookkeeping only; no policy effect).
+    private func maybeLock(now: Date, strangerDriven: Bool = false) async {
         // ND-054: bounded-backoff retry. Attempt on first grace expiry, then only
         // once the backoff after the last failure has elapsed (no lock storm).
         if let retryAt = nextLockRetryAt, now < retryAt { return }
@@ -465,6 +489,10 @@ public final class PresenceEngine {
         if isLocking { return }
         let generation = episodeGeneration
         let locked = await attemptLock(auto: true)
+        // ND-119: count a stranger-driven lock that really happened BEFORE the
+        // generation/cancel guard — the lock succeeded even if the episode was reset
+        // during the await. attemptLock's in-flight skip returns false → not counted.
+        if locked && strangerDriven { strangerLockCount += 1 }
         // The episode was reset during the await (session suspend caused by this very
         // lock, pause, presence...) → don't leak its lock state into the new episode.
         // ND-091: likewise a cancelled loop records nothing.
