@@ -2,7 +2,9 @@
 # No Donuts — pre-commit hook: keep the committed docs site in sync with docs/.
 # Regenerates the MkDocs site and stages site/ into the commit.
 # Never blocks a commit for tooling reasons: if mkdocs isn't installed it warns
-# and exits 0. Only rebuilds when docs sources are actually staged.
+# and exits 0. Only rebuilds when docs sources are actually staged. It does
+# abort the commit if the build fails or site/ can't be staged (ND-124), so a
+# commit never lands with a stale site/.
 
 # Operate relative to the repo root so all relative paths below resolve
 # regardless of git's current working directory.
@@ -38,6 +40,53 @@ if ! "$MKDOCS" build; then
 	exit 1
 fi
 
-git add site/
+# ND-124: stage site/ robustly. Another git process (e.g. an editor polling
+# `git status`) can briefly hold the index lock, making `git add` fail with
+# "Unable to create '.../index.lock': File exists". Retry only that error; any
+# other failure, or a lock that never clears, aborts the commit so it never
+# lands without the regenerated site/.
+#
+# Which index: git exports GIT_INDEX_FILE to hooks and `git add` honours it
+# (inherited env, nothing to do here). Verified on git 2.54:
+#   git commit           -> GIT_INDEX_FILE=.git/index (no lock held by git)
+#   git commit -a / -i   -> GIT_INDEX_FILE=.git/index.lock (git holds it; our
+#                           add locks index.lock.lock, so no self-conflict)
+#   git commit <paths>   -> GIT_INDEX_FILE=.git/next-index-<pid>.lock (temp)
+# So we must NOT test for .git/index.lock ourselves: in -a/-i/<paths> modes it
+# legitimately exists, held by the very commit that is running this hook.
+attempt=1
+max_attempts=10
+while :; do
+	if add_err=$(git add site/ 2>&1); then
+		break
+	fi
+	case "$add_err" in
+	*".lock': File exists"*)
+		if [ "$attempt" -ge "$max_attempts" ]; then
+			echo "$add_err" >&2
+			echo "No Donuts: could not stage site/ after $max_attempts attempts — the git index is locked by another process." >&2
+			echo "  Commit aborted so it doesn't land without the regenerated site/. Close whatever is running git (editor/IDE), then re-run the commit." >&2
+			exit 1
+		fi
+		attempt=$((attempt + 1))
+		sleep 0.2
+		;;
+	*)
+		echo "$add_err" >&2
+		echo "No Donuts: 'git add site/' failed — commit aborted." >&2
+		exit 1
+		;;
+	esac
+done
+[ "$attempt" -gt 1 ] && echo "No Donuts: index was locked; staged site/ on attempt $attempt."
 echo "No Donuts: staged regenerated site/."
+
+# `git commit <paths>` commits from a temporary index: site/ goes into the
+# commit, but git never copies it back into the real index (which git itself
+# holds locked, so we can't either). Tell the user how to reconcile.
+case "${GIT_INDEX_FILE:-}" in
+*next-index-*)
+	echo "No Donuts: note — 'git commit <paths>' mode; site/ is in the commit but your index still shows it modified. Run 'git add site/' afterwards to reconcile."
+	;;
+esac
 exit 0
