@@ -81,6 +81,8 @@ struct SettingsActions {
     /// ND-099: current recognition facts for the read-only "Recognition" section.
     /// Cheap (UserDefaults reads + cached state); polled while the window is open.
     var recognitionInfo: () -> RecognitionInfo
+    /// ND-123: open the privacy notice (review variant: recorded answer + withdraw).
+    var openPrivacyNotice: () -> Void = {}
 }
 
 
@@ -188,7 +190,7 @@ struct SettingsView: View {
         case .trustedWiFi: TrustedWiFiSettingsPane(store: store, actions: actions)
         case .timing:      TimingSettingsPane(store: store)
         case .diagnostics: DiagnosticsSettingsPane(actions: actions)
-        case .about:       AboutSettingsPane()
+        case .about:       AboutSettingsPane(actions: actions)
         }
     }
 }

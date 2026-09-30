@@ -51,6 +51,7 @@ func runAll() async -> Bool {
     await runMultiFaceReviewChecks(c)
     await runMultiFaceEnrollmentChecks(c)
     await runSettingsSliderChecks(c)
+    await runPrivacyConsentChecks(c)
 
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0

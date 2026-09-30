@@ -249,3 +249,53 @@
 "Privacy" = "Privacy";
 "Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain." = "Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain.";
 "No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or “Lock now” in the menu." = "No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or “Lock now” in the menu.";
+
+/* ND-123: privacy notice + consent before face enrollment (Québec Law 25).
+ The contact line is a PLACEHOLDER: replace the value of
+ "your company’s privacy officer or IT contact" with the company's privacy contact
+ before rollout (no notice-version bump needed). */
+"Privacy notice: face recognition" = "Privacy notice: face recognition";
+"Privacy Notice" = "Privacy Notice";
+"Before you enroll your face, here is what No Donuts does with it. Enrolling is your choice." = "Before you enroll your face, here is what No Donuts does with it. Enrolling is your choice.";
+"Your face is already enrolled on this Mac, but you haven’t agreed to this notice yet. Please read it and choose. No Donuts keeps protecting your Mac while you decide." = "Your face is already enrolled on this Mac, but you haven’t agreed to this notice yet. Please read it and choose. No Donuts keeps protecting your Mac while you decide.";
+"What it does" = "What it does";
+"While protection is on, No Donuts uses the Mac’s built-in camera to check, about once a second, that you are the person at this Mac. It locks the screen when you leave or when someone else sits down. The camera light stays on while it checks." = "While protection is on, No Donuts uses the Mac’s built-in camera to check, about once a second, that you are the person at this Mac. It locks the screen when you leave or when someone else sits down. The camera light stays on while it checks.";
+"What is stored" = "What is stored";
+"A face template: a list of numbers calculated from the images taken when you enroll. It is not a photo. It is kept in your login Keychain on this Mac and isn’t synced to iCloud. No photos or video are ever saved." = "A face template: a list of numbers calculated from the images taken when you enroll. It is not a photo. It is kept in your login Keychain on this Mac and isn’t synced to iCloud. No photos or video are ever saved.";
+"Nothing leaves this Mac" = "Nothing leaves this Mac";
+"No Donuts sends nothing over the network: no internet connection, no cloud, no telemetry. Camera images are analysed in memory and discarded right away." = "No Donuts sends nothing over the network: no internet connection, no cloud, no telemetry. Camera images are analysed in memory and discarded right away.";
+"Other people" = "Other people";
+"If someone else is in view, their face is analysed in memory only, to tell them apart from you. It is never stored." = "If someone else is in view, their face is analysed in memory only, to tell them apart from you. It is never stored.";
+"It’s your choice" = "It’s your choice";
+"Enrolling is voluntary. Without it, No Donuts can’t tell faces apart: it keeps the Mac unlocked while any face is in view and locks when nobody is there. You can always lock your Mac yourself with Control-Command-Q or “Lock now” in the menu." = "Enrolling is voluntary. Without it, No Donuts can’t tell faces apart: it keeps the Mac unlocked while any face is in view and locks when nobody is there. You can always lock your Mac yourself with Control-Command-Q or “Lock now” in the menu.";
+"Delete it at any time" = "Delete it at any time";
+"Choose “Reset enrollment” in the No Donuts menu, or “Withdraw consent” in Settings › About › Privacy notice. Uninstalling with scripts/uninstall.sh --purge deletes everything No Donuts stored. Do that before you give this Mac to someone else: Migration Assistant or a backup restore can copy your Keychain, and the template with it." = "Choose “Reset enrollment” in the No Donuts menu, or “Withdraw consent” in Settings › About › Privacy notice. Uninstalling with scripts/uninstall.sh --purge deletes everything No Donuts stored. Do that before you give this Mac to someone else: Migration Assistant or a backup restore can copy your Keychain, and the template with it.";
+"Questions" = "Questions";
+"For questions or requests about your data, contact %@." = "For questions or requests about your data, contact %@.";
+"your company’s privacy officer or IT contact" = "your company’s privacy officer or IT contact";
+"By clicking “I agree”, you consent to No Donuts creating and keeping a face template of you on this Mac and using it to check that you are the person at it, as described above. You can withdraw your consent at any time." = "By clicking “I agree”, you consent to No Donuts creating and keeping a face template of you on this Mac and using it to check that you are the person at it, as described above. You can withdraw your consent at any time.";
+"Not now" = "Not now";
+"I agree" = "I agree";
+"Decline and delete my face data" = "Decline and delete my face data";
+"Ask me later" = "Ask me later";
+"Withdraw consent and delete my face data" = "Withdraw consent and delete my face data";
+"Close" = "Close";
+"Closes this notice. Nothing is enrolled." = "Closes this notice. Nothing is enrolled.";
+"Records your consent and starts enrolling your face." = "Records your consent and starts enrolling your face.";
+"Deletes your face template. No Donuts keeps running without recognizing you." = "Deletes your face template. No Donuts keeps running without recognizing you.";
+"Closes this notice. You’ll be asked again next time No Donuts starts." = "Closes this notice. You’ll be asked again next time No Donuts starts.";
+"Records your consent. Your enrollment is kept." = "Records your consent. Your enrollment is kept.";
+"Deletes your face template and forgets your consent. You’ll be asked again before any new enrollment." = "Deletes your face template and forgets your consent. You’ll be asked again before any new enrollment.";
+"You agreed to this notice on %@." = "You agreed to this notice on %@.";
+"This notice has changed since you agreed to it. You’ll be asked again before your next enrollment." = "This notice has changed since you agreed to it. You’ll be asked again before your next enrollment.";
+"You declined this notice on %@ and your face data was deleted. You’ll be asked again if you enroll." = "You declined this notice on %@ and your face data was deleted. You’ll be asked again if you enroll.";
+"You haven’t agreed to this notice. You’ll be asked before any enrollment." = "You haven’t agreed to this notice. You’ll be asked before any enrollment.";
+"Couldn’t delete your face data" = "Couldn’t delete your face data";
+"Your face template is still on this Mac and your answer wasn’t recorded. Try again with “Reset enrollment” in the No Donuts menu, or uninstall with scripts/uninstall.sh --purge." = "Your face template is still on this Mac and your answer wasn’t recorded. Try again with “Reset enrollment” in the No Donuts menu, or uninstall with scripts/uninstall.sh --purge.";
+"Privacy notice…" = "Privacy notice…";
+"Shows what No Donuts stores about your face, your consent, and how to withdraw it." = "Shows what No Donuts stores about your face, your consent, and how to withdraw it.";
+"Before anything is captured, No Donuts shows what it stores about your face and asks for your consent." = "Before anything is captured, No Donuts shows what it stores about your face and asks for your consent.";
+
+/* ND-123 review fix: decline/withdraw while an enrollment or reset runs */
+"No Donuts is busy" = "No Donuts is busy";
+"An enrollment or reset is in progress. Wait for it to finish, then try again. Nothing was changed." = "An enrollment or reset is in progress. Wait for it to finish, then try again. Nothing was changed.";

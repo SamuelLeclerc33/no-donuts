@@ -26,6 +26,8 @@ final class AppWindows {
         case enrollmentResult     // outcome of "Enroll my face…"
         case keychainExplainer    // one-time "stored in your Keychain" note before the first enroll
         case startAtLoginError    // "Couldn't turn off Start at login"
+        case privacyNotice        // ND-123: privacy notice + consent (enroll gate, launch, review)
+        case privacyDeleteError   // ND-123: "Couldn't delete your face data" after decline/withdraw
 
         /// ND-117: resizable geometry for kinds that scroll their own content. nil = a
         /// fixed-size window fitted to its SwiftUI content (the message/onboarding kinds).

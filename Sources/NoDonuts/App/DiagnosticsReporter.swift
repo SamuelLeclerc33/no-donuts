@@ -109,6 +109,8 @@ struct DiagnosticsReporter {
         }
         lines.append("  Enrolled: \(enrolledLabel)")
         lines.append("  Identity: \(Self.identityStatusDescription(identity))")
+        // ND-123: privacy-notice answer (notice version + day only).
+        lines.append("  Privacy consent: \(PrivacyConsentStore().record.diagnosticsDescription(currentVersion: PrivacyConsentPolicy.currentNoticeVersion))")
         // ND-099: the model the stored enrollment is compared against (version strings only).
         lines.append("  Active model: \(descriptor.displayName) (\(descriptor.version), \(descriptor.thresholdIsTuned ? "tuned" : "not yet tuned"))")
         lines.append("")

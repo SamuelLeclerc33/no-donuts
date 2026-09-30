@@ -150,6 +150,9 @@ struct OnboardingView: View {
             Text("Enrolling teaches No Donuts to recognize *you* specifically, so it stays unlocked only for you and locks for anyone else.")
             Text("You can skip this for now — No Donuts will keep the Mac unlocked whenever *any* face is present until you enroll. You can enroll anytime from the menu-bar icon.")
                 .foregroundStyle(.secondary)
+            // ND-123: the consent gate lives in startEnrollment(); say it's coming.
+            Text("Before anything is captured, No Donuts shows what it stores about your face and asks for your consent.")
+                .foregroundStyle(.secondary)
             HStack(spacing: 10) {
                 Button("Enroll my face\u{2026}") {
                     actions.onEnroll()

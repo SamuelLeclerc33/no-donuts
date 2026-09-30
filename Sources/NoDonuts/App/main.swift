@@ -175,6 +175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// cancelled when the session suspends or the app terminates mid-capture, and so
     /// `isEnrolling` can never get stuck true (enforcement disabled, camera up).
     private var enrollmentTask: Task<Void, Never>?
+    /// ND-123: the user's answer to the privacy notice (app defaults domain).
+    private let privacyConsent = PrivacyConsentStore()
+    /// ND-123: the launch-time "face data stored without consent" check ran (at most
+    /// once per launch; it waits for an active session and a known identity status).
+    private var launchConsentCheckDone = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // ND-119: notification taps (drift alert → start enrollment). Installed first so
@@ -365,6 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ND-058: re-check on every unlock/wake (e.g. an OS update applied while
             // asleep). Resolve-only, so cheap and safe.
             if active { self?.runLockSelfTest() }
+            // ND-123: a launch while locked defers the consent notice to the unlock.
+            if active { self?.maybeShowLaunchConsentNotice() }
         }
         monitor.start()
 
@@ -615,6 +622,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isEnrolling, !isResettingEnrollment, let coordinator = enrollmentCoordinator,
               let camera, let menuBar else { return }
 
+        // ND-123 CONSENT GATE (Québec Law 25): every enrollment path (onboarding, menu
+        // "Enroll my face…" / "Re-enroll (required)", the drift item, the drift
+        // notification tap) comes through here, so none can capture a face before the
+        // user agreed to the CURRENT notice. "Not now" / closing the window backs out.
+        if PrivacyConsentPolicy.enrollmentNeedsConsent(record: privacyConsent.record) {
+            showPrivacyNotice(.beforeEnrollment,
+                              actions: PrivacyNoticeActions(
+                                onAgree: { [weak self] in
+                                    guard let self else { return }
+                                    self.privacyConsent.recordAgreement()
+                                    Self.appLog.notice("privacy consent: agreed to notice \(PrivacyConsentPolicy.currentNoticeVersion, privacy: .public) (before enrollment)")
+                                    self.appWindows.close(.privacyNotice)
+                                    // Don't start the camera if the session went away meanwhile.
+                                    guard self.sessionMonitor?.isActive ?? false else { return }
+                                    self.startEnrollment()
+                                },
+                                onDismiss: { [weak self] in
+                                    self?.appWindows.close(.privacyNotice)
+                                    // A launch notice deferred behind this one gets its turn.
+                                    self?.maybeShowLaunchConsentNotice()
+                                }))
+            return
+        }
+
         // One-time Keychain explainer (macOS's Keychain-access prompt has no custom-text
         // hook like camera/Location, so we set expectations ourselves before the first
         // enrollment write). Shown before capture so it precedes any system prompt.
@@ -684,8 +715,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Reset enrollment (ND-022): clear the stored embeddings so the recognizer falls
     /// back to presence-only. Refresh the header (drops the "watching for you" wording)
     /// and re-run the gate. Ignored while a capture is in flight.
-    func resetEnrollment() {
-        guard !isEnrolling, !isResettingEnrollment else { return }
+    ///
+    /// ND-123: `completion` (main actor) reports whether the enrollment is now gone, so
+    /// a privacy decline / withdrawal records its answer only after a successful delete.
+    /// `false` when the delete failed or another enroll/reset was in flight.
+    func resetEnrollment(completion: ((Bool) -> Void)? = nil) {
+        guard !isEnrolling, !isResettingEnrollment else { completion?(false); return }
         isResettingEnrollment = true
         // ND-102: the Keychain delete can block on an ACL prompt too — run it off main.
         let store = enrollmentStore
@@ -695,18 +730,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }.value
             guard let self else { return }
             self.isResettingEnrollment = false
+            let deleted: Bool
             switch result {
             case .success:
+                deleted = true
                 // ND-073: an in-app Reset is a deliberate "never enrolled" — drop the
                 // marker so it doesn't read as .off(.enrollmentMissing). Only on a
                 // successful reset: if the delete failed, the enrollment (and its
                 // marker) still stand.
                 self.enrollmentMarker.clearMarker()
             case .failure(let error):
+                deleted = false
                 Self.appLog.error("reset enrollment failed: \(error.localizedDescription, privacy: .public)")
             }
             self.refreshIdentityFromStore()
             self.applyEnforcement()
+            completion?(deleted)
         }
     }
 
@@ -763,6 +802,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // identity-off (which has its own loud re-enroll alert) drops it.
         if status != .active { clearEnrollmentDrift(reason: "identity \(description)") }
         if status != .active { liveMatchScore.clear() }   // ND-122: no enforced identity → "—"
+        // ND-123: the first known identity this launch (store read or recognizer) runs
+        // the "face data stored without consent" check.
+        maybeShowLaunchConsentNotice()
     }
 
     // MARK: - ND-119 enrollment drift
@@ -860,6 +902,110 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         menuBar?.setLockCapability(display)
         notProtectingNotifier.update(lockCapability: display)
+    }
+
+    // MARK: - ND-123 privacy notice + consent
+
+    /// Show (or replace) the privacy-notice window. One window for every variant, so a
+    /// launch notice still open when the user clicks "Enroll my face…" is replaced by
+    /// the enrollment one (agreeing there covers both). Closing the window records
+    /// nothing (= "Not now" / "Ask me later").
+    private func showPrivacyNotice(_ variant: PrivacyNoticeVariant, actions: PrivacyNoticeActions) {
+        appWindows.show(.privacyNotice, title: String(localized: "Privacy Notice"),
+                        replaceContent: true) {
+            PrivacyNoticeView(variant: variant, actions: actions)
+        }
+    }
+
+    /// ND-123 rule 2: face data stored but no consent to the current notice → ask once
+    /// this launch, without blocking protection. Waits until the session is active (no
+    /// window over the lock screen) and the identity status is known (the off-main
+    /// Keychain read finished). Called from the identity refresh and on session resume.
+    private func maybeShowLaunchConsentNotice() {
+        guard !launchConsentCheckDone,
+              sessionMonitor?.isActive ?? false,
+              lastPushedIdentity != .unknown else { return }
+        guard PrivacyConsentPolicy.launchPrompt(identity: lastPushedIdentity,
+                                                record: privacyConsent.record) == .existingEnrollment else {
+            launchConsentCheckDone = true
+            return
+        }
+        // Another privacy notice is open (e.g. the before-enrollment one): don't mark the
+        // check done — it re-runs when that window is dismissed (review fix).
+        guard !appWindows.isShowing(.privacyNotice) else { return }
+        launchConsentCheckDone = true
+        Self.appLog.notice("privacy consent: face data stored without consent to notice \(PrivacyConsentPolicy.currentNoticeVersion, privacy: .public); asking")
+        showPrivacyNotice(.existingEnrollment, actions: PrivacyNoticeActions(
+            onAgree: { [weak self] in
+                guard let self else { return }
+                self.privacyConsent.recordAgreement()
+                Self.appLog.notice("privacy consent: agreed to notice \(PrivacyConsentPolicy.currentNoticeVersion, privacy: .public) (existing enrollment kept)")
+                self.appWindows.close(.privacyNotice)
+            },
+            onDeleteFaceData: { [weak self] in self?.deleteFaceDataForPrivacy(withdrawing: false) },
+            onDismiss: { [weak self] in self?.appWindows.close(.privacyNotice) }))
+    }
+
+    /// Settings › About › "Privacy notice…": the notice, the recorded answer, and a way
+    /// to withdraw consent. Reads only UserDefaults + the last pushed identity (no
+    /// Keychain read, so it can't block on an ACL prompt, ND-102).
+    private func openPrivacyNoticeReview() {
+        let record = privacyConsent.record
+        let current = PrivacyConsentPolicy.currentNoticeVersion
+        let stored = lastPushedIdentity.hasStoredEnrollment
+        let status: String
+        switch record {
+        case .agreed(let version, let at) where version == current:
+            status = String(localized: "You agreed to this notice on \(at.formatted(date: .long, time: .omitted)).")
+        case .agreed:
+            status = String(localized: "This notice has changed since you agreed to it. You\u{2019}ll be asked again before your next enrollment.")
+        case .declined(_, let at):
+            status = String(localized: "You declined this notice on \(at.formatted(date: .long, time: .omitted)) and your face data was deleted. You\u{2019}ll be asked again if you enroll.")
+        case .none:
+            status = String(localized: "You haven\u{2019}t agreed to this notice. You\u{2019}ll be asked before any enrollment.")
+        }
+        var canWithdraw = stored
+        if case .agreed = record { canWithdraw = true }
+        showPrivacyNotice(.review(status: status, canWithdraw: canWithdraw), actions: PrivacyNoticeActions(
+            onDeleteFaceData: { [weak self] in self?.deleteFaceDataForPrivacy(withdrawing: true) },
+            onDismiss: { [weak self] in self?.appWindows.close(.privacyNotice) }))
+    }
+
+    /// Decline (launch notice) or withdraw consent (review): delete the enrollment
+    /// through the normal Reset path (off-main Keychain delete, ND-073 marker cleared,
+    /// presence-only fallback), and record the answer ONLY once the delete succeeded.
+    /// Decline → a `declined` record (no re-ask each launch); withdraw → record cleared.
+    private func deleteFaceDataForPrivacy(withdrawing: Bool) {
+        // An enrollment or reset is already running: nothing was attempted, so don't
+        // claim the delete failed. Keep the notice open and say to try again (review fix).
+        if isEnrolling || isResettingEnrollment {
+            showMessage(.privacyDeleteError,
+                        windowTitle: String(localized: "Privacy Notice"),
+                        style: .informational,
+                        title: String(localized: "No Donuts is busy"),
+                        message: String(localized: "An enrollment or reset is in progress. Wait for it to finish, then try again. Nothing was changed."))
+            return
+        }
+        appWindows.close(.privacyNotice)
+        resetEnrollment { [weak self] deleted in
+            guard let self else { return }
+            if deleted {
+                if withdrawing {
+                    self.privacyConsent.clear()
+                    Self.appLog.notice("privacy consent: withdrawn; face data deleted")
+                } else {
+                    self.privacyConsent.recordDecline()
+                    Self.appLog.notice("privacy consent: declined notice \(PrivacyConsentPolicy.currentNoticeVersion, privacy: .public); face data deleted")
+                }
+                return
+            }
+            Self.appLog.error("privacy consent: face data NOT deleted (\(withdrawing ? "withdraw" : "decline", privacy: .public)); answer not recorded")
+            self.showMessage(.privacyDeleteError,
+                             windowTitle: String(localized: "Privacy Notice"),
+                             style: .warning,
+                             title: String(localized: "Couldn\u{2019}t delete your face data"),
+                             message: String(localized: "Your face template is still on this Mac and your answer wasn\u{2019}t recorded. Try again with \u{201C}Reset enrollment\u{201D} in the No Donuts menu, or uninstall with scripts/uninstall.sh --purge."))
+        }
     }
 
     /// Honest enrollment outcome (ND-022), shown in a non-blocking window (ND-070):
@@ -1065,7 +1211,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     identity: .unknown, antiSpoofEnabled: resolvedAntiSpoofEnabled(),
                     antiSpoofSupportedByModel: nil, cameraName: nil,
                     cameraUnavailableReason: nil, lockMechanisms: [])
-            }
+            },
+            // ND-123: Settings › About › "Privacy notice…".
+            openPrivacyNotice: { [weak self] in self?.openPrivacyNoticeReview() }
         )
         // Refresh externally-sourced state (login-item registration + trusted list) BEFORE
         // presenting, EVERY time — a re-fronted retained window won't re-fire SwiftUI's

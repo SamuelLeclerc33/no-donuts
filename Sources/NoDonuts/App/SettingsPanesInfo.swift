@@ -83,6 +83,8 @@ struct DiagnosticsSettingsPane: View {
 // MARK: - About
 
 struct AboutSettingsPane: View {
+    let actions: SettingsActions
+
     var body: some View {
         SettingsPane(category: .about) {
             Section {
@@ -101,6 +103,9 @@ struct AboutSettingsPane: View {
             Section("Privacy") {
                 Text("Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain.")
                     .font(.caption).foregroundStyle(.secondary)
+                // ND-123: the full notice, your recorded answer, and "Withdraw consent".
+                Button("Privacy notice\u{2026}") { actions.openPrivacyNotice() }
+                    .accessibilityHint(Text("Shows what No Donuts stores about your face, your consent, and how to withdraw it."))
             }
             Section {
                 Text("No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or \u{201C}Lock now\u{201D} in the menu.")

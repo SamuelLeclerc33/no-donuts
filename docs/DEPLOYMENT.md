@@ -222,7 +222,9 @@ What you can tell people, and check:
 
     - Get sign-off from the company **privacy officer** and IT security. Also tell them the app locks the screen through a private API ([ADR-0010](adr/0010-screen-lock-no-accessibility.md)).
     - **Québec (Law 25):** using biometrics to verify identity needs the person's **express consent**. Creating a biometric identification system must be **declared to the Commission d'accès à l'information (CAI) in advance**, under the Act to establish a legal framework for information technology. The privacy officer should confirm the exact obligations and timelines.
-    - Add the plain-language **privacy notice and consent screen** to onboarding (ND-111(d)). It isn't built yet.
+    - The plain-language **privacy notice and consent screen** is built (ND-123, ADR-0024 (d)). Nobody can enroll without clicking **I agree** on the current notice; an enrollment that already exists without consent is asked about once per launch (agree, or decline and delete it). The answer is kept in the app's defaults (`defaults read com.nodonuts.app` → `privacyConsent.*`) and shown in **Copy diagnostics**. Users can re-read it or withdraw in Settings › About › **Privacy notice…**.
+    - **Before rollout, fill in the contact:** the notice ends with "contact *your company's privacy officer or IT contact*", a placeholder. Replace the value of that key in `Resources/en.lproj/Localizable.strings` and `Resources/fr.lproj/Localizable.strings` with the real contact, then rebuild. A contact change doesn't need a notice-version bump; a change to what's stored or how does (`PrivacyConsentPolicy.currentNoticeVersion`).
+    - The consent screen covers the app's side only. The privacy officer's check and the **CAI declaration** remain the company's to do.
     - Using it has to be voluntary, and a colleague who says no needs an alternative (for example the normal auto-lock).
     - Check that the face model's licence allows internal use at a for-profit company (ND-089).
 

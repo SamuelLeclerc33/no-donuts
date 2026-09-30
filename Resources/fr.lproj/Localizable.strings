@@ -234,3 +234,53 @@
 "Privacy" = "Confidentialité";
 "Everything happens on this Mac. No camera image, face data, or Wi-Fi name ever leaves it: nothing is uploaded and there is no telemetry. Camera images are checked in memory and discarded; your face enrollment is stored in your Keychain." = "Tout se passe sur ce Mac. Aucune image de la caméra, aucune donnée faciale ni aucun nom de réseau Wi-Fi n’en sort : rien n’est téléversé et il n’y a aucune télémétrie. Les images de la caméra sont analysées en mémoire puis supprimées; votre enregistrement facial est conservé dans votre trousseau.";
 "No Donuts is a safety net, not a replacement for locking your Mac yourself. Lock it any time with Control-Command-Q or “Lock now” in the menu." = "No Donuts est un filet de sécurité : il ne remplace pas le verrouillage manuel de votre Mac. Verrouillez-le à tout moment avec Contrôle-Commande-Q ou « Verrouiller maintenant » dans le menu.";
+
+/* ND-123: privacy notice + consent before face enrollment (Québec Law 25).
+ The contact line is a PLACEHOLDER: replace the value of
+ "your company’s privacy officer or IT contact" with the company's privacy contact
+ before rollout (no notice-version bump needed). */
+"Privacy notice: face recognition" = "Avis de confidentialité : reconnaissance faciale";
+"Privacy Notice" = "Avis de confidentialité";
+"Before you enroll your face, here is what No Donuts does with it. Enrolling is your choice." = "Avant d’enregistrer votre visage, voici ce que No Donuts en fait. L’enregistrement est votre choix.";
+"Your face is already enrolled on this Mac, but you haven’t agreed to this notice yet. Please read it and choose. No Donuts keeps protecting your Mac while you decide." = "Votre visage est déjà enregistré sur ce Mac, mais vous n’avez pas encore accepté cet avis. Lisez-le, puis faites votre choix. No Donuts continue de protéger votre Mac pendant que vous décidez.";
+"What it does" = "Ce que fait l’app";
+"While protection is on, No Donuts uses the Mac’s built-in camera to check, about once a second, that you are the person at this Mac. It locks the screen when you leave or when someone else sits down. The camera light stays on while it checks." = "Quand la protection est active, No Donuts utilise la caméra intégrée du Mac pour vérifier, environ une fois par seconde, que c’est bien vous qui êtes devant ce Mac. Il verrouille l’écran quand vous partez ou quand quelqu’un d’autre s’assoit. Le témoin de la caméra reste allumé pendant la vérification.";
+"What is stored" = "Ce qui est conservé";
+"A face template: a list of numbers calculated from the images taken when you enroll. It is not a photo. It is kept in your login Keychain on this Mac and isn’t synced to iCloud. No photos or video are ever saved." = "Un gabarit facial : une liste de nombres calculée à partir des images prises lors de l’enregistrement. Ce n’est pas une photo. Il est conservé dans votre trousseau de session sur ce Mac et n’est pas synchronisé avec iCloud. Aucune photo ni vidéo n’est jamais enregistrée.";
+"Nothing leaves this Mac" = "Rien ne quitte ce Mac";
+"No Donuts sends nothing over the network: no internet connection, no cloud, no telemetry. Camera images are analysed in memory and discarded right away." = "No Donuts n’envoie rien sur le réseau : aucune connexion Internet, aucun nuage, aucune télémétrie. Les images de la caméra sont analysées en mémoire puis supprimées aussitôt.";
+"Other people" = "Les autres personnes";
+"If someone else is in view, their face is analysed in memory only, to tell them apart from you. It is never stored." = "Si quelqu’un d’autre est dans le champ de la caméra, son visage est analysé en mémoire seulement, pour le distinguer du vôtre. Il n’est jamais conservé.";
+"It’s your choice" = "C’est votre choix";
+"Enrolling is voluntary. Without it, No Donuts can’t tell faces apart: it keeps the Mac unlocked while any face is in view and locks when nobody is there. You can always lock your Mac yourself with Control-Command-Q or “Lock now” in the menu." = "L’enregistrement est facultatif. Sans lui, No Donuts ne distingue pas les visages : il garde le Mac déverrouillé tant qu’un visage est visible et le verrouille quand personne n’est là. Vous pouvez toujours verrouiller votre Mac vous-même avec Contrôle-Commande-Q ou « Verrouiller maintenant » dans le menu.";
+"Delete it at any time" = "Supprimez-le en tout temps";
+"Choose “Reset enrollment” in the No Donuts menu, or “Withdraw consent” in Settings › About › Privacy notice. Uninstalling with scripts/uninstall.sh --purge deletes everything No Donuts stored. Do that before you give this Mac to someone else: Migration Assistant or a backup restore can copy your Keychain, and the template with it." = "Choisissez « Réinitialiser l’enregistrement » dans le menu No Donuts, ou « Retirer mon consentement » dans Réglages › À propos › Avis de confidentialité. La désinstallation avec scripts/uninstall.sh --purge supprime tout ce que No Donuts a conservé. Faites-le avant de confier ce Mac à quelqu’un d’autre : l’Assistant migration ou la restauration d’une sauvegarde peuvent copier votre trousseau, et le gabarit avec lui.";
+"Questions" = "Questions";
+"For questions or requests about your data, contact %@." = "Pour toute question ou demande au sujet de vos données, communiquez avec %@.";
+"your company’s privacy officer or IT contact" = "le responsable de la protection des renseignements personnels ou le contact TI de votre entreprise";
+"By clicking “I agree”, you consent to No Donuts creating and keeping a face template of you on this Mac and using it to check that you are the person at it, as described above. You can withdraw your consent at any time." = "En cliquant sur « J’accepte », vous consentez à ce que No Donuts crée et conserve un gabarit de votre visage sur ce Mac et l’utilise pour vérifier que c’est bien vous qui êtes devant, comme décrit ci-dessus. Vous pouvez retirer votre consentement en tout temps.";
+"Not now" = "Pas maintenant";
+"I agree" = "J’accepte";
+"Decline and delete my face data" = "Refuser et supprimer mes données faciales";
+"Ask me later" = "Me le redemander plus tard";
+"Withdraw consent and delete my face data" = "Retirer mon consentement et supprimer mes données faciales";
+"Close" = "Fermer";
+"Closes this notice. Nothing is enrolled." = "Ferme cet avis. Rien n’est enregistré.";
+"Records your consent and starts enrolling your face." = "Enregistre votre consentement et lance l’enregistrement de votre visage.";
+"Deletes your face template. No Donuts keeps running without recognizing you." = "Supprime votre gabarit facial. No Donuts continue de fonctionner sans vous reconnaître.";
+"Closes this notice. You’ll be asked again next time No Donuts starts." = "Ferme cet avis. La question vous sera reposée au prochain démarrage de No Donuts.";
+"Records your consent. Your enrollment is kept." = "Enregistre votre consentement. Votre enregistrement facial est conservé.";
+"Deletes your face template and forgets your consent. You’ll be asked again before any new enrollment." = "Supprime votre gabarit facial et oublie votre consentement. La question vous sera reposée avant tout nouvel enregistrement.";
+"You agreed to this notice on %@." = "Vous avez accepté cet avis le %@.";
+"This notice has changed since you agreed to it. You’ll be asked again before your next enrollment." = "Cet avis a changé depuis que vous l’avez accepté. La question vous sera reposée avant votre prochain enregistrement.";
+"You declined this notice on %@ and your face data was deleted. You’ll be asked again if you enroll." = "Vous avez refusé cet avis le %@ et vos données faciales ont été supprimées. La question vous sera reposée si vous vous enregistrez.";
+"You haven’t agreed to this notice. You’ll be asked before any enrollment." = "Vous n’avez pas accepté cet avis. La question vous sera posée avant tout enregistrement.";
+"Couldn’t delete your face data" = "Impossible de supprimer vos données faciales";
+"Your face template is still on this Mac and your answer wasn’t recorded. Try again with “Reset enrollment” in the No Donuts menu, or uninstall with scripts/uninstall.sh --purge." = "Votre gabarit facial est toujours sur ce Mac et votre réponse n’a pas été enregistrée. Réessayez avec « Réinitialiser l’enregistrement » dans le menu No Donuts, ou désinstallez avec scripts/uninstall.sh --purge.";
+"Privacy notice…" = "Avis de confidentialité…";
+"Shows what No Donuts stores about your face, your consent, and how to withdraw it." = "Affiche ce que No Donuts conserve au sujet de votre visage, votre consentement et comment le retirer.";
+"Before anything is captured, No Donuts shows what it stores about your face and asks for your consent." = "Avant toute capture, No Donuts vous montre ce qu’il conserve au sujet de votre visage et vous demande votre consentement.";
+
+/* ND-123 review fix: decline/withdraw while an enrollment or reset runs */
+"No Donuts is busy" = "No Donuts est occupé";
+"An enrollment or reset is in progress. Wait for it to finish, then try again. Nothing was changed." = "Un enregistrement ou une réinitialisation est en cours. Attendez la fin, puis réessayez. Rien n’a été modifié.";
