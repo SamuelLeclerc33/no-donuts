@@ -132,16 +132,19 @@ public final class DeferredFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         }
     }
 
-    public func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {
+    /// Forwards `selection` in BOTH branches (ND-059): dropping it would silently fall
+    /// back to largest-only matching and re-open EC-06.
+    public func embeddingWithLiveness(for frame: CapturedFrame,
+                                      selecting selection: FaceSelection) async -> FaceEmbeddingResult {
         switch state.withLock({ $0 }) {
         case .resolved(let embedder):
-            return await embedder.embeddingWithLiveness(for: frame)
+            return await embedder.embeddingWithLiveness(for: frame, selecting: selection)
         case .loading:
             let embedder = await loadTask.value
             // This call began under the presumed descriptor: never hand back a vector
             // from another embedding space (see the type doc).
             guard embedder.descriptor.version == presumed.version else { return .failure }
-            return await embedder.embeddingWithLiveness(for: frame)
+            return await embedder.embeddingWithLiveness(for: frame, selecting: selection)
         }
     }
 }

@@ -33,3 +33,7 @@ An enrolled identity match counts as the user **only with live evidence in the l
 - **Tune the texture floor:** impossible. The phone screen scored above the live user's minimum.
 - **Blink only:** rejected by the user in favour of blink OR motion, to reduce false locks when eyes are hard to track.
 - **Challenge only at unlock:** doesn't stop a photo held up while the session is still unlocked.
+
+## Amendment 2026-09-29 (ADR-0023)
+
+Liveness no longer tracks only the largest face: it keeps up to two face tracks, each with its own blink and motion detectors, and the verdict uses only the matched face's track. An uncertain assignment (faces crossing or nearly on top of each other) ends both tracks with no handoff. Faces that overlap steadily keep their own tracks (ADR-0023).

@@ -44,6 +44,12 @@ func runAll() async -> Bool {
     await runDeferredEmbedderChecks(c)
     await runAppIdentityChecks(c)
     await runEnrollmentDriftChecks(c)
+    await runMultiFaceSelectionChecks(c)
+    await runMultiFaceEmbedderAPIChecks(c)
+    await runMultiFaceRecognizerChecks(c)
+    await runMultiFaceLivenessChecks(c)
+    await runMultiFaceReviewChecks(c)
+    await runMultiFaceEnrollmentChecks(c)
 
     print("\n\(c.passed) passed, \(c.failed) failed")
     return c.failed == 0

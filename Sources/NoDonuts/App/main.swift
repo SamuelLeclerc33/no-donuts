@@ -625,7 +625,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         windowTitle: String(localized: "Enroll My Face"),
                         style: .informational,
                         title: String(localized: "No Donuts stores your face signature in your Keychain"),
-                        message: String(localized: "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again."),
+                        message: String(localized: "So only you can keep this Mac unlocked, No Donuts saves an encrypted face signature (never a photo) in your login Keychain — on this device only, never uploaded. macOS may ask you to allow access to it; choose “Always Allow” so No Donuts can check it without prompting you again. Make sure you're alone in front of the camera."),
                         buttonTitle: String(localized: "Continue"),
                         // Review fix: closing the window (red button / Escape) backs out —
                         // no capture, and the note shows again next time. Only Continue
@@ -877,7 +877,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .notEnoughFaces:
             style = .warning
             title = String(localized: "Couldn't see your face")
-            message = String(localized: "No Donuts didn't get enough clear looks at your face. Sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged.")
+            message = String(localized: "No Donuts didn't get enough clear looks at your face. Make sure you're the only person in view, sit at your normal distance, face the camera in good light, hold still for about 6 seconds, and try “Enroll my face…” again. Your previous enrollment (if any) was left unchanged.")
         case .inconsistent:
             // ND-063: enough faces, but they didn't agree with each other.
             style = .warning

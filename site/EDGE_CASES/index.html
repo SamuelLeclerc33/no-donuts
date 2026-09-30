@@ -1050,6 +1050,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adr/0023-match-any-of-top-two-faces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0023 — Match any of the top two faces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1275,8 +1303,8 @@
 <tr>
 <td>EC-06</td>
 <td><strong>Multiple faces in frame</strong> (user + colleague)</td>
-<td>If the enrolled user matches any face → PRESENT (v1.1: the embedder currently evaluates the largest face; multi-face scan-all is a follow-up). Shoulder-surfing (user present but a stranger also watching) is out of scope for v1.</td>
-<td>PARTIAL (single/largest face)</td>
+<td>If the enrolled user matches any face → PRESENT. <strong>ND-059 / <a href="../adr/0023-match-any-of-top-two-faces/">ADR-0023</a> (2026-09-29):</strong> the largest face is embedded first; only if it doesn't match is the second largest embedded (lazy top-2; a third face is never considered; ND-085 gate per face; texture on the matched face). <code>.strangerOnly</code> only when neither matches, so a colleague leaning in closer no longer triggers the ADR-0017 fast lock. With "Reject photos of me" on, a match must also be confirmed (not flat, live); a poster or photo of the user as the larger face → the live user is tried as the second face (review fix, 2026-09-29). A glitch on either face holds (<code>.error</code>), never a stranger reading. Liveness keeps a track per face (up to 2) and judges only the matched face's track, bound only when decisively closest. Faces overlapping steadily keep their tracks; only an uncertain assignment (crossing, nearly on top of each other) resets both with no handoff. A top-2 face without usable landmarks still blocks binding to a neighbour's track, and duplicate detections of one face merge. Known limit: a stranger and a photo swapping places between frames looks like two faces standing still (ADR-0023). Enrollment skips frames with more than one face. A stranger holding the user's photo now locks via <code>.notLive</code> (~10 s) instead of the 3 s fast path. False-accept surface ≈ 1−(1−p)² in frames with two non-user faces, ahead of the ND-056 threshold study. Shoulder-surfing (user present, stranger watching) stays out of scope.</td>
+<td>IMPLEMENTED (top-2)</td>
 <td>cooper/homer</td>
 </tr>
 <tr>
@@ -1317,7 +1345,7 @@
 <tr>
 <td>EC-12</td>
 <td><strong>Photo / phone screen held up to spoof</strong></td>
-<td>Basic anti-spoofing shipped (ND-041): a variance-of-Laplacian texture/liveness score on the face crop (<code>FaceLiveness.swift</code>) flags clearly flat reproductions. CONSERVATIVE by design — only checked on the ENROLLED path AFTER a threshold match, only flags when the score is strictly below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12.0) → <code>.strangerOnly</code> (locks). The score is measured on the INNER face region (not the padded embedding crop), so a live user against a plain background isn't diluted below the floor; it errs toward LIVE on any ambiguity/extraction failure and never false-locks the real user. ON by default (toggle <code>antiSpoofEnabled</code>); texture compute is skipped entirely when the toggle is off. <strong>v1 is NOT hardened:</strong> a sharp high-resolution print or a high-DPI screen at the right size can still pass; the floor needs on-device tuning; motion/blink liveness is future work. <strong>ND-072 closed (2026-09-25):</strong> the Core ML path now computes the same texture score as the Vision path. The shared <code>innerFaceTextureScore</code> scores the original frame's inner face region, so the floor means the same on both. Live genuine scores were 12.3–51 at floor 12. A spoof-only measurement is pending, and a high-DPI phone screen may still pass (v1 is not hardened). <strong>⚠️ VERIFIED BYPASS 2026-09-28 (ND-116):</strong> a phone-screen photo of the enrolled user is accepted (score ~0.80) and passes the texture check (58–89 vs floor 12). The texture approach cannot stop screen replays. <strong>Fixed by ND-116 liveness (ADR-0022):</strong> the same phone photo now locks the Mac in ~6s (verified on-device). A replayed VIDEO is still not stopped.</td>
+<td>Basic anti-spoofing shipped (ND-041): a variance-of-Laplacian texture/liveness score on the face crop (<code>FaceLiveness.swift</code>) flags clearly flat reproductions. CONSERVATIVE by design — only checked on the ENROLLED path AFTER a threshold match, only flags when the score is strictly below a <strong>tunable</strong> floor (<code>resolvedSpoofTextureFloor</code>, <code>defaults write com.nodonuts.app spoofTextureFloor &lt;n&gt;</code>, default 12.0) → <code>.strangerOnly</code> (locks). The score is measured on the INNER face region (not the padded embedding crop), so a live user against a plain background isn't diluted below the floor; it errs toward LIVE on any ambiguity/extraction failure and never false-locks the real user. ON by default (toggle <code>antiSpoofEnabled</code>); texture compute is skipped entirely when the toggle is off. <strong>v1 is NOT hardened:</strong> a sharp high-resolution print or a high-DPI screen at the right size can still pass; the floor needs on-device tuning; motion/blink liveness is future work. <strong>ND-072 closed (2026-09-25):</strong> the Core ML path now computes the same texture score as the Vision path. The shared <code>innerFaceTextureScore</code> scores the original frame's inner face region, so the floor means the same on both. Live genuine scores were 12.3–51 at floor 12. A spoof-only measurement is pending, and a high-DPI phone screen may still pass (v1 is not hardened). <strong>⚠️ VERIFIED BYPASS 2026-09-28 (ND-116):</strong> a phone-screen photo of the enrolled user is accepted (score ~0.80) and passes the texture check (58–89 vs floor 12). The texture approach cannot stop screen replays. <strong>Fixed by ND-116 liveness (ADR-0022):</strong> the same phone photo now locks the Mac in ~6s (verified on-device). A replayed VIDEO is still not stopped. <strong>ND-059:</strong> a phone photo held beside a stranger's live face matches as the second face but has no evidence on its own track → <code>.notLive</code> → normal ~10 s lock (ADR-0023).</td>
 <td>PARTIAL</td>
 <td>wiggum/cooper</td>
 </tr>

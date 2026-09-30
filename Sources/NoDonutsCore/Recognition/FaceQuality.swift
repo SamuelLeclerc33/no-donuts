@@ -106,3 +106,40 @@ public func squareFaceInputImage(from orientedImage: CIImage, crop: SquareFaceCr
         .transformed(by: CGAffineTransform(translationX: -crop.square.origin.x, y: -crop.square.origin.y))
         .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
 }
+
+/// Indices (into `boxes`) of the faces an embedder may embed, largest first (ND-059).
+///
+/// Order matters for security: the top `maxFaces` (clamped to `1...2`) are taken by
+/// bounding-box AREA first, THEN each is checked against the ND-085 quality gate
+/// (`faceIsLargeEnough`). A tiny third face is never promoted into the top two because
+/// a bigger face happened to fail the gate. Ties in area keep the lower index (the same
+/// face `max(by:)` picked before ND-059), so the order is deterministic. A non-finite
+/// box sorts last and fails the gate.
+///
+/// With `maxFaces == 1` this is exactly the pre-ND-059 rule: the largest face, or none
+/// if it is too small.
+public func rankedFaceCandidates(boxes: [CGRect], orientedExtent: CGRect, maxFaces: Int) -> [Int] {
+    let top = faceIndicesByArea(boxes).prefix(clampedCandidateFaces(maxFaces))
+    return top.filter { faceIsLargeEnough(faceBoundingBox: boxes[$0], orientedExtent: orientedExtent) }
+}
+
+/// Most faces any path considers per frame (ND-059): the recognizer's top-N, the liveness
+/// analyzer's tracks, and `FaceSelection.maxFaces` all clamp to this ONE constant, so
+/// the recognizer and liveness can never disagree on how many faces take part.
+public let maxCandidateFaces = 2
+
+/// `n` clamped to `1...maxCandidateFaces`.
+public func clampedCandidateFaces(_ n: Int) -> Int { min(max(n, 1), maxCandidateFaces) }
+
+/// Indices of `boxes`, largest area first; equal areas keep the lower index; a
+/// non-finite area sorts last. The ONE ordering shared by `rankedFaceCandidates` and
+/// `FaceTracker` (ND-059).
+public func faceIndicesByArea(_ boxes: [CGRect]) -> [Int] {
+    func area(_ b: CGRect) -> CGFloat {
+        let a = b.width * b.height
+        return a.isFinite ? a : -.infinity
+    }
+    return boxes.indices.sorted {
+        area(boxes[$0]) != area(boxes[$1]) ? area(boxes[$0]) > area(boxes[$1]) : $0 < $1
+    }
+}

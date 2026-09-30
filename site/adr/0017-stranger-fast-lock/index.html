@@ -996,6 +996,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-29-adr-0023" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment 2026-09-29 (ADR-0023)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1145,6 +1156,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../0023-match-any-of-top-two-faces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0023 — Match any of the top two faces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1276,6 +1315,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-29-adr-0023" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment 2026-09-29 (ADR-0023)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1320,6 +1370,8 @@
 <li><strong>3 ticks + 2 s grace (~5 s).</strong> More tolerant of misreads. Rejected: the threat state deserves the shortest window, and the misread risk is addressed at the recognition layer.</li>
 <li><strong>Keep ~10 s.</strong> Rejected as giving strangers the grace meant for the user.</li>
 </ul>
+<h2 id="amendment-2026-09-29-adr-0023">Amendment 2026-09-29 (ADR-0023)<a class="headerlink" href="#amendment-2026-09-29-adr-0023" title="Permanent link">&para;</a></h2>
+<p>Multi-face matching (ND-059) is in place: the second-largest face is tried when the largest doesn't match, so a colleague leaning in no longer counts as a stranger while the user is in frame. A stranger holding a photo of the user now takes the normal absence path (~10 s, <code>.notLive</code>) instead of this fast path.</p>
 
 
 

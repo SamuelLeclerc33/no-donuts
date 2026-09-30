@@ -246,10 +246,26 @@ func printSweep(genuine: ScoreDistribution, impostor: ScoreDistribution) {
     }
 }
 
+/// ND-059: the app accepts the user as EITHER of the two largest faces, so a frame with
+/// two non-user faces gets two tries. Scores here stay per face (largest only); this
+/// line converts a per-face FAR into that two-stranger frame's effective FAR.
+func printTopTwoFAR(impostor: ScoreDistribution, recommendation: ThresholdRecommendation,
+                    effectiveThreshold: Double) {
+    guard !impostor.isEmpty else { return }
+    func line(_ label: String, _ threshold: Double) {
+        guard let p = falseAcceptRate(impostor: impostor, at: threshold) else { return }
+        print(String(format: "    top-2 matching (ND-059), %@ %.2f: per-face FAR %.2f%% → two-stranger frame %.2f%%",
+                     label, threshold, p * 100, anyOfNFalseAcceptRate(perFaceFAR: p, n: 2) * 100))
+    }
+    if let ref = recommendation.topTwoFARReference { line(ref.label, ref.threshold) }
+    line("app's current", effectiveThreshold)
+}
+
 func report(
     _ recommendation: ThresholdRecommendation,
     descriptor: FaceEmbeddingModelDescriptor,
-    effectiveThreshold: Double
+    effectiveThreshold: Double,
+    impostor: ScoreDistribution
 ) {
     print("\n  recommendation")
     let current = String(format: "    App's current threshold: %.2f effective (model default %.2f, tuned=%@)",
@@ -265,6 +281,7 @@ func report(
         }
         for shortfall in shortfalls { print("    - \(shortfall)") }
         print(current)
+        printTopTwoFAR(impostor: impostor, recommendation: recommendation, effectiveThreshold: effectiveThreshold)
         print("    DO NOT set `thresholdIsTuned = true`. Fix every item above and re-run.")
 
     case let .cleanSeparation(threshold, margin, impostorMaximum, genuineMinimum):
@@ -272,6 +289,7 @@ func report(
                      impostorMaximum, genuineMinimum, margin))
         print(String(format: "    Suggested matchThreshold: %.2f  (midpoint of the gap)", threshold))
         print(current)
+        printTopTwoFAR(impostor: impostor, recommendation: recommendation, effectiveThreshold: effectiveThreshold)
         print("    This DOES justify `thresholdIsTuned = true` — provided the image set")
         print("    covers your real conditions: lighting, glasses on/off, angle, distance,")
         print("    and the closest look-alike you can get hold of (EC-03).")
@@ -282,6 +300,8 @@ func report(
         print("    ================================================================")
         if let reason = recommendation.refusalReason { print("    - \(reason)") }
         print(current)
+        // Refused: the EER point is labelled "not a recommendation" (ND-059 review).
+        printTopTwoFAR(impostor: impostor, recommendation: recommendation, effectiveThreshold: effectiveThreshold)
         print("    DO NOT set `thresholdIsTuned = true` on this. Overlap means no scalar")
         print("    threshold separates the two classes: every value trades a false lock")
         print("    against a stranger being accepted. Improve the data first — more images")
@@ -487,7 +507,8 @@ if let enrolledLabel = opts.enrolledLabel {
     printSweep(genuine: genuine, impostor: impostor)
     report(recommendThreshold(genuine: genuine, impostor: impostor,
                               impostorIdentityCount: impostorIdentities),
-           descriptor: embedder.descriptor, effectiveThreshold: effectiveThreshold)
+           descriptor: embedder.descriptor, effectiveThreshold: effectiveThreshold,
+           impostor: impostor)
 
 } else {
     print("\n=== pairwise run ===")
@@ -533,7 +554,8 @@ if let enrolledLabel = opts.enrolledLabel {
     printSweep(genuine: genuine, impostor: impostor)
     report(recommendThreshold(genuine: genuine, impostor: impostor,
                               impostorIdentityCount: impostorIdentities),
-           descriptor: embedder.descriptor, effectiveThreshold: effectiveThreshold)
+           descriptor: embedder.descriptor, effectiveThreshold: effectiveThreshold,
+           impostor: impostor)
 }
 
 print("")

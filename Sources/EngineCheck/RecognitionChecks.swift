@@ -972,7 +972,7 @@ func runThresholdAnalysisChecks(_ c: Checks) async {
 // MARK: - ND-095: deferred (off-main) model load
 
 /// One-shot gate a fake `load` closure waits on, so a check controls when "loading" ends.
-private final class LoadGate: @unchecked Sendable {
+final class LoadGate: @unchecked Sendable {
     private let lock = NSLock()
     private var opened = false
     private var waiters: [CheckedContinuation<Void, Never>] = []

@@ -12,7 +12,8 @@ public enum EnrollmentCaptureOutcome: Sendable, Equatable {
     /// Enrolled with `count` reference embeddings.
     case success(count: Int)
     /// Frames arrived, but fewer than the required number of distinct frames had a
-    /// usable face (none, too small, or embedding failed).
+    /// usable face (none, too small, more than one face in view — ND-059 — or embedding
+    /// failed).
     case notEnoughFaces
     /// Enough faces, but they did not agree with each other (ND-063). Usually a second
     /// person in view, heavy blur, or a lighting change mid-capture.
@@ -200,9 +201,12 @@ public func runEnrollmentCapture(
             // count as several references.
             if deduper.isNew(frame) {
                 distinctFrames += 1
-                // `.noFace` (including a face too small, ND-085) and `.failure` just mean
-                // "try the next frame".
-                if case .embedding(let v) = await embedder.embedding(for: frame) {
+                // `.noFace` (including a face too small, ND-085, and — ND-059 — a frame
+                // with MORE than one quality-passing face) and `.failure` just mean "try
+                // the next frame". `.enrollment` never lets a second person in view add a
+                // reference vector (top-2 matching would otherwise make a colleague's
+                // vector a valid match for the whole enrollment's life).
+                if case .embedding(let v) = await embedder.embeddingWithLiveness(for: frame, selecting: .enrollment).outcome {
                     vectors.append(v)
                 }
             }

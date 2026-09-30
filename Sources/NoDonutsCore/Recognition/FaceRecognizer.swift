@@ -27,7 +27,9 @@ public protocol FaceRecognizing: Sendable {
 /// it must NEVER downgrade to the presence-only fallback (that would let any face pass
 /// on an enrolled machine, S1 / EC-03).
 ///
-/// Decision table (one `enrollmentState()` read + one embed per call):
+/// Decision table (one `enrollmentState()` read + one embed per call; ND-059: on the
+/// enrolled path, up to two embeds — the second largest face only when the largest
+/// doesn't match, `FaceSelection.anyOfTop2`):
 /// - store `.unavailable`                          → `.error` (fail-safe; engine holds, sustained → lock)
 /// - embed `.failure`                              → `.error` (EC-10 hold)
 /// - embed `.noFace`                               → `.noFace`
@@ -35,7 +37,13 @@ public protocol FaceRecognizing: Sendable {
 /// - embed `.embedding`, store `.enrolled(refs, ver)` where `ver != active model version`
 ///     → presence-only fallback (STALE / cross-model — force re-enroll; NEVER cross-compare, ADR-0014)
 /// - embed `.embedding`, store `.enrolled(refs, ver)` matching version → max cosine vs refs;
-///     `>= threshold` → `.enrolledUserPresent(max)`, else `.strangerOnly` (EC-03: non-match never present)
+///     `>= threshold` → `.enrolledUserPresent(max)`, else `.strangerOnly` (EC-03: non-match never present).
+///     ND-059: the user matching as EITHER of the two largest faces counts; `.strangerOnly`
+///     only when neither matches (the largest face's score is reported then). With
+///     anti-spoof on, a match must also be CONFIRMED (texture not flat, live) or the
+///     second face is tried; if neither is a confirmed match, the largest matching face is
+///     returned and rejected below exactly as before. The texture / liveness decision is
+///     always re-derived here from the returned face (ADR-0023).
 /// - a MATCH with anti-spoof on: texture flagged → `.strangerOnly` (ND-041); otherwise no
 ///     live evidence (blink / non-rigid motion) in the window → `.notLive` (ND-116)
 ///
@@ -146,13 +154,46 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
         // overrides rejected). A Settings change takes effect on the very next tick.
         let threshold = resolvedMatchThreshold(for: embedder.descriptor)
 
-        switch await embedder.embeddingWithLiveness(for: frame) {
+        // ND-059 (EC-06): on a genuinely enrolled machine (version matches, references
+        // present), accept ANY of the two largest faces that matches — lazily: the second
+        // face is embedded only when the largest doesn't match. A colleague leaning in
+        // closer than the user no longer reads as a stranger. Every presence-only path
+        // (not enrolled / version mismatch / empty references) stays largest-only: it
+        // only needs "a face", so a second embed would buy nothing.
+        // ND-041/ND-116: ONE toggle read per tick gates texture AND liveness (both for the
+        // selection's confirmation and for the decision below).
+        let antiSpoof = resolvedAntiSpoofEnabled()
+        let spoofFloor = resolvedSpoofTextureFloor()
+        // One liveness verdict per face box per tick: the selection's confirmation and the
+        // decision below share it (no double-counted not-live verdicts).
+        let verdicts = VerdictCache(liveness: liveness)
+        let selection: FaceSelection
+        if case let .enrolled(references, storedVersion) = state,
+           storedVersion == embedder.descriptor.version, !references.isEmpty {
+            // The score (max cosine vs references) comes back in the report, so the
+            // decision below uses this ONE evaluation: same threshold by construction.
+            // ND-059 review (owner): an identity match must also be CONFIRMED (not a
+            // likely flat spoof, live) or the second face is tried — a live user behind a
+            // poster / photo of themselves. The decision below re-checks the returned face
+            // itself, so this closure can only ever pick a face, never fail open.
+            let confirms: (@Sendable (CGRect?, Double) -> Bool)? = antiSpoof ? { @Sendable box, texture in
+                !isLikelySpoof(textureScore: texture, floor: spoofFloor)
+                    && (verdicts.verdict(for: box)?.live ?? true)
+            } : nil
+            selection = .anyOfTop2(threshold: threshold, confirms: confirms) { vector in
+                references.reduce(-Double.infinity) { max($0, cosineSimilarity(vector, $1)) }
+            }
+        } else {
+            selection = .largestOnly
+        }
+
+        switch await embedder.embeddingWithLiveness(for: frame, selecting: selection) {
         case .failure:
             // Transient detection/embedding failure → conservative HOLD (EC-10), not absence.
             return .error("face embedding failed")
         case .noFace:
             return .noFace
-        case let .embedding(vector, textureScore, faceBox):
+        case let .embedding(vector, textureScore, faceBox, report):
             switch state {
             case .notEnrolled:
                 // Presence-only fallback — only when GENUINELY not enrolled (non-breaking).
@@ -174,15 +215,18 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 // Defensive: enrolled-but-empty shouldn't happen; presence-only rather
                 // than lock out the real user.
                 guard !references.isEmpty else { return .enrolledUserPresent(confidence: 1.0) }
-                let maxSim = references.reduce(0.0) { best, ref in
-                    max(best, cosineSimilarity(vector, ref))
-                }
+                // ND-059: the selection already scored the RETURNED face; reuse it. Only an
+                // embedder that didn't run `selectFace` (fakes: unscored report) is
+                // evaluated here — with the SAME closure, so the threshold can't drift.
+                let match = report.score.map { FaceMatch(accepted: report.accepted, score: $0) }
+                    ?? selection.evaluate(vector)
+                let maxSim = match.score ?? -Double.infinity
                 // EC-03: a detected face that doesn't clear the threshold is NEVER present.
-                let present = maxSim >= threshold
-                // ND-041/ND-116: ONE toggle read per tick gates texture AND liveness.
-                let antiSpoof = resolvedAntiSpoofEnabled()
-                // ND-116 review fix: evidence must belong to the MATCHED face's track.
-                let verdict = (present && antiSpoof) ? liveness?.currentVerdict(matchedFaceBox: faceBox) : nil
+                let present = match.accepted
+                // ND-116 review fix: evidence must belong to the MATCHED face's track
+                // (ND-059: the returned face — the second largest when it was the match).
+                // Re-derived here for the returned face (cached per box this tick).
+                let verdict = (present && antiSpoof) ? verdicts.verdict(for: faceBox) : nil
                 let liveText = verdict?.logDescription ?? (antiSpoof ? "n/a" : "n/a (anti-spoof off)")
                 // ND-024 tuning: log the score/threshold/decision (numbers only — no
                 // embedding, no image — privacy). Enrolled branch only; the presence-only
@@ -190,7 +234,7 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 // appended (a number; `inf` = anti-spoof off or not extractable) so the
                 // spoof floor can be sanity-checked live against the real user's scores.
                 // ND-116: plus the liveness verdict on a match (numbers only).
-                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public); texture \(textureScore, privacy: .public); live: \(present ? liveText : "n/a", privacy: .public)")
+                log.notice("identity match: score \(maxSim, privacy: .public) vs threshold \(threshold, privacy: .public) → \(present ? "present" : "stranger", privacy: .public); texture \(textureScore, privacy: .public); live: \(present ? liveText : "n/a", privacy: .public); faces \(report.facesDetected, privacy: .public) embedded \(report.facesEmbedded, privacy: .public) chose #\(report.chosenRank + 1, privacy: .public)")
                 guard present else { return .strangerOnly }
 
                 // ND-041 anti-spoof (EC-12): only when the face MATCHES do we apply the
@@ -205,7 +249,7 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 // positive value. When anti-spoof is off the embedder already returned the
                 // `.infinity` sentinel (never flagged), so this branch is a cheap no-op.
                 if antiSpoof {
-                    let floor = resolvedSpoofTextureFloor()
+                    let floor = spoofFloor
                     if isLikelySpoof(textureScore: textureScore, floor: floor) {
                         // Log the numeric score only — never an image or embedding (privacy).
                         log.notice("anti-spoof: flagged likely spoof — texture \(textureScore, privacy: .public) < floor \(floor, privacy: .public) → stranger")
@@ -223,5 +267,23 @@ public final class IdentityRecognizer: FaceRecognizing, Sendable {
                 return .error("enrollment store unavailable")   // already handled above; exhaustive
             }
         }
+    }
+}
+
+/// One liveness verdict per face box per `recognize()` call (ND-059 review): the
+/// selection's confirmation and the final decision share it, so a face asked about twice
+/// counts one verdict. Lock-guarded; lives for one tick.
+private final class VerdictCache: Sendable {
+    private let liveness: LivenessProviding?
+    private let cache = OSAllocatedUnfairLock<[(box: CGRect?, verdict: LivenessVerdict)]>(initialState: [])
+    init(liveness: LivenessProviding?) { self.liveness = liveness }
+
+    /// `nil` when no liveness provider is wired (liveness not required).
+    func verdict(for box: CGRect?) -> LivenessVerdict? {
+        guard let liveness else { return nil }
+        if let hit = cache.withLock({ c in c.first { $0.box == box }?.verdict }) { return hit }
+        let v = liveness.currentVerdict(matchedFaceBox: box)
+        cache.withLock { $0.append((box, v)) }
+        return v
     }
 }

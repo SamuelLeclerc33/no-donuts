@@ -26,3 +26,7 @@ A sustained `.strangerOnly` reading means a face is at the keyboard and it is no
 
 - **3 ticks + 2 s grace (~5 s).** More tolerant of misreads. Rejected: the threat state deserves the shortest window, and the misread risk is addressed at the recognition layer.
 - **Keep ~10 s.** Rejected as giving strangers the grace meant for the user.
+
+## Amendment 2026-09-29 (ADR-0023)
+
+Multi-face matching (ND-059) is in place: the second-largest face is tried when the largest doesn't match, so a colleague leaning in no longer counts as a stranger while the user is in frame. A stranger holding a photo of the user now takes the normal absence path (~10 s, `.notLive`) instead of this fast path.

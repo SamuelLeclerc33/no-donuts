@@ -178,7 +178,7 @@ public func intersectionOverUnion(_ a: CGRect, _ b: CGRect) -> Double {
     return union > 0 ? inter / union : 0
 }
 
-/// One continuous track of the largest face (ND-116). Evidence (blinks / motion)
+/// One continuous face track (ND-116; one per face since ND-059). Evidence (blinks / motion)
 /// belongs to a TRACK, never to "whoever is in front of the camera".
 public struct FaceTrack: Sendable, Equatable {
     /// Continuity: max time between two observations of the same track. 1.0 s (was
@@ -203,6 +203,18 @@ public struct FaceTrack: Sendable, Equatable {
     /// and ~15 s (blinks); well under the 60 s evidence window, so it never extends the
     /// ADR-0022 bound.
     public static let probationSeconds: TimeInterval = 20
+    /// ND-059 review: how decisively a face↔track assignment must win to count as
+    /// "clear". The best assignment's total IoU must beat every conflicting assignment by
+    /// at least this; otherwise the assignment is UNCERTAIN (see `FaceTracker`). The
+    /// verdict applies the same margin to bind the matched box. 0.3 IoU (provisional): a
+    /// real face keeps IoU ~0.85–0.95 with its own last box frame to frame, so a neighbour
+    /// overlapping it at up to ~0.5 is still decisive; two faces nearly on top of each
+    /// other (crossing) are not.
+    public static let assignmentMargin: Double = 0.3
+    /// ND-059 review: two detections this close (IoU ≥ 0.7), at the same scale (IOD within
+    /// 10%), whose landmarks agree (the caller's `sameFace`), are ONE face detected twice.
+    public static let duplicateMinIoU: Double = 0.7
+    public static let duplicateMaxIODChange: Double = 0.1
 
     public fileprivate(set) var id: Int
     public fileprivate(set) var lastBox: CGRect
@@ -226,7 +238,9 @@ public struct FaceTrack: Sendable, Equatable {
 
 /// Why a new track started (numbers only, for the `.debug` log / tuning).
 public struct TrackBreak: Sendable, Equatable {
-    public enum Reason: String, Sendable { case first, gap, overlap, scale }
+    /// `ambiguous` (ND-059): which face continues which track was UNCERTAIN (no
+    /// assignment won by `assignmentMargin`); those tracks were retired with NO handoff.
+    public enum Reason: String, Sendable { case first, gap, overlap, scale, ambiguous }
     public enum Handoff: String, Sendable { case none, fresh, inherited }
     public let reason: Reason
     public let gap: TimeInterval?
@@ -235,12 +249,22 @@ public struct TrackBreak: Sendable, Equatable {
     public let handoff: Handoff
 }
 
+/// Which track a face observed in a frame belongs to (ND-059).
+public struct TrackAssignment: Sendable, Equatable {
+    /// Index into the `faces` passed to `FaceTracker.observe(faces:time:)`.
+    public let faceIndex: Int
+    public let trackID: Int
+    /// `nil` = the face continued an existing track; otherwise why a new one started
+    /// (the caller must give that track fresh detectors).
+    public let trackBreak: TrackBreak?
+}
+
 /// Face-track state machine (ND-116; pure value type, EngineCheck-covered).
 ///
 /// **Why tracks** (security review): a phone photo shown at each 1 s recognition tick
 /// while the attacker's own face blinks between ticks. Swapping photo ↔ face moves or
-/// rescales the largest face box, which breaks the track; the matched (photo) box then
-/// belongs to a track with no evidence → not live.
+/// rescales the face box, which breaks the track; the matched (photo) box then belongs
+/// to a track with no evidence → not live.
 ///
 /// **Handoff** (on-device Test A: two spurious track breaks 2 s apart on the real user
 /// → 9 `.notLive` ticks → false lock). A new track that starts within `handoffGap` of
@@ -263,77 +287,310 @@ public struct TrackBreak: Sendable, Equatable {
 /// new tracks are free to create (hide the photo, show it again), so that grace would
 /// hold the Mac unlocked indefinitely unless it were bound to a verified live
 /// predecessor — which is exactly this handoff.
+///
+/// **Several tracks (ND-059).** With `maxTracks` 2 (the analyzer), the two largest faces
+/// each get their own track, so the user's blinks count when they are the SECOND face
+/// (a colleague leaning in closer). Per frame (`observe(faces:time:occupants:sameFace:)`):
+/// 1. An out-of-order frame (older than any track's last sighting) is ignored.
+/// 2. Faces are taken largest first (`faceIndicesByArea`). A face that duplicates a
+///    bigger one (IoU ≥ `duplicateMinIoU`, IOD within `duplicateMaxIODChange`, the
+///    caller's `sameFace` — landmark agreement — true, and at most ONE nearby track
+///    overlapping the pair at ≥ `minIoU`) is dropped: Vision reported one face twice.
+///    Box-only callers pass no `sameFace`, so nothing is merged (fail-safe). Then only
+///    the `maxTracks` largest remaining faces are considered.
+/// 3. **Ambiguity rule (uncertain assignment, not overlap).** Faces and nearby tracks
+///    with IoU ≥ `handoffMinIoU` are "linked". In each linked group where some face or
+///    track has two links, the best one-to-one assignment (highest total IoU) must beat
+///    every CONFLICTING assignment (one using a link it doesn't) by `assignmentMargin`.
+///    If it does, that assignment stands: two faces steadily overlapping each keep
+///    their own track. If not (faces crossing, nearly on top of each other), the group's
+///    tracks are retired with NO handoff and its faces start `.ambiguous` tracks, so
+///    evidence can't move from a live stranger onto a photo of the user as they cross.
+///    KNOWN LIMIT: equal-size faces that swap places between two analyzed frames (or
+///    while hidden for < 1 s) produce the SAME boxes as two faces standing still, so no
+///    box rule can tell them apart. That is the ADR-0022 "same spot within 1 s" hole,
+///    already open for faces side by side (IoU 0); see ADR-0023.
+/// 4. Continuity (fresh track, IoU ≥ `minIoU`, IOD change ≤ `maxIODChange`) applies to
+///    those assigned pairs. An assigned pair that fails it REPLACES its track under the
+///    handoff rules above.
+/// 5. Any other face takes a free slot as an independent track (reason `.first`, or
+///    `.gap` when it replaces a stale track; no handoff, since there is no overlap), or
+///    else replaces the least recently seen track that wasn't continued.
+/// 6. Stale tracks (not seen for > `maxGap`) that nothing replaced are dropped, and the
+///    least recently seen tracks not seen this frame are evicted until at most
+///    `maxTracks` remain (invariant after every frame).
+///
+/// `occupants`: faces in the same top-`maxTracks` ranking that had NO usable landmarks
+/// (so no track, no evidence). They are remembered for the verdict only: a matched box
+/// closer to an occupant than decisively to a track is unbound (fail-safe, ND-059 review).
+///
+/// With `maxTracks` 1 (the default) this reduces exactly to the single-track rules: the
+/// one face always continues or replaces the one track.
 public struct FaceTracker: Sendable, Equatable {
-    public private(set) var current: FaceTrack?
+    /// Live tracks, at most `maxTracks`.
+    public private(set) var tracks: [FaceTrack] = []
+    /// Compatibility: the most recently seen track (the only one when `maxTracks` is 1).
+    public var current: FaceTrack? { tracks.max(by: { $0.lastSeen < $1.lastSeen }) }
     public private(set) var tracksStarted = 0
     public private(set) var freshHandoffs = 0
     public private(set) var inheritedHandoffs = 0
+    /// Tracks started by the ambiguity rule (ND-059).
+    public private(set) var ambiguousBreaks = 0
+    /// Duplicate detections merged into a bigger one (ND-059 review).
+    public private(set) var duplicatesMerged = 0
+    /// Most tracks alive at once since creation (ND-059 diagnostics).
+    public private(set) var maxConcurrentTracks = 0
+    /// Detected faces without usable landmarks in the latest frame, and that frame's time.
+    public private(set) var occupants: [CGRect] = []
+    public private(set) var occupantsSeenAt: TimeInterval?
+    /// The track the last BOUND verdict used (diagnostics: its evidence, not the max over
+    /// every track, which a stranger's blink would make look fresh).
+    public private(set) var lastBoundTrackID: Int?
     public var window: TimeInterval
+    /// Faces tracked at once, clamped to `1...maxCandidateFaces`.
+    public let maxTracks: Int
     private var nextID = 1
 
-    public init(window: TimeInterval = defaultLivenessWindowSeconds) { self.window = window }
+    public init(window: TimeInterval = defaultLivenessWindowSeconds, maxTracks: Int = 1) {
+        self.window = window
+        self.maxTracks = clampedCandidateFaces(maxTracks)
+    }
 
-    /// Observe the largest face (Vision-normalized box, inter-ocular distance in pixels).
+    /// Own evidence time of the track the recognizer last matched (nil = none / gone).
+    public var matchedTrackEvidenceAt: TimeInterval? {
+        guard let id = lastBoundTrackID else { return nil }
+        return tracks.first { $0.id == id }?.evidenceAt
+    }
+
+    /// Observe a single face (Vision-normalized box, inter-ocular distance in pixels).
     /// Returns `nil` if it continues the current track, else the `TrackBreak` that
     /// started a new one (the caller must then reset its detectors). Invalid input
-    /// (non-finite, empty box) ends the current track and returns `nil`.
+    /// (non-finite, empty box) ends every track and returns `nil`.
     @discardableResult
     public mutating func observe(box: CGRect, interOcular: Double, time: TimeInterval) -> TrackBreak? {
         guard time.isFinite, interOcular.isFinite, interOcular > 0,
-              intersectionOverUnion(box, box) > 0 else { current = nil; return nil }
+              intersectionOverUnion(box, box) > 0 else { tracks = []; return nil }
+        return observe(faces: [(box, interOcular)], time: time).first?.trackBreak
+    }
+
+    /// Observe every face analyzed in one frame (ND-059; see the type doc for the rules).
+    /// Returns one assignment per TRACKED face (at most `maxTracks`, by input index).
+    /// Invalid faces (non-finite, empty box, non-positive IOD) are skipped.
+    /// - `occupants`: ranked faces with no usable landmarks (verdict only).
+    /// - `sameFace(i, j)`: whether faces `i` and `j` have agreeing landmarks (duplicate
+    ///   detection). Default: never (box-only callers merge nothing).
+    @discardableResult
+    public mutating func observe(faces input: [(box: CGRect, interOcular: Double)],
+                                 time: TimeInterval,
+                                 occupants: [CGRect] = [],
+                                 sameFace: (Int, Int) -> Bool = { _, _ in false }) -> [TrackAssignment] {
+        guard time.isFinite else { return [] }
+        if tracks.contains(where: { time < $0.lastSeen }) { return [] }       // out of order: ignore
+        if occupantsSeenAt.map({ time >= $0 }) ?? true {
+            self.occupants = occupants.filter { intersectionOverUnion($0, $0) > 0 }
+            occupantsSeenAt = time
+        }
+
+        func iou(_ f: Int, _ t: Int) -> Double { intersectionOverUnion(input[f].box, tracks[t].lastBox) }
+        let nearbyWindow = max(FaceTrack.maxGap, FaceTrack.handoffGap)
+        let nearby = tracks.indices.filter { time - tracks[$0].lastSeen <= nearbyWindow }
+
+        // 2. Largest first; drop duplicate detections of one face; keep the top maxTracks.
+        let valid = input.indices.filter {
+            input[$0].interOcular.isFinite && input[$0].interOcular > 0
+                && intersectionOverUnion(input[$0].box, input[$0].box) > 0
+        }
+        func isDuplicate(_ k: Int, of f: Int) -> Bool {
+            guard intersectionOverUnion(input[k].box, input[f].box) >= FaceTrack.duplicateMinIoU,
+                  abs(input[k].interOcular - input[f].interOcular) / input[f].interOcular
+                      <= FaceTrack.duplicateMaxIODChange,
+                  sameFace(f, k) else { return false }
+            // Two different nearby tracks near the pair = two faces meeting, not a duplicate.
+            let near = nearby.filter { iou(f, $0) >= FaceTrack.minIoU || iou(k, $0) >= FaceTrack.minIoU }
+            return near.count <= 1
+        }
+        var faces: [Int] = []
+        for f in faceIndicesByArea(valid.map { input[$0].box }).map({ valid[$0] }) {
+            if faces.contains(where: { isDuplicate(f, of: $0) }) { duplicatesMerged += 1; continue }
+            if faces.count < maxTracks { faces.append(f) }
+        }
+        guard !faces.isEmpty else { return [] }
+
+        // 3. Ambiguity rule: an assignment must be decisive, per linked group.
+        let links = faces.flatMap { f in
+            nearby.filter { iou(f, $0) >= FaceTrack.handoffMinIoU }.map { (face: f, track: $0) }
+        }
+        var retired = Set<Int>(), ambiguousFaces = Set<Int>()
+        var assigned: [(face: Int, track: Int)] = []
+        for group in linkGroups(links) {
+            let conflict = Set(group.map(\.face)).count < group.count || Set(group.map(\.track)).count < group.count
+            let matchings = oneToOneMatchings(group)
+            func score(_ m: [(face: Int, track: Int)]) -> Double { m.reduce(0) { $0 + iou($1.face, $1.track) } }
+            // Best: highest total IoU, then most pairs, then first found (deterministic).
+            var best = matchings[0]
+            for m in matchings.dropFirst() where score(m) > score(best) + 1e-12
+                || (abs(score(m) - score(best)) <= 1e-12 && m.count > best.count) { best = m }
+            let inBest = { (l: (face: Int, track: Int)) in best.contains { $0 == l } }
+            let rival = matchings.filter { $0.contains { !inBest($0) } }.map(score).max()
+            if conflict, let r = rival, score(best) - r < FaceTrack.assignmentMargin {
+                retired.formUnion(group.map(\.track)); ambiguousFaces.formUnion(group.map(\.face))
+            } else {
+                assigned += best
+            }
+        }
+
+        // 4. Continuity on the assigned pairs; a pair that fails it replaces its track.
+        func continuous(_ f: Int, _ t: Int) -> Bool {
+            let tr = tracks[t]
+            return time - tr.lastSeen <= FaceTrack.maxGap && iou(f, t) >= FaceTrack.minIoU
+                && abs(input[f].interOcular - tr.lastIOD) / tr.lastIOD <= FaceTrack.maxIODChange
+        }
+        var out: [TrackAssignment] = []
+        var kept: [FaceTrack] = []                                         // continued + new
+        for (f, t) in assigned {
+            if continuous(f, t) {
+                var tr = tracks[t]
+                tr.lastBox = input[f].box; tr.lastIOD = input[f].interOcular; tr.lastSeen = time
+                kept.append(tr)
+                out.append(TrackAssignment(faceIndex: f, trackID: tr.id, trackBreak: nil))
+            } else {
+                let (tr, brk) = replacement(for: input[f], predecessor: tracks[t], time: time)
+                kept.append(tr)
+                out.append(TrackAssignment(faceIndex: f, trackID: tr.id, trackBreak: brk))
+            }
+        }
+        for f in faces where ambiguousFaces.contains(f) {
+            let tr = newTrack(input[f], time: time, probation: nil)
+            kept.append(tr)
+            ambiguousBreaks += 1
+            out.append(TrackAssignment(faceIndex: f, trackID: tr.id, trackBreak:
+                TrackBreak(reason: .ambiguous, gap: nil, iou: nil, iodChange: nil, handoff: .none)))
+        }
+
+        // 5. Remaining faces: take a free slot, or replace the least recently seen track
+        // that wasn't used (never an overlapping one: every free link was assigned above).
+        let usedTracks = Set(assigned.map(\.track)).union(retired)
+        var pool = tracks.indices.filter { !usedTracks.contains($0) }
+        func isStale(_ t: Int) -> Bool { time - tracks[t].lastSeen > FaceTrack.maxGap }
+        let handled = Set(assigned.map(\.face)).union(ambiguousFaces)
+        for f in faces where !handled.contains(f) {
+            var predecessor: Int?
+            if kept.count + pool.filter({ !isStale($0) }).count < maxTracks {
+                predecessor = pool.filter(isStale).min(by: { tracks[$0].lastSeen < tracks[$1].lastSeen })
+            } else if let lru = pool.min(by: { tracks[$0].lastSeen < tracks[$1].lastSeen }) {
+                predecessor = lru
+            } else {
+                continue                                                   // no slot: not tracked
+            }
+            let (tr, brk) = replacement(for: input[f], predecessor: predecessor.map { tracks[$0] }, time: time)
+            if let p = predecessor { pool.removeAll { $0 == p } }
+            kept.append(tr)
+            out.append(TrackAssignment(faceIndex: f, trackID: tr.id, trackBreak: brk))
+        }
+
+        // 6. Keep fresh tracks nothing replaced; drop stale ones; evict the least recently
+        // seen of them until at most maxTracks remain (review fix: ambiguity-created tracks
+        // used to bypass the slot pool, leaving 3).
+        let room = max(0, maxTracks - kept.count)
+        let survivors = pool.filter { !isStale($0) }.map { tracks[$0] }
+            .sorted { $0.lastSeen > $1.lastSeen }.prefix(room)
+        tracks = Array(survivors) + kept
+        maxConcurrentTracks = max(maxConcurrentTracks, tracks.count)
+        return out.sorted { $0.faceIndex < $1.faceIndex }
+    }
+
+    /// Connected groups of links (faces and tracks joined by a shared link).
+    private func linkGroups(_ links: [(face: Int, track: Int)]) -> [[(face: Int, track: Int)]] {
+        var groups: [[(face: Int, track: Int)]] = []
+        for l in links {
+            let joined = groups.indices.filter { g in groups[g].contains { $0.face == l.face || $0.track == l.track } }
+            var merged = [l]
+            for g in joined.reversed() { merged = groups.remove(at: g) + merged }
+            groups.append(merged)
+        }
+        return groups
+    }
+
+    /// Every one-to-one subset of `links` (including the empty one). Links are few (at
+    /// most `maxTracks` faces × `maxTracks` tracks = 4), so enumeration is cheap.
+    private func oneToOneMatchings(_ links: [(face: Int, track: Int)]) -> [[(face: Int, track: Int)]] {
+        var result: [[(face: Int, track: Int)]] = [[]]
+        for l in links {
+            result += result.filter { m in !m.contains { $0.face == l.face || $0.track == l.track } }.map { $0 + [l] }
+        }
+        return result
+    }
+
+    private mutating func newTrack(_ face: (box: CGRect, interOcular: Double), time: TimeInterval,
+                                   probation: TimeInterval?) -> FaceTrack {
+        let t = FaceTrack(id: nextID, lastBox: face.box, lastIOD: face.interOcular, lastSeen: time,
+                          startedAt: time, evidenceAt: nil, verified: false, probationUntil: probation)
+        nextID &+= 1
+        tracksStarted += 1
+        return t
+    }
+
+    /// A new track for `face`, replacing `predecessor` (if any) under the ADR-0022
+    /// handoff rules.
+    private mutating func replacement(for face: (box: CGRect, interOcular: Double), predecessor: FaceTrack?,
+                                      time: TimeInterval) -> (FaceTrack, TrackBreak) {
         var reason = TrackBreak.Reason.first
         var gap: TimeInterval?, iou: Double?, iodChange: Double?
-        if var t = current {
-            let dt = time - t.lastSeen
-            let o = intersectionOverUnion(box, t.lastBox)
-            let dIOD = abs(interOcular - t.lastIOD) / t.lastIOD
+        var handoff = TrackBreak.Handoff.none
+        var probation: TimeInterval?
+        if let p = predecessor {
+            let dt = time - p.lastSeen
+            let o = intersectionOverUnion(face.box, p.lastBox)
+            let dIOD = abs(face.interOcular - p.lastIOD) / p.lastIOD
             gap = dt; iou = o; iodChange = dIOD
-            if dt < 0 { return nil }                                     // out of order: ignore
             if dt > FaceTrack.maxGap { reason = .gap }
             else if o < FaceTrack.minIoU { reason = .overlap }
             else if dIOD > FaceTrack.maxIODChange { reason = .scale }
-            else {
-                t.lastBox = box; t.lastIOD = interOcular; t.lastSeen = time
-                current = t
-                return nil
+            else { reason = .overlap }                                     // continuity lost to another face
+            if dt <= FaceTrack.handoffGap, p.overlaps(face.box, minIoU: FaceTrack.handoffMinIoU) {
+                if p.verified, isLive(now: time, lastEvidence: p.evidenceAt, windowStart: nil, window: window) {
+                    probation = time + FaceTrack.probationSeconds
+                    handoff = .fresh; freshHandoffs += 1
+                } else if let d = p.probationUntil, time <= d {
+                    probation = d
+                    handoff = .inherited; inheritedHandoffs += 1
+                }
             }
         }
-        // New track; decide the handoff from the predecessor's state at the break.
-        var handoff = TrackBreak.Handoff.none
-        var probation: TimeInterval?
-        if let p = current, time - p.lastSeen <= FaceTrack.handoffGap,
-           p.overlaps(box, minIoU: FaceTrack.handoffMinIoU) {
-            if p.verified, isLive(now: time, lastEvidence: p.evidenceAt, windowStart: nil, window: window) {
-                probation = time + FaceTrack.probationSeconds
-                handoff = .fresh; freshHandoffs += 1
-            } else if let d = p.probationUntil, time <= d {
-                probation = d
-                handoff = .inherited; inheritedHandoffs += 1
-            }
-        }
-        current = FaceTrack(id: nextID, lastBox: box, lastIOD: interOcular, lastSeen: time,
-                            startedAt: time, evidenceAt: nil, verified: false, probationUntil: probation)
-        nextID &+= 1
-        tracksStarted += 1
-        return TrackBreak(reason: reason, gap: gap, iou: iou, iodChange: iodChange, handoff: handoff)
+        let t = newTrack(face, time: time, probation: probation)
+        return (t, TrackBreak(reason: reason, gap: gap, iou: iou, iodChange: iodChange, handoff: handoff))
     }
 
-    /// Record live evidence on the current track (ignored if there is none).
+    /// Record live evidence on the most recently seen track (ignored if there is none).
+    /// Single-track callers only; with several tracks use `recordEvidence(trackID:at:)`.
     public mutating func recordEvidence(at time: TimeInterval) {
-        guard var t = current, time.isFinite else { return }
-        t.evidenceAt = max(t.evidenceAt ?? time, time)
-        current = t
+        guard let id = current?.id else { return }
+        recordEvidence(trackID: id, at: time)
     }
 
-    /// Drop the track (enforcement restart). No handoff survives it.
-    public mutating func end() { current = nil }
+    /// Record live evidence on track `trackID` (ignored if it is gone).
+    public mutating func recordEvidence(trackID: Int, at time: TimeInterval) {
+        guard time.isFinite, let i = tracks.firstIndex(where: { $0.id == trackID }) else { return }
+        tracks[i].evidenceAt = max(tracks[i].evidenceAt ?? time, time)
+    }
+
+    /// Drop every track (enforcement restart). No handoff survives it.
+    public mutating func end() { tracks = []; occupants = []; occupantsSeenAt = nil; lastBoundTrackID = nil }
 
     /// Track-bound verdict for a face the recognizer MATCHED at `matchedBox`. Also marks
     /// that track `verified` (the only way a track becomes verified).
     ///
-    /// Live when the current track is fresh (seen ≤ `maxGap` ago), overlaps `matchedBox`
-    /// (IoU ≥ `minIoU`) and has its own evidence ≤ `window` old or an unexpired
-    /// probation; or when inside the enforcement-start window. No box → not bound.
+    /// Binding (ND-059 review): the candidates are the fresh tracks (seen ≤ `maxGap` ago)
+    /// AND the fresh occupants (detected faces with no usable landmarks) overlapping
+    /// `matchedBox` at IoU ≥ `minIoU`. The matched face binds to the best candidate only
+    /// if it is a TRACK and beats the runner-up by `assignmentMargin`. So evidence can
+    /// only come from the track built from the matched face itself: two faces nearly on
+    /// top of each other → unbound, and a matched face that is closest to an untracked
+    /// face (e.g. a photo whose landmarks failed, partly over a live attacker) → unbound,
+    /// never the neighbour's track. No box → not bound.
+    ///
+    /// Live when bound and that track has its own evidence ≤ `window` old or an unexpired
+    /// probation; or when inside the enforcement-start window.
     ///
     /// The enforcement-start window is deliberately NOT track-bound: it covers the
     /// moments before the analyzer has any track (camera just started, first landmark
@@ -341,15 +598,26 @@ public struct FaceTracker: Sendable, Equatable {
     /// enrollment action on an unlocked Mac. Binding it adds false locks, no security.
     public mutating func verdict(now: TimeInterval, matchedBox: CGRect?,
                                  windowStart: TimeInterval?) -> LivenessVerdict {
-        var bound = false
-        if var t = current, t.isFresh(at: now), let m = matchedBox, t.overlaps(m) {
-            bound = true
-            t.verified = true
-            current = t
+        var boundIndex: Int?
+        if let m = matchedBox {
+            var candidates: [(iou: Double, track: Int?)] = tracks.indices
+                .filter { tracks[$0].isFresh(at: now) }
+                .map { (intersectionOverUnion(tracks[$0].lastBox, m), $0) }
+            if let seen = occupantsSeenAt, now.isFinite, abs(now - seen) <= FaceTrack.maxGap {
+                candidates += occupants.map { (intersectionOverUnion($0, m), nil) }
+            }
+            let ranked = candidates.filter { $0.iou >= FaceTrack.minIoU }.sorted { $0.iou > $1.iou }
+            if let top = ranked.first, let t = top.track,
+               ranked.count == 1 || top.iou - ranked[1].iou >= FaceTrack.assignmentMargin {
+                boundIndex = t
+            }
         }
-        let evidence = bound ? current?.evidenceAt : nil
+        if let i = boundIndex { tracks[i].verified = true; lastBoundTrackID = tracks[i].id }
+        let bound = boundIndex != nil
+        let track = boundIndex.map { tracks[$0] }
+        let evidence = track?.evidenceAt
         let byEvidence = isLive(now: now, lastEvidence: evidence, windowStart: nil, window: window)
-        let byProbation = bound && (current?.probationUntil.map { now <= $0 } ?? false)
+        let byProbation = track?.probationUntil.map { now <= $0 } ?? false
         let byWindow = isLive(now: now, lastEvidence: nil, windowStart: windowStart, window: window)
         return LivenessVerdict(live: byEvidence || byProbation || byWindow,
                                evidenceAge: evidence.map { max(0, now - $0) },
@@ -419,6 +687,19 @@ public func interOcularDistance(leftEye: [LandmarkXY], rightEye: [LandmarkXY]) -
     guard let l = centroid(leftEye), let r = centroid(rightEye) else { return nil }
     let d = simd_length_(l - r)
     return d.isFinite && d > 0 ? d : nil
+}
+
+/// Duplicate-detection landmark test (ND-059 review): both eye centroids of two
+/// detections lie within `tolerance` × `interOcular` of each other. Vision reporting ONE
+/// face twice gives near-identical landmarks; two different faces (a photo and a live
+/// head) would need their eyes on the same pixels, which means one occludes the other.
+public func eyeCentersAgree(_ a: (left: LandmarkXY, right: LandmarkXY),
+                            _ b: (left: LandmarkXY, right: LandmarkXY),
+                            interOcular: Double, tolerance: Double = 0.1) -> Bool {
+    guard interOcular.isFinite, interOcular > 0, tolerance.isFinite, tolerance >= 0 else { return false }
+    let limit = tolerance * interOcular
+    let dl = simd_length_(a.left - b.left), dr = simd_length_(a.right - b.right)
+    return dl.isFinite && dr.isFinite && dl <= limit && dr <= limit
 }
 
 func centroid(_ points: [LandmarkXY]) -> LandmarkXY? {

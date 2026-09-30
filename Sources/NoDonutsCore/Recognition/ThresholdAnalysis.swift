@@ -181,6 +181,17 @@ public enum ThresholdRecommendation: Sendable, Equatable {
         return false
     }
 
+    /// The threshold FaceScore reports the top-2 FAR at besides the app's own (ND-059),
+    /// with its label. Only clean separation is labelled "suggested"; an overlap's EER
+    /// point is explicitly NOT a recommendation (review fix); insufficient data → none.
+    public var topTwoFARReference: (label: String, threshold: Double)? {
+        switch self {
+        case let .cleanSeparation(threshold, _, _, _): return ("suggested", threshold)
+        case let .overlap(eer, _, _): return ("EER (not a recommendation)", eer)
+        case .insufficientData: return nil
+        }
+    }
+
     /// Why the recommendation REFUSED to endorse a threshold; `nil` only for clean separation.
     public var refusalReason: String? {
         switch self {
@@ -298,4 +309,19 @@ private func equalErrorOverlap(
         falseRejectRate: bestFalseReject,
         falseAcceptRate: bestFalseAccept
     )
+}
+
+/// Effective false-accept rate when a frame gets `n` independent tries (ND-059).
+///
+/// With top-2 matching, a frame showing two people who are NOT the user is accepted if
+/// EITHER face clears the threshold, so a per-face FAR `p` becomes `1 − (1 − p)^n`
+/// (≈ 2p for small p). This only applies to frames with two non-user faces: when the
+/// largest face is the user, or there is one face, nothing changes.
+///
+/// Clamped: `p` outside `0...1` is clamped, a non-finite `p` is treated as 1 (the worst
+/// case, never an optimistic number), and `n < 1` returns 0 (no face, no accept).
+public func anyOfNFalseAcceptRate(perFaceFAR p: Double, n: Int) -> Double {
+    guard n >= 1 else { return 0 }
+    let q = p.isFinite ? min(max(p, 0), 1) : 1
+    return min(max(1 - pow(1 - q, Double(n)), 0), 1)
 }

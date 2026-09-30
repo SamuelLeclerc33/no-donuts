@@ -15,9 +15,10 @@ import os
 /// no longer matches as the enrolled user (once the real model is bundled + tuned).
 ///
 /// Pipeline (all on-device, in memory):
-/// 1. `VNDetectFaceRectanglesRequest` → largest face (shared with the Vision embedder).
-/// 2. Quality gate (ND-085): a largest face whose shorter side is under
-///    `minimumFaceSideFraction` of the frame is reported as `.noFace` (too far away).
+/// 1. `VNDetectFaceRectanglesRequest` → faces ranked by area; `selectFace` embeds the
+///    largest, and the second largest only when the selection allows it (ND-059).
+/// 2. Quality gate (ND-085): a face whose shorter side is under `minimumFaceSideFraction`
+///    of the frame is dropped; none left is reported as `.noFace` (too far away).
 /// 3. Take an undistorted SQUARE crop (`squareFaceCrop`, ND-085) around the padded face.
 ///    Any part outside the frame is black-padded, never stretched. Scale it uniformly
 ///    to the model's `inputSize`×`inputSize` and feed it as an image input.
@@ -218,20 +219,22 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         self.paddingFraction = paddingFraction
     }
 
-    public func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {
+    public func embeddingWithLiveness(for frame: CapturedFrame,
+                                      selecting selection: FaceSelection) async -> FaceEmbeddingResult {
         await withCheckedContinuation { (continuation: CheckedContinuation<FaceEmbeddingResult, Never>) in
             queue.async { [self] in
-                continuation.resume(returning: computeEmbedding(frame))
+                continuation.resume(returning: computeEmbedding(frame, selection: selection))
             }
         }
     }
 
     /// Synchronous pipeline — only ever called on `queue`. Same tri-state contract as
-    /// `VisionFeaturePrintEmbedder`: `.noFace` only when detection ran and found zero
-    /// faces; `.failure` for any error (EC-10); `.embedding` on success. Never crashes,
-    /// never blocks the main actor. The liveness texture score (ND-072) comes from the
-    /// shared `innerFaceTextureScore` when anti-spoof is enabled, else `.infinity`.
-    private func computeEmbedding(_ frame: CapturedFrame) -> FaceEmbeddingResult {
+    /// `VisionFeaturePrintEmbedder`: `.noFace` only when detection ran and found no usable
+    /// face; `.failure` for any error (EC-10); `.embedding` on success. Never crashes,
+    /// never blocks the main actor. Which face(s) get embedded is the shared `selectFace`
+    /// loop (ND-059). The liveness texture score (ND-072) comes from the shared
+    /// `innerFaceTextureScore` when anti-spoof is enabled, else `.infinity`.
+    private func computeEmbedding(_ frame: CapturedFrame, selection: FaceSelection) -> FaceEmbeddingResult {
         guard let pixelBuffer = frame.pixelBuffer else { return .failure }
 
         let orientation = resolvedVisionOrientation()
@@ -245,35 +248,64 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
         }
 
         let faces = detect.results ?? []
-        guard let largest = faces.max(by: {
-            $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height
-        }) else {
-            return .noFace
-        }
+        guard !faces.isEmpty else { return .noFace }
 
         // Work in the ORIENTED image space (same approach as the Vision embedder — see
         // its computeEmbedding for the orientation rationale).
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
         let orientedExtent = ciImage.extent
 
-        // ND-085 quality gate: a face too small in frame (user ~2 m+ away) is not
-        // embedded. It counts as `.noFace` (absence), not as a stranger.
-        guard faceIsLargeEnough(faceBoundingBox: largest.boundingBox,
-                                orientedExtent: orientedExtent) else { return .noFace }
+        // ND-059 + ND-085: the largest face(s) by area, THEN the quality gate. A face too
+        // small in frame (user ~2 m+ away) is not embedded; none left counts as `.noFace`
+        // (absence), not as a stranger.
+        let boxes = faces.map(\.boundingBox)
+        let ranked = rankedFaceCandidates(boxes: boxes, orientedExtent: orientedExtent,
+                                          maxFaces: selection.maxFaces)
 
+        return selectFace(
+            facesDetected: faces.count,
+            candidateCount: ranked.count,
+            selection: selection,
+            embed: { rank in
+                let box = boxes[ranked[rank]]
+                guard let vector = embedFace(box: box, ciImage: ciImage, orientedExtent: orientedExtent) else {
+                    return .failure
+                }
+                // ND-116: the chosen face's box binds liveness evidence to its track.
+                return .embedding(vector, textureScore: .infinity, faceBox: box)
+            },
+            texture: { rank in
+                // ND-072 / ND-041 liveness (EC-12): score the INNER face region of the
+                // ORIGINAL frame via the shared helper — the SAME pixels, crop geometry,
+                // and ≤128px grayscale working scale as the Vision path, so
+                // `spoofTextureFloor` means the same thing on both embedders. Deliberately
+                // NOT computed from the model input (the black-padded square scaled to
+                // 160×160, a different scale and region). Gated behind the cheap toggle
+                // check. Any extraction failure inside the helper → `.infinity` (LIVE),
+                // never a spoof. `selectFace` calls this at most once per face, twice per call (ND-059 confirmation).
+                guard resolvedAntiSpoofEnabled() else { return .infinity }
+                return innerFaceTextureScore(frame: pixelBuffer,
+                                             faceBoundingBox: boxes[ranked[rank]],
+                                             orientation: orientation,
+                                             paddingFraction: paddingFraction,
+                                             ciContext: ciContext)
+            })
+    }
+
+    /// Square-crop one face, run the model, L2-normalize. `nil` on any error (the caller
+    /// maps it to `.failure`, EC-10 — never "no face").
+    private func embedFace(box: CGRect, ciImage: CIImage, orientedExtent: CGRect) -> [Float]? {
         // ND-085 undistorted crop: a square around the padded face, black-padded where
         // it leaves the frame, scaled uniformly to the model's input size. The model
         // folds its own normalization ((x-127.5)/128 for FaceNet), so we render plain
         // 0–255 RGB pixels. Changing this crop changed the embedding space, so the
         // descriptor version was bumped (facenet-vggface2-v2).
-        guard let crop = squareFaceCrop(faceBoundingBox: largest.boundingBox,
+        guard let crop = squareFaceCrop(faceBoundingBox: box,
                                         paddingFraction: paddingFraction,
-                                        orientedExtent: orientedExtent) else { return .failure }
+                                        orientedExtent: orientedExtent) else { return nil }
         let side = descriptor.inputSize > 0 ? descriptor.inputSize : 160
         guard let inputBuffer = renderRGBBuffer(squareFaceInputImage(from: ciImage, crop: crop, side: side),
-                                                side: side) else {
-            return .failure
-        }
+                                                side: side) else { return nil }
 
         // Run the model.
         let vector: [Float]
@@ -284,37 +316,17 @@ public final class CoreMLFaceEmbedder: FaceEmbedding, @unchecked Sendable {
             let output = try model.prediction(from: provider)
             guard let emb = coreMLFirstMultiArrayOutput(output) else {
                 log.error("Core ML face model produced no multi-array output")
-                return .failure
+                return nil
             }
             vector = emb
         } catch {
             log.error("Core ML face embedding failed: \(error.localizedDescription, privacy: .public)")
-            return .failure
+            return nil
         }
 
         // Defensive L2-normalize (FaceNet already normalizes; a swapped model may not).
         let normalized = l2Normalized(vector)
-        guard !normalized.isEmpty else { return .failure }
-
-        // ND-072 / ND-041 liveness (EC-12): score the INNER face region of the ORIGINAL
-        // frame via the shared helper — the SAME pixels, crop geometry, and ≤128px
-        // grayscale working scale as the Vision path, so `spoofTextureFloor` means the
-        // same thing on both embedders. Deliberately NOT computed from `inputBuffer`: that
-        // is the black-padded square scaled to 160×160, a different scale and region.
-        // Gated behind the cheap toggle check (skip the render when anti-spoof is off).
-        // Any extraction failure inside the helper → `.infinity` (LIVE), never a spoof.
-        let textureScore: Double
-        if resolvedAntiSpoofEnabled() {
-            textureScore = innerFaceTextureScore(frame: pixelBuffer,
-                                                 faceBoundingBox: largest.boundingBox,
-                                                 orientation: orientation,
-                                                 paddingFraction: paddingFraction,
-                                                 ciContext: ciContext)
-        } else {
-            textureScore = .infinity
-        }
-        // ND-116: the matched face's box binds liveness evidence to this face's track.
-        return .embedding(normalized, textureScore: textureScore, faceBox: largest.boundingBox)
+        return normalized.isEmpty ? nil : normalized
     }
 
     /// Render `image` (already placed at the origin and scaled to `side`×`side` by

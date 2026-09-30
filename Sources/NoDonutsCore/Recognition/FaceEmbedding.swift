@@ -39,7 +39,10 @@ public enum FaceEmbeddingResult: Sendable {
     /// (`resolvedVisionOrientation`, bottom-left origin) — the recognizer binds liveness
     /// evidence to the face track at this box. `nil` (fakes / unknown) → no binding
     /// possible → not live outside the startup window (fail-safe).
-    case embedding([Float], textureScore: Double, faceBox: CGRect? = nil)
+    /// `selection` (ND-059) says how many faces were detected / embedded and which rank
+    /// was returned — numbers only, for the identity log line.
+    case embedding([Float], textureScore: Double, faceBox: CGRect? = nil,
+                   selection: FaceSelectionReport = .single)
     /// Vision ran and found no face in the frame. → absence.
     case noFace
     /// Detection / crop / feature-print / pixel-buffer error (EC-10 conservative hold).
@@ -49,7 +52,7 @@ public enum FaceEmbeddingResult: Sendable {
     /// method and App call sites keep working unchanged.
     public var outcome: FaceEmbeddingOutcome {
         switch self {
-        case let .embedding(vector, _, _): return .embedding(vector)
+        case let .embedding(vector, _, _, _): return .embedding(vector)
         case .noFace: return .noFace
         case .failure: return .failure
         }
@@ -75,17 +78,26 @@ public protocol FaceEmbedding: Sendable {
     /// resolves — read it per use, don't cache it.
     var descriptor: FaceEmbeddingModelDescriptor { get }
 
-    /// Detect the (largest) face in `frame` and return its embedding + liveness
-    /// outcome (ND-041). Runs off the main actor. This is the sole behavioral requirement;
-    /// `embedding(for:)` is derived from it by default.
-    func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult
+    /// Detect faces in `frame`, embed the one(s) `selection` allows (ND-059: the largest,
+    /// then the second largest only if the largest isn't accepted — see `selectFace`),
+    /// and return the chosen face's embedding + liveness outcome (ND-041). Runs off the
+    /// main actor. This is the sole behavioral requirement.
+    ///
+    /// Deliberately NO default implementation: a wrapper (e.g. `DeferredFaceEmbedder`)
+    /// that forgot to forward `selection` would silently fall back to largest-only and
+    /// re-open EC-06. Without a default, forgetting it is a compile error.
+    func embeddingWithLiveness(for frame: CapturedFrame, selecting selection: FaceSelection) async -> FaceEmbeddingResult
 }
 
 public extension FaceEmbedding {
-    /// Score-free convenience that projects `embeddingWithLiveness(for:)` down to the
-    /// original `FaceEmbeddingOutcome`. Keeps the App's `switch` on `.embedding([Float])`
-    /// (Enrollment.swift) source-compatible — callers that don't need the liveness
-    /// signal (enrollment) use this unchanged.
+    /// The largest face only (`.largestOnly`, the pre-ND-059 behaviour).
+    func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {
+        await embeddingWithLiveness(for: frame, selecting: .largestOnly)
+    }
+
+    /// Score-free convenience that projects `embeddingWithLiveness(for:)` (largest face
+    /// only) down to the original `FaceEmbeddingOutcome`. Keeps the App's `switch` on
+    /// `.embedding([Float])` source-compatible. FaceScore uses it (per-face scoring).
     func embedding(for frame: CapturedFrame) async -> FaceEmbeddingOutcome {
         await embeddingWithLiveness(for: frame).outcome
     }
@@ -190,8 +202,9 @@ private func noteRejectedThreshold(key: String, description: String, fallback: D
 /// `FaceEmbedding` backed by Apple Vision's `VNGenerateImageFeaturePrint` (ADR-0012).
 ///
 /// Pipeline (all on-device, in memory):
-/// 1. `VNDetectFaceRectanglesRequest` on the frame → pick the **largest** face by
-///    bounding-box area. No faces → `nil`.
+/// 1. `VNDetectFaceRectanglesRequest` on the frame → rank faces by bounding-box area
+///    (`rankedFaceCandidates`); `selectFace` embeds the largest, and the second largest
+///    only when the caller's selection allows it (ND-059). No faces → `.noFace`.
 /// 2. Crop the pixel buffer to that face's box (with padding), via Core Image.
 /// 3. `VNGenerateImageFeaturePrintRequest` on the crop → first `VNFeaturePrintObservation`.
 /// 4. Extract a `[Float]` from the observation's `data` (only `.float32` prints).
@@ -229,7 +242,8 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         self.paddingFraction = paddingFraction
     }
 
-    public func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {
+    public func embeddingWithLiveness(for frame: CapturedFrame,
+                                      selecting selection: FaceSelection) async -> FaceEmbeddingResult {
         // Hop off the (main) actor onto our serial queue and suspend until done.
         // We capture the `@unchecked Sendable` `CapturedFrame` (not its non-Sendable
         // `CVPixelBuffer`) into the `@Sendable` closure and unwrap inside. All the
@@ -237,17 +251,17 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         // score) happens here on the off-main queue.
         await withCheckedContinuation { (continuation: CheckedContinuation<FaceEmbeddingResult, Never>) in
             queue.async { [self] in
-                continuation.resume(returning: computeEmbedding(frame))
+                continuation.resume(returning: computeEmbedding(frame, selection: selection))
             }
         }
     }
 
     /// Synchronous embedding pipeline — only ever called on `queue`. Returns a
-    /// `FaceEmbeddingOutcome`: `.noFace` only when detection ran and found zero faces;
+    /// `FaceEmbeddingResult`: `.noFace` only when detection ran and found no usable face;
     /// `.failure` for any error (no pixel buffer, thrown error, unexpected element
     /// type, crop failure); `.embedding` on success. Never crashes, never blocks the
-    /// main actor.
-    private func computeEmbedding(_ frame: CapturedFrame) -> FaceEmbeddingResult {
+    /// main actor. Which face(s) get embedded is the shared `selectFace` loop (ND-059).
+    private func computeEmbedding(_ frame: CapturedFrame, selection: FaceSelection) -> FaceEmbeddingResult {
         // No pixel buffer is a capture/pipeline error, NOT "no face" (EC-10).
         guard let pixelBuffer = frame.pixelBuffer else { return .failure }
 
@@ -273,18 +287,12 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         }
 
         let faces = detect.results ?? []
-        // Largest face by normalized bounding-box area (EC-06: match against the
-        // most prominent face in frame).
-        guard let largest = faces.max(by: {
-            $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height
-        }) else {
-            return .noFace  // detection ran, genuinely zero faces
-        }
+        guard !faces.isEmpty else { return .noFace }  // detection ran, genuinely zero faces
 
-        // 2) Crop to the padded face box.
+        // 2) Crop base.
         //
         // CRITICAL (false-lock fix): detection ran in the ORIENTED coordinate space
-        // (we passed `orientation` to the detect handler), so `largest.boundingBox`
+        // (we passed `orientation` to the detect handler), so each `boundingBox`
         // is normalized against the ORIENTED image, not the raw pixel buffer. The
         // crop must therefore be taken from an image in that SAME oriented space, or
         // (for any non-.up override) the box maps onto the wrong region/rotation, the
@@ -301,63 +309,71 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         // Extent of the ORIENTED image — the space the bbox and mapping live in.
         let orientedExtent = ciImage.extent
 
-        // ND-085 quality gate (shared with the Core ML path): a face too small in frame
-        // (user ~2 m+ away) counts as `.noFace` (absence), never as a stranger or a
-        // match. This only rejects frames, so the Vision embedding space is unchanged
-        // and its version tag stays `vision-featureprint-v1`. The Vision path keeps its
-        // clipped, non-square crop: the feature print takes any aspect ratio, and
-        // changing the crop would force a re-enroll for no measured gain.
-        guard faceIsLargeEnough(faceBoundingBox: largest.boundingBox,
-                                orientedExtent: orientedExtent) else { return .noFace }
+        // ND-059 + ND-085 (shared with the Core ML path): the largest face(s) by area
+        // (`selection.maxFaces`), THEN the quality gate. A face too small in frame (user
+        // ~2 m+ away) is dropped; none left counts as `.noFace` (absence), never as a
+        // stranger or a match. This only rejects faces, so the Vision embedding space is
+        // unchanged and its version tag stays `vision-featureprint-v1`. The Vision path
+        // keeps its clipped, non-square crop: the feature print takes any aspect ratio,
+        // and changing the crop would force a re-enroll for no measured gain.
+        let boxes = faces.map(\.boundingBox)
+        let ranked = rankedFaceCandidates(boxes: boxes, orientedExtent: orientedExtent,
+                                          maxFaces: selection.maxFaces)
 
+        // Rendered padded crops by rank, reused by the texture score of the chosen face.
+        var crops: [Int: CGImage] = [:]
+        return selectFace(
+            facesDetected: faces.count,
+            candidateCount: ranked.count,
+            selection: selection,
+            embed: { rank in
+                let box = boxes[ranked[rank]]
+                guard let (vector, crop) = featurePrint(box: box, ciImage: ciImage,
+                                                        orientedExtent: orientedExtent) else { return .failure }
+                crops[rank] = crop
+                // ND-116: the chosen face's box binds liveness evidence to its track.
+                return .embedding(vector, textureScore: .infinity, faceBox: box)
+            },
+            texture: { rank in
+                // ND-041 liveness: the crop's texture score (variance-of-Laplacian), on
+                // this same off-main queue. A flat photo / screen reproduction scores low;
+                // a live face scores high.
+                //
+                // FIX #7 (compute-gating): only ever CONSUMED by the recognizer when
+                // anti-spoof is enabled AND the face is enrolled AND it matches. The
+                // embedder can't know "enrolled"/"matched", but it CAN cheaply check the
+                // anti-spoof toggle — disabled → the `.infinity` sentinel = "live/unknown",
+                // which `isLikelySpoof` treats as LIVE (never flags). `selectFace` calls
+                // this at most once per face, twice per call (ND-059 confirmation).
+                //
+                // FIX #5 (tighter region): computed on the INNER face region, NOT the
+                // 0.25-padded embedding crop. Padding pulls in hair, jaw edges, and
+                // background, which can DILUTE a live face's skin detail below the floor.
+                // The shared `faceCoreTextureScore` (FaceLiveness.swift, ND-072) cuts the
+                // central portion of the rendered crop back to the un-padded face box.
+                guard resolvedAntiSpoofEnabled(), let crop = crops[rank] else { return .infinity }
+                return faceCoreTextureScore(paddedCrop: crop, paddingFraction: paddingFraction) ?? .infinity
+            })
+    }
+
+    /// Crop one face and run the feature print on it. Returns the vector and the
+    /// rendered padded crop, or `nil` on any error (the caller maps it to `.failure`,
+    /// EC-10 — never "no face").
+    private func featurePrint(box: CGRect, ciImage: CIImage, orientedExtent: CGRect) -> ([Float], CGImage)? {
         // Vision bounding boxes are normalized with origin bottom-left. The shared
         // `paddedFaceCropRect` pads by `paddingFraction`, clamps to [0,1], and maps to
         // pixel coordinates (also bottom-left origin) using the ORIENTED image's
         // dimensions — matching the oriented CIImage's coordinate space, so we can crop
         // the oriented image directly. Shared with CoreMLFaceEmbedder + the liveness
         // helper so all three use identical geometry (ND-072).
-        // Crop geometry failure → error, not "no face" (EC-10).
-        guard let cropRect = paddedFaceCropRect(faceBoundingBox: largest.boundingBox,
+        guard let cropRect = paddedFaceCropRect(faceBoundingBox: box,
                                                 paddingFraction: paddingFraction,
-                                                orientedExtent: orientedExtent) else { return .failure }
+                                                orientedExtent: orientedExtent) else { return nil }
 
         let cropped = ciImage.cropped(to: cropRect)
         // Render into a concrete CGImage so the feature-print handler operates on the
         // crop alone (a lazily-cropped CIImage keeps the full extent otherwise).
-        // Render failure → error, not "no face" (EC-10).
-        guard let cgCrop = ciContext.createCGImage(cropped, from: cropRect) else { return .failure }
-
-        // ND-041 liveness: compute the crop's texture score (variance-of-Laplacian)
-        // on this same off-main queue. A flat photo / screen reproduction scores low;
-        // a live face scores high.
-        //
-        // FIX #7 (compute-gating): the texture score costs a 128px grayscale render +
-        // Laplacian pass on EVERY embed. It is only ever CONSUMED by the recognizer
-        // when anti-spoof is enabled AND the face is enrolled AND it matches. The
-        // embedder can't know "enrolled"/"matched", but it CAN cheaply check the
-        // anti-spoof toggle — the common case (anti-spoof off, or the not-enrolled
-        // presence-only path with the toggle off) then pays nothing. When disabled we
-        // return the `.infinity` sentinel = "live/unknown", which `isLikelySpoof`
-        // treats as LIVE (never flags). When enabled we compute for real, since a
-        // match still needs it.
-        //
-        // FIX #5 (tighter region): the texture score must be computed on the INNER
-        // face region, NOT the 0.25-padded embedding crop. Padding pulls in hair, jaw
-        // edges, and background — high-frequency detail that varies wildly and can
-        // DILUTE a live face's per-pixel skin detail below the floor (a plain
-        // background under modest light collapses the average), risking a false
-        // spoof-lock of the real user. The EMBEDDING keeps the padded crop (context
-        // helps the feature print's separation); only the LIVENESS score uses the
-        // face-only central region. The shared `faceCoreTextureScore` (FaceLiveness.swift,
-        // ND-072 — same implementation the Core ML path uses) cuts the central portion of
-        // the already-rendered crop back to (approximately) the un-padded Vision face box
-        // before scoring.
-        let textureScore: Double
-        if resolvedAntiSpoofEnabled() {
-            textureScore = faceCoreTextureScore(paddedCrop: cgCrop, paddingFraction: paddingFraction) ?? .infinity
-        } else {
-            textureScore = .infinity   // anti-spoof off → skip the render+Laplacian entirely
-        }
+        guard let cgCrop = ciContext.createCGImage(cropped, from: cropRect) else { return nil }
 
         // 3) Feature print on the cropped face. The crop is already upright pixels,
         // so use .up here regardless of the source orientation.
@@ -366,22 +382,17 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
         do {
             try printHandler.perform([printRequest])
         } catch {
-            // Feature print threw → error, not "no face" (EC-10).
             log.error("feature print failed: \(error.localizedDescription, privacy: .public)")
-            return .failure
+            return nil
         }
 
-        guard let obs = printRequest.results?.first as? VNFeaturePrintObservation else {
-            // A cropped face produced no feature print → error, not "no face" (EC-10).
-            return .failure
-        }
+        guard let obs = printRequest.results?.first as? VNFeaturePrintObservation else { return nil }
 
         // 4) Extract the vector. `VNElementType.float` is the 32-bit float layout.
         // Only handle float32 prints; never guess for other element types.
-        // An unexpected element type is a failure (EC-10), not "no face".
         guard obs.elementType == .float, obs.elementCount > 0 else {
             log.error("unexpected feature-print element type; skipping")
-            return .failure
+            return nil
         }
 
         let count = obs.elementCount
@@ -390,7 +401,6 @@ public final class VisionFeaturePrintEmbedder: FaceEmbedding, @unchecked Sendabl
             guard let base = raw.bindMemory(to: Float.self).baseAddress else { return }
             for i in 0..<count { vector[i] = base[i] }
         }
-        // ND-116: the matched face's box binds liveness evidence to this face's track.
-        return .embedding(vector, textureScore: textureScore, faceBox: largest.boundingBox)
+        return (vector, cgCrop)
     }
 }

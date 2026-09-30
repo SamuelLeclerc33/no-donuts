@@ -59,7 +59,59 @@ final class FakeEmbedder: FaceEmbedding, @unchecked Sendable {
     convenience init(_ vector: [Float], textureScore: Double) {
         self.init(result: .embedding(vector, textureScore: textureScore))
     }
-    func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult { result }
+    private(set) var lastSelection: FaceSelection?
+    func embeddingWithLiveness(for frame: CapturedFrame, selecting selection: FaceSelection) async -> FaceEmbeddingResult {
+        lastSelection = selection
+        return result
+    }
+}
+
+/// ND-059 multi-face fake: a frame with several faces (box + vector, `nil` vector =
+/// that face's embedding FAILS). It runs the PRODUCTION ranking (`rankedFaceCandidates`,
+/// on a 640×480 frame) and the PRODUCTION selection loop (`selectFace`), so checks cover
+/// the shipped logic, and counts embed / texture calls to prove laziness.
+final class MultiFaceFakeEmbedder: FaceEmbedding, @unchecked Sendable {
+    struct Face {
+        var box: CGRect
+        var vector: [Float]?
+        var texture: Double = 10_000
+    }
+    private let lock = NSLock()
+    private var _faces: [Face]
+    private var _embeds = 0, _textures = 0
+    private var _lastSelection: FaceSelection?
+    let descriptor: FaceEmbeddingModelDescriptor
+    static let extent = CGRect(x: 0, y: 0, width: 640, height: 480)
+    init(_ faces: [Face], descriptor: FaceEmbeddingModelDescriptor = .fakeTest) {
+        _faces = faces; self.descriptor = descriptor
+    }
+    var faces: [Face] {
+        get { lock.withLock { _faces } }
+        set { lock.withLock { _faces = newValue } }
+    }
+    var embedCalls: Int { lock.withLock { _embeds } }
+    var textureCalls: Int { lock.withLock { _textures } }
+    var lastSelection: FaceSelection? { lock.withLock { _lastSelection } }
+    func resetCounts() { lock.withLock { _embeds = 0; _textures = 0 } }
+
+    func embeddingWithLiveness(for frame: CapturedFrame, selecting selection: FaceSelection) async -> FaceEmbeddingResult {
+        let faces = self.faces
+        lock.withLock { _lastSelection = selection }
+        guard !faces.isEmpty else { return .noFace }
+        let ranked = rankedFaceCandidates(boxes: faces.map(\.box), orientedExtent: Self.extent,
+                                          maxFaces: selection.maxFaces)
+        return selectFace(facesDetected: faces.count, candidateCount: ranked.count, selection: selection,
+                          embed: { rank in
+                              self.lock.withLock { self._embeds += 1 }
+                              let f = faces[ranked[rank]]
+                              guard let v = f.vector else { return .failure }
+                              return .embedding(v, textureScore: .infinity, faceBox: f.box)
+                          },
+                          texture: { rank in
+                              self.lock.withLock { self._textures += 1 }
+                              return faces[ranked[rank]].texture
+                          })
+    }
 }
 
 extension FaceEmbeddingModelDescriptor {
@@ -265,7 +317,7 @@ final class TimeKeyedEmbedder: FaceEmbedding, @unchecked Sendable {
     let descriptor: FaceEmbeddingModelDescriptor = .fakeTest
     init(_ vectors: [TimeInterval: [Float]]) { self.vectors = vectors }
     var callCount: Int { lock.lock(); defer { lock.unlock() }; return calls }
-    func embeddingWithLiveness(for frame: CapturedFrame) async -> FaceEmbeddingResult {
+    func embeddingWithLiveness(for frame: CapturedFrame, selecting selection: FaceSelection) async -> FaceEmbeddingResult {
         lock.withLock { calls += 1 }
         guard let t = frame.captureTime, let v = vectors[t] else { return .noFace }
         return .embedding(v, textureScore: 10_000)

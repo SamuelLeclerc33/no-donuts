@@ -14,7 +14,7 @@
         <link rel="prev" href="../0021-updates-no-in-app-updater/">
       
       
-        <link rel="next" href="../../BACKLOG/">
+        <link rel="next" href="../0023-match-any-of-top-two-faces/">
       
       
         
@@ -1136,10 +1136,49 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-29-adr-0023" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment 2026-09-29 (ADR-0023)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../0023-match-any-of-top-two-faces/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADR-0023 — Match any of the top two faces
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1276,6 +1315,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-2026-09-29-adr-0023" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment 2026-09-29 (ADR-0023)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1325,6 +1375,8 @@
 <li><strong>Blink only:</strong> rejected by the user in favour of blink OR motion, to reduce false locks when eyes are hard to track.</li>
 <li><strong>Challenge only at unlock:</strong> doesn't stop a photo held up while the session is still unlocked.</li>
 </ul>
+<h2 id="amendment-2026-09-29-adr-0023">Amendment 2026-09-29 (ADR-0023)<a class="headerlink" href="#amendment-2026-09-29-adr-0023" title="Permanent link">&para;</a></h2>
+<p>Liveness no longer tracks only the largest face: it keeps up to two face tracks, each with its own blink and motion detectors, and the verdict uses only the matched face's track. An uncertain assignment (faces crossing or nearly on top of each other) ends both tracks with no handoff. Faces that overlap steadily keep their own tracks (ADR-0023).</p>
 
 
 
