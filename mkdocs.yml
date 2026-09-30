@@ -58,5 +58,6 @@ nav:
       - "ADR-0021 — Updates (no in-app updater)": adr/0021-updates-no-in-app-updater.md
       - "ADR-0022 — Liveness (blink or motion)": adr/0022-liveness-blink-or-motion.md
       - "ADR-0023 — Match any of the top two faces": adr/0023-match-any-of-top-two-faces.md
+      - "ADR-0024 — Internal distribution (proposed)": adr/0024-internal-distribution.md
   - Backlog: BACKLOG.md
   - Edge Cases: EDGE_CASES.md

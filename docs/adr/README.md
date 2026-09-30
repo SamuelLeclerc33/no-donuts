@@ -29,6 +29,7 @@ When a decision changes, don't edit the old ADR's decision — write a new ADR t
 - [ADR-0021](0021-updates-no-in-app-updater.md) — Updates for internal distribution: no in-app updater; new versions ship as a notarized DMG or via company MDM — **Accepted**
 - [ADR-0022](0022-liveness-blink-or-motion.md) — Liveness: blink or non-rigid facial motion within 60 s gates an identity match — **Accepted**
 - [ADR-0023](0023-match-any-of-top-two-faces.md) — Match any of the top two faces (lazy); liveness tracks each face; enrollment needs one face — **Accepted**
+- [ADR-0024](0024-internal-distribution.md) — Internal distribution: channel, signing identity, IT/privacy approvals — **Proposed** (owner decisions pending)
 
 ## Template
 
