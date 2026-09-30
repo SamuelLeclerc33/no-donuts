@@ -84,6 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Settings (ND-040): the UserDefaults-backed model the SwiftUI form binds to, and
     /// the window host. Both held so the store keeps observing and the window is reused.
     private var settingsStore: SettingsStore?
+    /// ND-122: live match score for the Settings threshold slider (in-memory, UI only).
+    private let liveMatchScore = LiveMatchScoreModel()
     private let appWindows = AppWindows()
     // Identity (M2, ND-022): the enrollment store + embedder are shared between the
     // recognizer (reads the enrolled vectors every tick) and the enrollment
@@ -760,6 +762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ND-119: the drift advice only applies to an enforced enrollment. Reset /
         // identity-off (which has its own loud re-enroll alert) drops it.
         if status != .active { clearEnrollmentDrift(reason: "identity \(description)") }
+        if status != .active { liveMatchScore.clear() }   // ND-122: no enforced identity → "—"
     }
 
     // MARK: - ND-119 enrollment drift
@@ -1071,7 +1074,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsStore.trustedNetworksProvider = { [weak self] in self?.trustedNetworks.all() ?? [] }
         settingsStore.refresh()
         appWindows.show(.settings, title: String(localized: "No Donuts Settings")) {
-            SettingsView(store: settingsStore, actions: actions)
+            SettingsView(store: settingsStore, actions: actions, liveMatch: self.liveMatchScore)
         }
     }
 
@@ -1206,6 +1209,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     // ND-119: this tick's score, only from a tick that saw identity active.
                     self.observeMatchScore(engine: engine, identity: seen, now: Date())
+                    // ND-122: same filter for the Settings readout (never persisted/logged).
+                    self.liveMatchScore.record(score: engine.lastMatchScore,
+                                               identityActive: seen == .active,
+                                               tickIntervalSeconds: self.config.tickIntervalSeconds)
                 }
                 // Read the interval fresh each iteration so a Settings change to the
                 // check interval (ND-040) live-applies without restarting the loop.
@@ -1228,6 +1235,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func stopLoop() {
         loopTask?.cancel()
         loopTask = nil
+        // ND-122: nothing is being verified any more; the Settings readout shows "—".
+        liveMatchScore.clear()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

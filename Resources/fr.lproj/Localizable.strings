@@ -71,6 +71,11 @@
 "Model default %@ (tuned)" = "Valeur par défaut du modèle : %@ (calibrée)";
 "Model default %@ (not yet tuned)" = "Valeur par défaut du modèle : %@ (pas encore calibrée)";
 "Reset to default" = "Rétablir la valeur par défaut";
+"Your current match: %@" = "Votre correspondance actuelle : %@";
+"Your current match" = "Votre correspondance actuelle";
+"No recent match" = "Aucune correspondance récente";
+"Below this setting: at this sensitivity your own face would not match, and the Mac would lock." = "Sous ce réglage : à cette sensibilité, votre propre visage ne correspondrait pas et le Mac se verrouillerait.";
+"Shown while No Donuts is recognizing you (enrolled, not paused)." = "Affiché lorsque No Donuts vous reconnaît (visage enregistré, pas en pause).";
 "Grace period" = "Délai de grâce";
 "%lld s" = "%lld s";
 "How long you can be away before the Mac locks." = "Durée d’absence tolérée avant le verrouillage du Mac.";

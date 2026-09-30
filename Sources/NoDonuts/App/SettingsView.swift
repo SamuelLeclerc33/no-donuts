@@ -135,6 +135,8 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var store: SettingsStore
     let actions: SettingsActions
+    /// ND-122: live match score for the Recognition pane (owned by the AppDelegate).
+    let liveMatch: LiveMatchScoreModel
 
     /// ND-117: last selected category, remembered across opens and launches.
     @AppStorage(SettingsCategory.selectionDefaultsKey)
@@ -181,7 +183,7 @@ struct SettingsView: View {
     private func detail(for category: SettingsCategory) -> some View {
         switch category {
         case .general:     GeneralSettingsPane(store: store, actions: actions)
-        case .recognition: RecognitionSettingsPane(store: store, actions: actions)
+        case .recognition: RecognitionSettingsPane(store: store, actions: actions, liveMatch: liveMatch)
         case .security:    SecuritySettingsPane(store: store, actions: actions)
         case .trustedWiFi: TrustedWiFiSettingsPane(store: store, actions: actions)
         case .timing:      TimingSettingsPane(store: store)

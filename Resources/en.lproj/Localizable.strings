@@ -86,6 +86,11 @@
 "Model default %@ (tuned)" = "Model default %@ (tuned)";
 "Model default %@ (not yet tuned)" = "Model default %@ (not yet tuned)";
 "Reset to default" = "Reset to default";
+"Your current match: %@" = "Your current match: %@";
+"Your current match" = "Your current match";
+"No recent match" = "No recent match";
+"Below this setting: at this sensitivity your own face would not match, and the Mac would lock." = "Below this setting: at this sensitivity your own face would not match, and the Mac would lock.";
+"Shown while No Donuts is recognizing you (enrolled, not paused)." = "Shown while No Donuts is recognizing you (enrolled, not paused).";
 "Grace period" = "Grace period";
 "%lld s" = "%lld s";
 "How long you can be away before the Mac locks." = "How long you can be away before the Mac locks.";

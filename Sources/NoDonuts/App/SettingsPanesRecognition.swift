@@ -13,6 +13,8 @@ import NoDonutsCore
 struct RecognitionSettingsPane: View {
     @ObservedObject var store: SettingsStore
     let actions: SettingsActions
+    /// ND-122: the live match score shown beside the threshold slider.
+    @ObservedObject var liveMatch: LiveMatchScoreModel
 
     var body: some View {
         SettingsPane(category: .recognition) {
@@ -30,40 +32,43 @@ struct RecognitionSettingsPane: View {
     }
 
     /// Lock sensitivity (matchThreshold). Higher = stricter match required (locks more
-    /// readily for lookalikes); lower = more lenient.
+    /// readily for lookalikes); lower = more lenient. ND-122: a drag commits on release
+    /// (the number follows the thumb), with the live match score shown beside it.
     private var sensitivity: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Lock sensitivity")
-                Spacer()
-                Text(verbatim: displayNumber(store.matchThreshold, digits: 2))
-                    .foregroundStyle(.secondary).monospacedDigit()
-            }
-            // Bounds come from the ACTIVE model (ND-076) — per-model score scales differ.
-            Slider(value: $store.matchThreshold,
-                   in: store.thresholdRange,
-                   step: 0.01) {
-                Text("Lock sensitivity")
-            } minimumValueLabel: {
-                Text("Lenient").font(.caption).foregroundStyle(.secondary)
-            } maximumValueLabel: {
-                Text("Strict").font(.caption).foregroundStyle(.secondary)
-            }
-            .accessibilityLabel("Lock sensitivity")
-            .accessibilityValue(displayNumber(store.matchThreshold, digits: 2))
-            .accessibilityHint("Higher is stricter.")
-            Text("How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.")
-                .font(.caption).foregroundStyle(.secondary)
-            HStack {
-                // Honest about provenance: an un-tuned default is a provisional guess.
-                Text(store.thresholdIsTuned
-                     ? String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (tuned)")
-                     : String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (not yet tuned)"))
+        // Bounds come from the ACTIVE model (ND-076) — per-model score scales differ.
+        CommitOnReleaseSlider(
+            value: $store.matchThreshold,
+            in: store.thresholdRange,
+            step: 0.01,
+            scaleID: store.descriptor.version,
+            label: Text("Lock sensitivity"),
+            minimumValueLabel: Text("Lenient").font(.caption).foregroundStyle(.secondary),
+            maximumValueLabel: Text("Strict").font(.caption).foregroundStyle(.secondary),
+            accessibilityValue: { Text(verbatim: displayNumber($0, digits: 2)) },
+            accessibilityHint: Text("Higher is stricter.")
+        ) { draftThreshold, slider in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Lock sensitivity")
+                    Spacer()
+                    Text(verbatim: displayNumber(draftThreshold, digits: 2))
+                        .foregroundStyle(.secondary).monospacedDigit()
+                }
+                slider
+                LiveMatchScoreReadout(model: liveMatch, threshold: draftThreshold)
+                Text("How closely a face must match your enrollment to keep the Mac unlocked. Higher is stricter.")
                     .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Reset to default") { store.resetMatchThreshold() }
-                    .controlSize(.small)
-                    .disabled(!store.hasThresholdOverride)
+                HStack {
+                    // Honest about provenance: an un-tuned default is a provisional guess.
+                    Text(store.thresholdIsTuned
+                         ? String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (tuned)")
+                         : String(localized: "Model default \(displayNumber(store.modelDefaultThreshold, digits: 2)) (not yet tuned)"))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset to default") { store.resetMatchThreshold() }
+                        .controlSize(.small)
+                        .disabled(!store.hasThresholdOverride)
+                }
             }
         }
     }
@@ -114,6 +119,42 @@ struct RecognitionSettingsPane: View {
         rows.append(SettingsStatusRow(label: String(localized: "Enrollment"), value: enrollment,
                                       warning: enrollmentWarning))
         return rows
+    }
+}
+
+/// ND-122: "Your current match: 0.84" beside the threshold slider, so the user sees
+/// where they would lock before releasing the thumb. "—" when nothing was verified in
+/// the last 10 s (not enrolled, paused, away, camera down). Re-evaluated every second so
+/// the hold expires on screen even while no ticks arrive. Local display only.
+@MainActor
+struct LiveMatchScoreReadout: View {
+    @ObservedObject var model: LiveMatchScoreModel
+    /// The slider's DRAFT threshold (follows the thumb while dragging).
+    let threshold: Double
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let score = model.hold.displayScore(now: context.date)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your current match: \(score.map { displayNumber($0, digits: 2) } ?? "\u{2014}")")
+                    .font(.caption).monospacedDigit()
+                    .foregroundStyle(score.map { $0 < threshold } == true ? .orange : .secondary)
+                    // ND-100: read as "Your current match, 0.84" / "…, no recent match".
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Your current match")
+                    .accessibilityValue(score.map { Text(verbatim: displayNumber($0, digits: 2)) }
+                                        ?? Text("No recent match"))
+                if let score, score < threshold {
+                    // Same accept test as the recognizer (score >= threshold), on the raw score.
+                    Text("Below this setting: at this sensitivity your own face would not match, and the Mac would lock.")
+                        .font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if score == nil {
+                    Text("Shown while No Donuts is recognizing you (enrolled, not paused).")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 

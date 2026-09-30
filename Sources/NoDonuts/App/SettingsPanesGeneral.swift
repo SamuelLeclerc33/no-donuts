@@ -127,6 +127,9 @@ struct TrustedWiFiSettingsPane: View {
 // MARK: - Timing
 
 /// Grace period and check interval (homer's tunables; the store clamps and persists).
+/// ND-122: both commit on release, not per drag step. A grace the thumb only passes
+/// through (e.g. 2 s on the way down) must not apply mid-drag, and every committed tick
+/// interval rebuilds the ND-119 drift monitor (dropping its history).
 @MainActor
 struct TimingSettingsPane: View {
     @ObservedObject var store: SettingsStore
@@ -134,37 +137,45 @@ struct TimingSettingsPane: View {
     var body: some View {
         SettingsPane(category: .timing) {
             Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Grace period")
-                        Spacer()
-                        Text("\(Int(store.graceSeconds.rounded())) s")
-                            .foregroundStyle(.secondary).monospacedDigit()
+                CommitOnReleaseSlider(
+                    value: $store.graceSeconds,
+                    in: SettingsStore.Range.grace,
+                    step: 1,
+                    label: Text("Grace period"),
+                    accessibilityValue: { Text("\(Int($0.rounded())) seconds") }
+                ) { grace, slider in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Grace period")
+                            Spacer()
+                            Text("\(Int(grace.rounded())) s")
+                                .foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        slider
+                        Text("How long you can be away before the Mac locks.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Slider(value: $store.graceSeconds,
-                           in: SettingsStore.Range.grace,
-                           step: 1)
-                    .accessibilityLabel("Grace period")
-                    .accessibilityValue("\(Int(store.graceSeconds.rounded())) seconds")
-                    Text("How long you can be away before the Mac locks.")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Check interval")
-                        Spacer()
-                        Text("\(displayNumber(store.tickIntervalSeconds, digits: 1)) s")
-                            .foregroundStyle(.secondary).monospacedDigit()
+                CommitOnReleaseSlider(
+                    value: $store.tickIntervalSeconds,
+                    in: SettingsStore.Range.tick,
+                    step: 0.5,
+                    label: Text("Check interval"),
+                    accessibilityValue: { Text("\(displayNumber($0, digits: 1)) seconds") }
+                ) { interval, slider in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Check interval")
+                            Spacer()
+                            Text("\(displayNumber(interval, digits: 1)) s")
+                                .foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        slider
+                        Text("How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Slider(value: $store.tickIntervalSeconds,
-                           in: SettingsStore.Range.tick,
-                           step: 0.5)
-                    .accessibilityLabel("Check interval")
-                    .accessibilityValue("\(displayNumber(store.tickIntervalSeconds, digits: 1)) seconds")
-                    Text("How often No Donuts checks the camera. Faster reacts sooner; slower uses less power.")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
